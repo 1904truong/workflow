@@ -1,310 +1,678 @@
-import { useState, useEffect } from 'react';
-import { 
-  Waves, Settings2, User, Wand2, Clock, Images, 
-  Folder, Puzzle, CheckCircle2, Image as ImageIcon, 
-  Type, Sparkles, ChevronDown, AlertCircle
-} from 'lucide-react';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import type { LessonFolder, Exercise } from './features/worksheet-builder/types';
+import { folderStorage } from './features/worksheet-builder/services/folderStorageService';
+import { AppSidebar, type MainNavId } from './features/worksheet-builder/components/layout/AppSidebar';
+import { AppHeader, type BreadcrumbItem } from './features/worksheet-builder/components/layout/AppHeader';
 
-function App() {
-  const [prompt, setPrompt] = useState('Transform this image into a beautiful Scandinavian vintage illustration. Preserve the original composition, use bold outlines and warm muted colors.');
-  const [status, setStatus] = useState('Waiting');
-  const [errorMessage, setErrorMessage] = useState('');
-  const [activeTab, setActiveTab] = useState('i2i'); // 'i2i' or 't2i'
-  const [activeNav, setActiveNav] = useState('AI Studio');
+// Primary Screens
+import { LessonFoldersScreen } from './features/worksheet-builder/components/folders/LessonFoldersScreen';
+import { CreateFolderScreen } from './features/worksheet-builder/components/folders/CreateFolderScreen';
+import { FolderDetailScreen } from './features/worksheet-builder/components/folders/FolderDetailScreen';
+import { SmartPasteScreen } from './features/worksheet-builder/components/smart-paste/SmartPasteScreen';
+import { ManualExerciseBuilderScreen } from './features/worksheet-builder/components/exercises/ManualExerciseBuilderScreen';
+import { ImageStudioScreen } from './features/worksheet-builder/components/images/ImageStudioScreen';
+import { PreviewExportScreen } from './features/worksheet-builder/components/export/PreviewExportScreen';
 
+// Secondary Screens
+import { ExportHistoryScreen } from './features/worksheet-builder/components/secondary/ExportHistoryScreen';
+import { GalleryScreen } from './features/worksheet-builder/components/secondary/GalleryScreen';
+import { SettingsScreen } from './features/worksheet-builder/components/secondary/SettingsScreen';
+import { HelpGuideScreen } from './features/worksheet-builder/components/secondary/HelpGuideScreen';
+
+// Print styles
+import './features/worksheet-builder/components/toolbar/PrintStyles.css';
+
+export type ScreenState =
+  | { type: 'folders' }
+  | { type: 'create_folder'; editingFolder?: LessonFolder | null }
+  | { type: 'folder_detail'; folderId: string }
+  | { type: 'smart_paste'; folderId: string }
+  | { type: 'add_exercise'; folderId: string; editingExercise?: Exercise | null }
+  | { type: 'images'; folderId?: string }
+  | { type: 'export'; folderId: string }
+  | { type: 'history' }
+  | { type: 'gallery' }
+  | { type: 'settings' }
+  | { type: 'guide' };
+
+export default function App() {
+  const [folders, setFolders] = useState<LessonFolder[]>([]);
+  const [activeScreen, setActiveScreen] = useState<ScreenState>({ type: 'folders' });
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
+  const autosaveTimerRef = useRef<any>(null);
+
+  // Flow Bridge Chrome Extension state
+  const [extensionConnected, setExtensionConnected] = useState<boolean>(false);
+  const [flowStatus, setFlowStatus] = useState<string>('UNKNOWN');
+
+  // Load folders on mount
   useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data.type === 'EXTENSION_RESPONSE') {
-        console.log("App received response from extension:", event.data.payload);
-        setStatus(event.data.payload.status || 'Done');
-        if (event.data.payload.status === 'error') {
-            const actualMsg = event.data.payload.message || event.data.payload.detail?.message || "An unknown error occurred.";
-            setErrorMessage(actualMsg);
-        } else {
-            setErrorMessage('');
-        }
-      }
+    const load = async () => {
+      const list = await folderStorage.listFolders();
+      setFolders(list);
     };
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
+    load();
   }, []);
 
-  const handleUseExample = () => {
-    setPrompt("A breathtaking, high-resolution architectural photography shot of the White House in Washington D.C. during the golden hour. The building is elegantly illuminated by warm, soft evening sunlight, casting long shadows across the pristine green lawn. Cinematic lighting, ultra-detailed, 8k resolution, photorealistic, masterpiece.");
+  // Web-to-Extension Communication Protocol
+  useEffect(() => {
+    const queryFlowStatus = () => {
+      const pingId = `status_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      window.postMessage(
+        {
+          id: pingId,
+          type: 'GET_FLOW_STATUS',
+          source: 'web',
+          timestamp: Date.now(),
+          payload: null,
+        },
+        window.location.origin
+      );
+    };
+
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      const data = event.data;
+      if (!data || typeof data !== 'object') return;
+
+      if (data.type === 'EXTENSION_DETECTED') {
+        setExtensionConnected(true);
+        queryFlowStatus();
+      }
+      if (data.source === 'extension' && data.type === 'GET_FLOW_STATUS') {
+        setExtensionConnected(true);
+        const status = data.payload?.status || 'UNKNOWN';
+        setFlowStatus(status);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    // Initial ping
+    queryFlowStatus();
+    // Periodic status refresh every 4 seconds
+    const interval = setInterval(queryFlowStatus, 4000);
+
+    return () => {
+      window.removeEventListener('message', handleMessage);
+      clearInterval(interval);
+    };
+  }, []);
+
+  // Autosave a folder to storage with debouncing
+  const persistFolder = (updatedFolder: LessonFolder) => {
+    setSaveStatus('saving');
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+
+    autosaveTimerRef.current = setTimeout(async () => {
+      await folderStorage.saveFolder(updatedFolder);
+      setSaveStatus('saved');
+    }, 600);
+  };
+
+  // Helper to find a folder by ID
+  const getFolder = (folderId?: string): LessonFolder | null => {
+    if (!folderId) return folders[0] || null;
+    return folders.find((f) => f.id === folderId) || null;
+  };
+
+  // Map active screen to primary navigation sidebar ID
+  const activeNavId: MainNavId = useMemo(() => {
+    switch (activeScreen.type) {
+      case 'folders':
+      case 'folder_detail':
+      case 'smart_paste':
+      case 'add_exercise':
+      case 'export':
+        return 'lessons';
+      case 'create_folder':
+        return 'create_new';
+      case 'images':
+        return 'images';
+      case 'gallery':
+        return 'gallery';
+      case 'history':
+        return 'history';
+      case 'settings':
+        return 'settings';
+      case 'guide':
+        return 'guide';
+      default:
+        return 'lessons';
+    }
+  }, [activeScreen.type]);
+
+  // Sidebar navigation handler
+  const handleNavClick = (navId: MainNavId) => {
+    switch (navId) {
+      case 'lessons':
+        setActiveScreen({ type: 'folders' });
+        break;
+      case 'create_new':
+        setActiveScreen({ type: 'create_folder' });
+        break;
+      case 'images': {
+        const targetFolder = folders[0];
+        setActiveScreen({ type: 'images', folderId: targetFolder?.id });
+        break;
+      }
+      case 'gallery':
+        setActiveScreen({ type: 'gallery' });
+        break;
+      case 'history':
+        setActiveScreen({ type: 'history' });
+        break;
+      case 'settings':
+        setActiveScreen({ type: 'settings' });
+        break;
+      case 'guide':
+        setActiveScreen({ type: 'guide' });
+        break;
+    }
+  };
+
+  // Dynamic breadcrumbs
+  const breadcrumbs: BreadcrumbItem[] = useMemo(() => {
+    const list: BreadcrumbItem[] = [];
+
+    switch (activeScreen.type) {
+      case 'folders':
+        list.push({ label: 'Lesson Folders' });
+        break;
+      case 'create_folder':
+        list.push({ label: 'Lesson Folders', onClick: () => setActiveScreen({ type: 'folders' }) });
+        list.push({ label: activeScreen.editingFolder ? 'Edit Folder Details' : 'Create New Folder' });
+        break;
+      case 'folder_detail': {
+        const folder = getFolder(activeScreen.folderId);
+        list.push({ label: 'Lesson Folders', onClick: () => setActiveScreen({ type: 'folders' }) });
+        list.push({ label: folder?.name || 'Lesson Folder' });
+        break;
+      }
+      case 'smart_paste': {
+        const folder = getFolder(activeScreen.folderId);
+        list.push({ label: 'Lesson Folders', onClick: () => setActiveScreen({ type: 'folders' }) });
+        list.push({
+          label: folder?.name || 'Folder',
+          onClick: () => setActiveScreen({ type: 'folder_detail', folderId: activeScreen.folderId }),
+        });
+        list.push({ label: 'Smart Paste' });
+        break;
+      }
+      case 'add_exercise': {
+        const folder = getFolder(activeScreen.folderId);
+        list.push({ label: 'Lesson Folders', onClick: () => setActiveScreen({ type: 'folders' }) });
+        list.push({
+          label: folder?.name || 'Folder',
+          onClick: () => setActiveScreen({ type: 'folder_detail', folderId: activeScreen.folderId }),
+        });
+        list.push({ label: activeScreen.editingExercise ? 'Edit Exercise' : 'Add Exercise' });
+        break;
+      }
+      case 'images': {
+        const folder = getFolder(activeScreen.folderId);
+        if (folder) {
+          list.push({ label: 'Lesson Folders', onClick: () => setActiveScreen({ type: 'folders' }) });
+          list.push({
+            label: folder.name,
+            onClick: () => setActiveScreen({ type: 'folder_detail', folderId: folder.id }),
+          });
+        }
+        list.push({ label: 'AI Image Studio' });
+        break;
+      }
+      case 'export': {
+        const folder = getFolder(activeScreen.folderId);
+        list.push({ label: 'Lesson Folders', onClick: () => setActiveScreen({ type: 'folders' }) });
+        list.push({
+          label: folder?.name || 'Folder',
+          onClick: () => setActiveScreen({ type: 'folder_detail', folderId: activeScreen.folderId }),
+        });
+        list.push({ label: 'Preview & Export' });
+        break;
+      }
+      case 'gallery':
+        list.push({ label: 'My Gallery' });
+        break;
+      case 'history':
+        list.push({ label: 'Export History' });
+        break;
+      case 'settings':
+        list.push({ label: 'Settings' });
+        break;
+      case 'guide':
+        list.push({ label: 'Help & Guide' });
+        break;
+    }
+
+    return list;
+  }, [activeScreen, folders]);
+
+  // Folder Actions
+  const handleCreateOrUpdateFolder = async (folderData: Partial<LessonFolder>) => {
+    if (activeScreen.type === 'create_folder' && activeScreen.editingFolder) {
+      // Update existing folder
+      const updated: LessonFolder = {
+        ...activeScreen.editingFolder,
+        ...folderData,
+        updatedAt: Date.now(),
+      } as LessonFolder;
+      await folderStorage.saveFolder(updated);
+      setFolders((prev) => prev.map((f) => (f.id === updated.id ? updated : f)));
+      setActiveScreen({ type: 'folder_detail', folderId: updated.id });
+    } else {
+      // Create new folder
+      const newFolder: LessonFolder = {
+        id: `folder_${Date.now()}`,
+        name: folderData.name || 'New English Worksheet',
+        gradeLevel: folderData.gradeLevel || 'Grade 7',
+        subject: folderData.subject || 'English',
+        unitTopic: folderData.unitTopic,
+        lessonTitle: folderData.lessonTitle,
+        description: folderData.description,
+        estimatedDuration: folderData.estimatedDuration || 45,
+        targetSkills: folderData.targetSkills || ['Reading', 'Vocabulary'],
+        schoolName: folderData.schoolName || 'Cambridge International Academy',
+        teacherName: folderData.teacherName || 'Sarah Jenkins',
+        totalPoints: 20,
+        status: 'draft',
+        printSettings: folderData.printSettings || {
+          paperSize: 'A4',
+          orientation: 'portrait',
+          widthMm: 210,
+          heightMm: 297,
+          marginMm: 15,
+          printableWidthMm: 180,
+          printableHeightMm: 267,
+          showStudentInfo: true,
+          showEmptyImagePlaceholders: true,
+          mode: 'student',
+          fontSizeBasePt: 11,
+          lineHeight: 1.35,
+        },
+        exercises: [],
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      await folderStorage.saveFolder(newFolder);
+      setFolders((prev) => [newFolder, ...prev]);
+      setActiveScreen({ type: 'folder_detail', folderId: newFolder.id });
+    }
+  };
+
+  const handleDuplicateFolder = async (folderId: string) => {
+    const duplicated = await folderStorage.duplicateFolder(folderId);
+    if (duplicated) {
+      setFolders((prev) => [duplicated, ...prev]);
+    }
+  };
+
+  const handleDeleteFolder = async (folderId: string) => {
+    if (confirm('Are you sure you want to delete this lesson folder? All its exercises will be deleted.')) {
+      await folderStorage.deleteFolder(folderId);
+      setFolders((prev) => prev.filter((f) => f.id !== folderId));
+      if (
+        (activeScreen.type === 'folder_detail' && activeScreen.folderId === folderId) ||
+        (activeScreen.type === 'smart_paste' && activeScreen.folderId === folderId) ||
+        (activeScreen.type === 'add_exercise' && activeScreen.folderId === folderId) ||
+        (activeScreen.type === 'export' && activeScreen.folderId === folderId)
+      ) {
+        setActiveScreen({ type: 'folders' });
+      }
+    }
+  };
+
+  // Update exercises of a folder
+  const handleUpdateFolderExercises = (folderId: string, updatedExercises: Exercise[]) => {
+    const target = folders.find((f) => f.id === folderId);
+    if (!target) return;
+
+    const updated: LessonFolder = {
+      ...target,
+      exercises: updatedExercises,
+      updatedAt: Date.now(),
+    };
+
+    setFolders((prev) => prev.map((f) => (f.id === folderId ? updated : f)));
+    persistFolder(updated);
+  };
+
+  // Smart Paste confirmed import
+  const handleSmartPasteConfirm = (folderId: string, newExercises: Exercise[]) => {
+    const target = folders.find((f) => f.id === folderId);
+    if (!target) return;
+
+    const merged = [...target.exercises, ...newExercises];
+    handleUpdateFolderExercises(folderId, merged);
+    setActiveScreen({ type: 'folder_detail', folderId });
+  };
+
+  // Manual Exercise save
+  const handleSaveExercise = (
+    folderId: string,
+    exercise: Exercise,
+    nextAction: 'return' | 'add_another' | 'stay'
+  ) => {
+    const target = folders.find((f) => f.id === folderId);
+    if (!target) return;
+
+    const existingIdx = target.exercises.findIndex((e) => e.id === exercise.id);
+    let updatedExercises = [...target.exercises];
+
+    if (existingIdx >= 0) {
+      updatedExercises[existingIdx] = exercise;
+    } else {
+      updatedExercises.push(exercise);
+    }
+
+    handleUpdateFolderExercises(folderId, updatedExercises);
+
+    if (nextAction === 'return') {
+      setActiveScreen({ type: 'folder_detail', folderId });
+    }
+  };
+
+  const handleDuplicateExercise = (folderId: string, exerciseId: string) => {
+    const target = folders.find((f) => f.id === folderId);
+    if (!target) return;
+
+    const ex = target.exercises.find((e) => e.id === exerciseId);
+    if (!ex) return;
+
+    const duplicated: Exercise = {
+      ...ex,
+      id: `ex_${Date.now()}`,
+      title: `${ex.title} (Copy)`,
+      order: target.exercises.length + 1,
+      questions: ex.questions.map((q, i) => ({
+        ...q,
+        id: `q_${Date.now()}_${i}`,
+      })),
+      imageSlots: ex.imageSlots.map((s, i) => ({
+        ...s,
+        slotId: `slot_${Date.now()}_${i}`,
+      })),
+    };
+
+    handleUpdateFolderExercises(folderId, [...target.exercises, duplicated]);
+  };
+
+  const handleDeleteExercise = (folderId: string, exerciseId: string) => {
+    const target = folders.find((f) => f.id === folderId);
+    if (!target) return;
+
+    if (confirm('Delete this exercise from the folder?')) {
+      const remaining = target.exercises
+        .filter((e) => e.id !== exerciseId)
+        .map((e, idx) => ({ ...e, order: idx + 1 }));
+      handleUpdateFolderExercises(folderId, remaining);
+    }
+  };
+
+  // Update print settings of a folder
+  const handleUpdatePrintSettings = (folderId: string, key: string, value: any) => {
+    const target = folders.find((f) => f.id === folderId);
+    if (!target) return;
+
+    const updated: LessonFolder = {
+      ...target,
+      printSettings: {
+        ...target.printSettings,
+        [key]: value,
+      },
+      updatedAt: Date.now(),
+    };
+
+    setFolders((prev) => prev.map((f) => (f.id === folderId ? updated : f)));
+    persistFolder(updated);
+  };
+
+  // Reset to default sample lesson folders
+  const handleResetToSamples = async () => {
+    if (confirm('Reset to initial sample lesson folders? Current changes will be replaced.')) {
+      localStorage.removeItem('flow_bridge_folders_v2');
+      const fresh = await folderStorage.listFolders();
+      setFolders(fresh);
+      setActiveScreen({ type: 'folders' });
+    }
   };
 
   return (
-    <div className="min-h-screen bg-[#F9FAFB] flex flex-col font-sans">
-      {/* Header */}
-      <header className="h-16 border-b border-gray-200 bg-white flex items-center justify-between px-6 shrink-0">
-        {/* Left Logo */}
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-            <Waves size={20} />
-          </div>
-          <div>
-            <h1 className="text-sm font-bold text-gray-900 leading-tight">FlowBridge</h1>
-            <p className="text-[10px] text-gray-500 font-semibold tracking-wider uppercase">AI Image Studio</p>
-          </div>
-        </div>
-        
-        {/* Right Actions */}
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-orange-50 rounded-full border border-orange-100 cursor-pointer hover:bg-orange-100 transition-colors">
-            <div className="w-2 h-2 rounded-full bg-orange-500"></div>
-            <span className="text-xs font-medium text-orange-600">Flow offline</span>
-          </div>
-          <button className="w-9 h-9 rounded-full border border-gray-200 flex items-center justify-center text-gray-600 hover:bg-gray-50 transition-colors">
-            <Settings2 size={18} />
-          </button>
-          <button className="w-9 h-9 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 border border-blue-100 hover:bg-blue-100 transition-colors">
-            <User size={18} />
-          </button>
-        </div>
-      </header>
+    <div className="flex h-screen w-screen overflow-hidden bg-slate-50 text-slate-800 font-sans">
+      {/* 1. Global Navigation Sidebar (248px desktop) */}
+      <AppSidebar
+        activeNav={activeNavId}
+        onNavigate={handleNavClick}
+        foldersCount={folders.length}
+      />
 
-      {/* Main Layout */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        <aside className="w-64 border-r border-gray-200 bg-white flex flex-col shrink-0">
-          <div className="p-4 flex-1">
-            <nav className="space-y-1">
-              {['AI Studio', 'History', 'My Gallery'].map((item) => (
-                  <button 
-                    key={item}
-                    onClick={() => setActiveNav(item)}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-sm transition-colors ${activeNav === item ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
-                  >
-                    {item === 'AI Studio' && <Wand2 size={18} />}
-                    {item === 'History' && <Clock size={18} />}
-                    {item === 'My Gallery' && <Images size={18} />}
-                    {item}
-                  </button>
-              ))}
-            </nav>
-            
-            <div className="mt-8">
-              <p className="px-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Workspace</p>
-              <nav className="space-y-1">
-                 {['My Projects', 'Flow Extension'].map((item) => (
-                  <button 
-                    key={item}
-                    onClick={() => setActiveNav(item)}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-sm transition-colors ${activeNav === item ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-50'}`}
-                  >
-                    {item === 'My Projects' && <Folder size={18} />}
-                    {item === 'Flow Extension' && <Puzzle size={18} />}
-                    {item}
-                  </button>
-                ))}
-              </nav>
-            </div>
-          </div>
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden">
+        {/* 2. Top Header with Breadcrumbs & Autosave Status */}
+        <AppHeader
+          breadcrumbs={breadcrumbs}
+          saveStatus={saveStatus}
+        />
+
+        {/* 3. Screen View Container: ONLY render the currently active screen */}
+        <main className="flex-1 flex overflow-hidden">
           
-          {/* Footer Info Box */}
-          <div className="p-4">
-            <div className="p-4 border border-gray-200 rounded-xl bg-white shadow-sm hover:shadow-md transition-shadow cursor-pointer">
-              <div className="flex items-center gap-2 text-green-600 mb-2">
-                <CheckCircle2 size={16} />
-                <span className="text-xs font-semibold">Local-first</span>
-              </div>
-              <p className="text-xs text-gray-500 leading-snug">
-                Your Flow account stays in your browser.
-              </p>
-            </div>
-          </div>
-        </aside>
+          {/* SCREEN 1: Lesson Folders List */}
+          {activeScreen.type === 'folders' && (
+            <LessonFoldersScreen
+              folders={folders}
+              onOpenFolder={(folderId) => setActiveScreen({ type: 'folder_detail', folderId })}
+              onCreateNewFolder={() => setActiveScreen({ type: 'create_folder' })}
+              onDuplicateFolder={handleDuplicateFolder}
+              onDeleteFolder={handleDeleteFolder}
+              onEditFolderInfo={(folder) =>
+                setActiveScreen({ type: 'create_folder', editingFolder: folder })
+              }
+            />
+          )}
 
-        {/* Main Content Area */}
-        <main className="flex-1 overflow-y-auto p-6 bg-white m-4 rounded-2xl border border-gray-200 shadow-sm">
-          <div className="max-w-4xl mx-auto">
-            {/* Header */}
-            <div className="flex justify-between items-start mb-6">
-              <div>
-                <h2 className="text-2xl font-semibold text-gray-900">{activeNav}</h2>
-                <p className="text-gray-500 text-sm mt-1">Create and transform images using natural language.</p>
-              </div>
-              <span className="px-3 py-1 bg-gray-100 text-gray-700 text-xs font-semibold rounded-full border border-gray-200">
-                Prototype
-              </span>
-            </div>
+          {/* SCREEN 2: Create / Edit Lesson Folder */}
+          {activeScreen.type === 'create_folder' && (
+            <CreateFolderScreen
+              initialFolder={activeScreen.editingFolder}
+              onSave={handleCreateOrUpdateFolder}
+              onCancel={() => setActiveScreen({ type: 'folders' })}
+            />
+          )}
 
-            {activeNav !== 'AI Studio' ? (
-                <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-                    <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
-                        <Images size={32} />
-                    </div>
-                    <p className="font-medium text-gray-600 mb-2">This module is under construction</p>
-                    <p className="text-sm text-gray-400">Please switch back to AI Studio to continue testing</p>
+          {/* SCREEN 5: Lesson Folder Contents & Exercises */}
+          {activeScreen.type === 'folder_detail' && (() => {
+            const currentFolder = getFolder(activeScreen.folderId);
+            if (!currentFolder) {
+              return (
+                <div className="p-8 text-center text-xs text-slate-400">
+                  Folder not found. <button onClick={() => setActiveScreen({ type: 'folders' })} className="text-blue-600 font-bold">Return to Folders</button>
                 </div>
-            ) : (
-              <>
-                {/* Tabs */}
-                <div className="grid grid-cols-2 gap-4 mb-8">
-                  <button 
-                    onClick={() => setActiveTab('i2i')}
-                    className={`flex flex-col items-start p-4 rounded-xl border text-left transition-colors ${activeTab === 'i2i' ? 'border-blue-400 bg-blue-50 text-gray-900' : 'border-gray-200 hover:border-gray-300 bg-white text-gray-700'}`}
-                  >
-                    <div className="flex items-center gap-2 font-semibold mb-1">
-                      <ImageIcon size={18} className={activeTab === 'i2i' ? "text-blue-600" : "text-gray-500"} />
-                      Image to Image
-                    </div>
-                    <span className="text-xs text-gray-500">Edit existing photos</span>
-                  </button>
-                  <button 
-                    onClick={() => setActiveTab('t2i')}
-                    className={`flex flex-col items-start p-4 rounded-xl border text-left transition-colors ${activeTab === 't2i' ? 'border-blue-400 bg-blue-50 text-gray-900' : 'border-gray-200 hover:border-gray-300 bg-white text-gray-700'}`}
-                  >
-                    <div className="flex items-center gap-2 font-semibold mb-1">
-                      <Type size={18} className={activeTab === 't2i' ? "text-blue-600" : "text-gray-500"} />
-                      Text to Image
-                    </div>
-                    <span className="text-xs text-gray-500">Create from prompts</span>
-                  </button>
+              );
+            }
+
+            return (
+              <FolderDetailScreen
+                folder={currentFolder}
+                onBackToFolders={() => setActiveScreen({ type: 'folders' })}
+                onOpenSmartPaste={() =>
+                  setActiveScreen({ type: 'smart_paste', folderId: currentFolder.id })
+                }
+                onOpenAddExercise={() =>
+                  setActiveScreen({ type: 'add_exercise', folderId: currentFolder.id })
+                }
+                onEditExercise={(exerciseId) => {
+                  const ex = currentFolder.exercises.find((e) => e.id === exerciseId);
+                  setActiveScreen({
+                    type: 'add_exercise',
+                    folderId: currentFolder.id,
+                    editingExercise: ex,
+                  });
+                }}
+                onOpenImages={() =>
+                  setActiveScreen({ type: 'images', folderId: currentFolder.id })
+                }
+                onOpenPreviewExport={() =>
+                  setActiveScreen({ type: 'export', folderId: currentFolder.id })
+                }
+                onEditFolderInfo={() =>
+                  setActiveScreen({ type: 'create_folder', editingFolder: currentFolder })
+                }
+                onUpdateExercises={(updated) =>
+                  handleUpdateFolderExercises(currentFolder.id, updated)
+                }
+                onDuplicateExercise={(exId) =>
+                  handleDuplicateExercise(currentFolder.id, exId)
+                }
+                onDeleteExercise={(exId) =>
+                  handleDeleteExercise(currentFolder.id, exId)
+                }
+                onInsertSampleExercises={() => {
+                  // If sample is requested inside an empty folder
+                  handleUpdateFolderExercises(currentFolder.id, [
+                    {
+                      id: `ex_${Date.now()}_1`,
+                      type: 'grammar_vocab_multiple_choice',
+                      layoutType: 'template_a',
+                      title: 'Exercise 1: Vocabulary & Grammar',
+                      instructions: 'Choose the best option (A, B, C or D) to complete each sentence.',
+                      pointsTotal: 5,
+                      order: 1,
+                      imageSlots: [],
+                      questions: [
+                        {
+                          id: `q_1`,
+                          number: 1,
+                          text: 'Endangered animals face serious threats from habitat ________.',
+                          options: [
+                            { id: 'opt_1', label: 'A', text: 'loss' },
+                            { id: 'opt_2', label: 'B', text: 'lose' },
+                            { id: 'opt_3', label: 'C', text: 'lost' },
+                            { id: 'opt_4', label: 'D', text: 'losing' },
+                          ],
+                          correctAnswer: 'A',
+                          points: 1,
+                        },
+                      ],
+                    },
+                  ]);
+                }}
+              />
+            );
+          })()}
+
+          {/* SCREEN 3: Smart Paste Import */}
+          {activeScreen.type === 'smart_paste' && (() => {
+            const currentFolder = getFolder(activeScreen.folderId);
+            if (!currentFolder) return null;
+
+            return (
+              <SmartPasteScreen
+                folder={currentFolder}
+                onCancel={() =>
+                  setActiveScreen({ type: 'folder_detail', folderId: currentFolder.id })
+                }
+                onConfirmImport={(newExs) =>
+                  handleSmartPasteConfirm(currentFolder.id, newExs)
+                }
+              />
+            );
+          })()}
+
+          {/* SCREEN 4: Manual Exercise Builder */}
+          {activeScreen.type === 'add_exercise' && (() => {
+            const currentFolder = getFolder(activeScreen.folderId);
+            if (!currentFolder) return null;
+
+            return (
+              <ManualExerciseBuilderScreen
+                folder={currentFolder}
+                editingExercise={activeScreen.editingExercise}
+                onSaveExercise={(ex, nextAction) =>
+                  handleSaveExercise(currentFolder.id, ex, nextAction)
+                }
+                onCancel={() =>
+                  setActiveScreen({ type: 'folder_detail', folderId: currentFolder.id })
+                }
+              />
+            );
+          })()}
+
+          {/* SCREEN 6: AI Image Studio */}
+          {activeScreen.type === 'images' && (() => {
+            const currentFolder = getFolder(activeScreen.folderId);
+            if (!currentFolder) {
+              return (
+                <div className="p-8 text-center text-xs text-slate-400">
+                  Please select a lesson folder first.
                 </div>
+              );
+            }
 
-                {/* Form and Preview Grid */}
-                <div className="grid grid-cols-5 gap-8">
-                  {/* Left Column (Form) */}
-                  <div className="col-span-3 space-y-6">
-                    
-                    {/* Reference Image */}
-                    {activeTab === 'i2i' && (
-                        <div>
-                        <h3 className="text-[15px] font-semibold text-gray-800 mb-3">Reference Image</h3>
-                        <div className="border border-dashed border-blue-200 rounded-xl p-4 flex flex-col items-center cursor-pointer hover:bg-blue-50/50 transition-colors">
-                            <div className="w-full h-40 bg-[#F3D7D1] rounded-lg shadow-inner flex items-center justify-center mb-3 overflow-hidden relative">
-                            <div className="w-24 h-28 bg-[#A21B2A] absolute bottom-4 rounded-[50%_50%_50%_50%/70%_70%_30%_30%] shadow-lg flex flex-col items-center">
-                                <div className="w-2 h-8 bg-[#811320] absolute -top-8 rounded-t-sm"></div>
-                                <div className="w-1 h-20 bg-white/20 absolute left-4 top-4 rounded-full blur-[1px] transform -rotate-12"></div>
-                            </div>
-                            </div>
-                            <button className="text-sm text-blue-600 font-medium hover:underline flex items-center gap-2">
-                            Change demo image
-                            </button>
-                        </div>
-                        </div>
-                    )}
+            return (
+              <ImageStudioScreen
+                folder={currentFolder}
+                onBackToFolder={() =>
+                  setActiveScreen({ type: 'folder_detail', folderId: currentFolder.id })
+                }
+                onUpdateFolderExercises={(updated) =>
+                  handleUpdateFolderExercises(currentFolder.id, updated)
+                }
+                onNavigateToPreview={() =>
+                  setActiveScreen({ type: 'export', folderId: currentFolder.id })
+                }
+                extensionConnected={extensionConnected}
+                flowStatus={flowStatus}
+                extensionDetected={extensionConnected}
+              />
+            );
+          })()}
 
-                    {/* Prompt */}
-                    <div>
-                      <div className="flex justify-between items-center mb-2">
-                        <h3 className="text-[15px] font-semibold text-gray-800">Your Prompt</h3>
-                        <Sparkles size={16} className="text-blue-500" />
-                      </div>
-                      <textarea 
-                        value={prompt}
-                        onChange={(e) => setPrompt(e.target.value)}
-                        placeholder="Describe what you want to see..."
-                        className="w-full h-28 p-4 border border-gray-200 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-800 text-[15px] leading-relaxed"
-                      />
-                      <div className="flex justify-between items-center mt-3">
-                        <span className="text-xs text-gray-400 font-medium">{prompt.length} characters</span>
-                        <button onClick={handleUseExample} className="px-4 py-1.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-full hover:bg-gray-50 transition-colors active:bg-gray-100">
-                          Use Example
-                        </button>
-                      </div>
-                    </div>
+          {/* SCREEN 7: Preview & Export */}
+          {activeScreen.type === 'export' && (() => {
+            const currentFolder = getFolder(activeScreen.folderId);
+            if (!currentFolder) return null;
 
-                    {/* Settings */}
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-2">AI Model</label>
-                        <div className="relative">
-                          <select className="w-full appearance-none bg-white border border-gray-200 rounded-full px-4 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 font-medium cursor-pointer hover:border-gray-300 transition-colors">
-                            <option>Nano Banana</option>
-                            <option>Veo 3.1</option>
-                            <option>Imagen 4</option>
-                          </select>
-                          <ChevronDown className="absolute right-4 top-2.5 text-gray-400 pointer-events-none" size={16} />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-600 mb-2">Aspect Ratio</label>
-                        <div className="relative">
-                          <select className="w-full appearance-none bg-white border border-gray-200 rounded-full px-4 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-800 font-medium cursor-pointer hover:border-gray-300 transition-colors">
-                            <option>1:1</option>
-                            <option>16:9</option>
-                            <option>9:16</option>
-                            <option>4:3</option>
-                            <option>3:4</option>
-                          </select>
-                          <ChevronDown className="absolute right-4 top-2.5 text-gray-400 pointer-events-none" size={16} />
-                        </div>
-                      </div>
-                    </div>
+            return (
+              <PreviewExportScreen
+                folder={currentFolder}
+                onBackToFolder={() =>
+                  setActiveScreen({ type: 'folder_detail', folderId: currentFolder.id })
+                }
+                onUpdatePrintSettings={(key, value) =>
+                  handleUpdatePrintSettings(currentFolder.id, key, value)
+                }
+              />
+            );
+          })()}
 
-                    {/* Generate Button */}
-                    <div className="pt-2">
-                      <button 
-                        onClick={() => {
-                          setStatus("Connecting...");
-                          setErrorMessage('');
-                          console.log("Sending generate message to extension...");
-                          window.postMessage({ type: "GENERATE_IMAGE", payload: { prompt } }, "*");
-                        }}
-                        className="w-full py-3 bg-[#0F1115] hover:bg-black text-white rounded-xl font-semibold flex items-center justify-center gap-2 shadow-lg transition-transform active:scale-[0.98]"
-                      >
-                        <Wand2 size={18} className="text-white/80" />
-                        Preview Generate
-                      </button>
-                      <p className="text-[11px] text-blue-400 text-center mt-3 font-medium">
-                        This will send the prompt to the Flow Bridge extension.
-                      </p>
-                    </div>
+          {/* SECONDARY SCREEN: Export History */}
+          {activeScreen.type === 'history' && (
+            <ExportHistoryScreen
+              onOpenFolder={(folderId) =>
+                setActiveScreen({ type: 'folder_detail', folderId })
+              }
+            />
+          )}
 
-                  </div>
+          {/* SECONDARY SCREEN: My Gallery */}
+          {activeScreen.type === 'gallery' && (
+            <GalleryScreen
+              folders={folders}
+              onOpenFolder={(folderId) =>
+                setActiveScreen({ type: 'folder_detail', folderId })
+              }
+            />
+          )}
 
-                  {/* Right Column (Preview) */}
-                  <div className="col-span-2">
-                    <div className="h-full border border-gray-100 bg-[#F9FAFB] rounded-2xl p-5 flex flex-col relative overflow-hidden">
-                      <div className="flex justify-between items-center mb-4 z-10">
-                        <h3 className="text-[15px] font-semibold text-gray-800">Result Preview</h3>
-                        <span className={`px-3 py-1 bg-white border text-xs font-semibold rounded-full shadow-sm capitalize ${status === 'error' ? 'border-red-200 text-red-600' : status === 'processing' ? 'border-blue-200 text-blue-600' : 'border-gray-200 text-gray-800'}`}>
-                          {status}
-                        </span>
-                      </div>
-                      
-                      {status === 'error' && errorMessage && (
-                          <div className="mb-4 p-3 bg-red-50 border border-red-100 rounded-lg flex items-start gap-2 z-10 animate-in fade-in slide-in-from-top-2">
-                              <AlertCircle size={16} className="text-red-500 mt-0.5 shrink-0" />
-                              <p className="text-xs text-red-700 leading-relaxed font-medium">{errorMessage}</p>
-                          </div>
-                      )}
+          {/* SECONDARY SCREEN: Settings */}
+          {activeScreen.type === 'settings' && (
+            <SettingsScreen onResetSamples={handleResetToSamples} />
+          )}
 
-                      <div className="flex-1 flex flex-col items-center justify-center text-center bg-white/50 rounded-xl border border-dashed border-gray-200 mt-2 z-10 transition-colors hover:bg-white/80">
-                        <div className="w-16 h-16 bg-white border border-gray-100 rounded-2xl flex items-center justify-center mb-4 shadow-sm">
-                          {status === 'processing' || status === 'Connecting...' ? (
-                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                          ) : status === 'error' ? (
-                             <AlertCircle size={32} className="text-red-300" />
-                          ) : (
-                             <ImageIcon size={32} className="text-gray-300" />
-                          )}
-                        </div>
-                        <h4 className="text-gray-700 font-medium mb-1">
-                            {status === 'processing' || status === 'Connecting...' ? 'Generating...' : status === 'error' ? 'Connection Failed' : 'Your image will appear here'}
-                        </h4>
-                        <p className="text-sm text-gray-400 max-w-[200px] leading-relaxed">
-                          {status === 'processing' || status === 'Connecting...' ? 'The extension is automating Google Flow in another tab.' : 'Set up your request and preview the workflow.'}
-                        </p>
-                      </div>
-                      
-                      {/* Decorative background element when processing */}
-                      {(status === 'processing' || status === 'Connecting...') && (
-                          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-blue-400/10 rounded-full blur-3xl animate-pulse"></div>
-                      )}
-                    </div>
-                  </div>
-
-                </div>
-              </>
-            )}
-          </div>
+          {/* SECONDARY SCREEN: Help & Guide */}
+          {activeScreen.type === 'guide' && <HelpGuideScreen />}
         </main>
       </div>
     </div>
   );
 }
-
-export default App;

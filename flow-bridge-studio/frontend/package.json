@@ -4,10 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "lint": "oxlint",
-    "preview": "vite preview"
+    "dev": "./node_modules/.bin/vite",
+    "build": "./node_modules/.bin/tsc -b && ./node_modules/.bin/vite build",
+    "lint": "./node_modules/.bin/oxlint",
+    "preview": "./node_modules/.bin/vite preview"
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.3.3",
@@ -17,6 +17,9 @@
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
+    "@oxlint/binding-darwin-x64": "^1.87.0",
+    "@rolldown/binding-darwin-x64": "^1.2.13",
+    "@types/chrome": "^0.3.5",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.7",

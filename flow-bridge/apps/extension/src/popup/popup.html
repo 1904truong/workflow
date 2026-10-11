@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Flow Bridge Status</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <header class="header">
+      <div class="logo-group">
+        <div class="logo-icon">⚡</div>
+        <div class="title-group">
+          <h1>Flow Bridge</h1>
+          <span class="badge-version">v1.0.0</span>
+        </div>
+      </div>
+      <div id="statusBadge" class="status-badge status-loading">Checking...</div>
+    </header>
+
+    <main class="content">
+      <section class="card">
+        <div class="card-title">Flow Tab Connection</div>
+        <div class="info-row">
+          <span class="label">Target Page:</span>
+          <span id="tabUrl" class="value truncate">Detecting...</span>
+        </div>
+        <div class="info-row">
+          <span class="label">Project State:</span>
+          <span id="projectState" class="value">Checking...</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-title">Detected Controls (DOM Inspection)</div>
+        <ul class="control-list">
+          <li class="control-item">
+            <span>Prompt Editor:</span>
+            <span id="ctrlPrompt" class="control-status status-gray">—</span>
+          </li>
+          <li class="control-item">
+            <span>Image Upload:</span>
+            <span id="ctrlUpload" class="control-status status-gray">—</span>
+          </li>
+          <li class="control-item">
+            <span>Generate Action:</span>
+            <span id="ctrlGenerate" class="control-status status-gray">—</span>
+          </li>
+          <li class="control-item">
+            <span>Download Action:</span>
+            <span id="ctrlDownload" class="control-status status-gray">—</span>
+          </li>
+        </ul>
+      </section>
+
+      <section id="diagnosticBox" class="diagnostic-box">
+        <div class="diagnostic-title">Diagnostics</div>
+        <div id="diagnosticMsg" class="diagnostic-msg">Initializing connection check...</div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <button id="btnInspect" class="btn btn-primary">Refresh Inspection</button>
+      <button id="btnTestPrompt" class="btn btn-secondary">Test Prompt Input</button>
+      <button id="btnTestGenerate" class="btn btn-warning" style="background:#e11d48;color:#fff;margin-top:6px;width:100%">⚡ Generate (Single 1-Credit Test)</button>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

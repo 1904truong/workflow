@@ -166,19 +166,36 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 // Bridge for the Frontend App (localhost)
-if (window.location.href.includes('localhost')) {
+if (window.location.href.includes('localhost') || window.location.href.includes('127.0.0.1')) {
   console.log("Flow Bridge: Setting up frontend listener");
+
+  // Announce extension presence to the web page
+  window.postMessage({
+    type: 'EXTENSION_DETECTED',
+    source: 'extension',
+    payload: { version: '1.0.0', ready: true }
+  }, window.location.origin);
+
   window.addEventListener("message", (event) => {
     // We only accept messages from ourselves
     if (event.source !== window) return;
-    
-    if (event.data.type && (event.data.type === "GENERATE_IMAGE" || event.data.type === "PING")) {
-      console.log("Content script forwarding message to background:", event.data);
-      chrome.runtime.sendMessage(event.data, (response) => {
-        // Send response back to the web page
-        window.postMessage({ type: "EXTENSION_RESPONSE", payload: response }, "*");
-      });
-    }
+    const data = event.data;
+    if (!data || typeof data !== 'object') return;
+    if (data.source !== 'web' && data.type !== 'GENERATE_IMAGE' && data.type !== 'PING') return;
+
+    chrome.runtime.sendMessage(data, (response) => {
+      if (chrome.runtime.lastError) {
+        window.postMessage({
+          id: data.id,
+          type: 'ERROR',
+          source: 'extension',
+          timestamp: Date.now(),
+          error: { code: 'EXTENSION_ERROR', message: chrome.runtime.lastError.message }
+        }, event.origin || window.location.origin);
+      } else if (response) {
+        window.postMessage(response, event.origin || window.location.origin);
+      }
+    });
   }, false);
 }
 

@@ -1,4 +1,15 @@
 {
+  "name": "flow-bridge-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix flow-bridge-studio/frontend run dev",
+    "build": "npm --prefix flow-bridge-studio/frontend run build",
+    "build:extension": "node flow-bridge/apps/extension/build.js",
+    "test": "node --experimental-strip-types --test flow-bridge/tests/unit/validation.test.js flow-bridge/tests/unit/adapter.test.js flow-bridge/tests/integration/bridge.test.js flow-bridge/tests/unit/worksheet.test.js flow-bridge/tests/unit/smart_paste.test.js flow-bridge/tests/unit/lesson_folder.test.js",
+    "lint": "npm --prefix flow-bridge-studio/frontend run lint",
+    "preview": "npm --prefix flow-bridge-studio/frontend run preview"
+  },
   "dependencies": {
     "@tailwindcss/postcss": "^4.3.3"
   }

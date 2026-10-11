@@ -1,0 +1,588 @@
+import React, { useState } from 'react';
+import { 
+  ArrowLeft, Check, Plus, Trash2, Copy, Search, Sparkles, BookOpen, 
+  Headphones, PenTool, Image as ImageIcon, HelpCircle
+} from 'lucide-react';
+import type { LessonFolder, Exercise, QuestionItem, ExerciseType, TemplateLayoutType } from '../../types';
+import { EXERCISE_REGISTRY, TEMPLATE_METADATA } from '../../templates/registry';
+import { PRINT_TOKENS } from '../../tokens/printTokens';
+
+interface ManualExerciseBuilderScreenProps {
+  folder: LessonFolder;
+  editingExercise?: Exercise | null;
+  onSaveExercise: (exercise: Exercise, nextAction: 'return' | 'add_another' | 'stay') => void;
+  onCancel: () => void;
+}
+
+export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenProps> = ({
+  folder,
+  editingExercise,
+  onSaveExercise,
+  onCancel,
+}) => {
+  // If editing an existing exercise, start directly in editor mode; otherwise start in type selection
+  const [step, setStep] = useState<'select_type' | 'editor'>(editingExercise ? 'editor' : 'select_type');
+  
+  // Exercise state
+  const [exerciseType, setExerciseType] = useState<ExerciseType>(
+    editingExercise?.type || 'grammar_vocab_multiple_choice'
+  );
+  const [title, setTitle] = useState<string>(
+    editingExercise?.title || `Exercise ${folder.exercises.length + 1}: Multiple Choice`
+  );
+  const [instructions, setInstructions] = useState<string>(
+    editingExercise?.instructions || 'Choose the correct answer (A, B, C or D) to complete each sentence.'
+  );
+  const [layoutType, setLayoutType] = useState<TemplateLayoutType>(
+    editingExercise?.layoutType || 'template_a'
+  );
+  const [passage, setPassage] = useState<string>(editingExercise?.passage || '');
+
+  // Questions
+  const [questions, setQuestions] = useState<QuestionItem[]>(
+    editingExercise?.questions || [
+      {
+        id: `q_${Date.now()}_1`,
+        number: 1,
+        text: 'The scientist observed the animal behavior in its natural ________.',
+        options: [
+          { id: 'opt_1', label: 'A', text: 'habitat' },
+          { id: 'opt_2', label: 'B', text: 'atmosphere' },
+          { id: 'opt_3', label: 'C', text: 'climate' },
+          { id: 'opt_4', label: 'D', text: 'weather' },
+        ],
+        correctAnswer: 'A',
+        points: 1,
+      },
+    ]
+  );
+
+  // Image slots
+  const [imageSlots, setImageSlots] = useState(editingExercise?.imageSlots || []);
+
+  // Search & categories for step 1
+  const [typeSearch, setTypeSearch] = useState('');
+  const [typeCategory, setTypeCategory] = useState<string>('all');
+
+  const categories = [
+    { id: 'all', label: 'All (15)' },
+    { id: 'Listening', label: 'Listening (4)', icon: Headphones },
+    { id: 'Reading', label: 'Reading (5)', icon: BookOpen },
+    { id: 'Grammar & Vocab', label: 'Grammar & Vocab (4)', icon: Sparkles },
+    { id: 'Writing', label: 'Writing (2)', icon: PenTool },
+  ];
+
+  const handleSelectType = (type: ExerciseType) => {
+    const meta = EXERCISE_REGISTRY[type];
+    setExerciseType(type);
+    setTitle(`Exercise ${folder.exercises.length + 1}: ${meta?.label || 'New Exercise'}`);
+    setInstructions(meta?.description || 'Answer the questions according to instructions.');
+    setLayoutType(meta?.defaultTemplate || 'template_a');
+    setStep('editor');
+  };
+
+  // Question CRUD
+  const handleAddQuestion = () => {
+    const nextNum = questions.length + 1;
+    const isMC = exerciseType.includes('multiple_choice') || exerciseType === 'true_false_not_given';
+
+    const newQ: QuestionItem = {
+      id: `q_${Date.now()}_${nextNum}`,
+      number: nextNum,
+      text: `Question ${nextNum} text...`,
+      options: isMC
+        ? exerciseType === 'true_false_not_given'
+          ? [
+              { id: 'opt_1', label: 'T', text: 'True' },
+              { id: 'opt_2', label: 'F', text: 'False' },
+              { id: 'opt_3', label: 'NG', text: 'Not Given' },
+            ]
+          : [
+              { id: 'opt_1', label: 'A', text: 'Option A' },
+              { id: 'opt_2', label: 'B', text: 'Option B' },
+              { id: 'opt_3', label: 'C', text: 'Option C' },
+              { id: 'opt_4', label: 'D', text: 'Option D' },
+            ]
+        : undefined,
+      correctAnswer: '',
+      points: 1,
+    };
+    setQuestions([...questions, newQ]);
+  };
+
+  const handleDuplicateQuestion = (idx: number) => {
+    const target = questions[idx];
+    const duplicated: QuestionItem = {
+      ...target,
+      id: `q_${Date.now()}_dup`,
+      number: questions.length + 1,
+      options: target.options ? [...target.options] : undefined,
+    };
+    setQuestions([...questions, duplicated]);
+  };
+
+  const handleRemoveQuestion = (idx: number) => {
+    if (questions.length <= 1) {
+      alert('An exercise must have at least one question.');
+      return;
+    }
+    const updated = questions.filter((_, i) => i !== idx).map((q, i) => ({ ...q, number: i + 1 }));
+    setQuestions(updated);
+  };
+
+  const handleUpdateQuestion = (idx: number, field: keyof QuestionItem, val: any) => {
+    const updated = [...questions];
+    updated[idx] = { ...updated[idx], [field]: val };
+    setQuestions(updated);
+  };
+
+  const handleUpdateOption = (qIdx: number, optIdx: number, text: string) => {
+    const q = questions[qIdx];
+    if (!q.options) return;
+    const updatedOptions = [...q.options];
+    updatedOptions[optIdx] = { ...updatedOptions[optIdx], text };
+    handleUpdateQuestion(qIdx, 'options', updatedOptions);
+  };
+
+  // Image slots handlers
+  const handleAddSlot = () => {
+    const nextChar = String.fromCharCode(65 + imageSlots.length);
+    const newSlot = {
+      slotId: `slot_${Date.now()}_${nextChar}`,
+      exerciseId: editingExercise?.id || 'new_ex',
+      label: nextChar,
+      widthMm: PRINT_TOKENS.imageSlots.matching.widthMm,
+      heightMm: PRINT_TOKENS.imageSlots.matching.heightMm,
+      aspectRatio: '4:3' as const,
+      status: 'empty' as const,
+      caption: `Picture ${nextChar}`,
+    };
+    setImageSlots([...imageSlots, newSlot]);
+  };
+
+  const handleRemoveSlot = (idx: number) => {
+    setImageSlots(imageSlots.filter((_, i) => i !== idx));
+  };
+
+  // Build final Exercise object and submit
+  const handleSave = (nextAction: 'return' | 'add_another' | 'stay') => {
+    const finalExercise: Exercise = {
+      id: editingExercise?.id || `ex_${Date.now()}`,
+      type: exerciseType,
+      layoutType,
+      title: title.trim() || 'Exercise',
+      instructions: instructions.trim(),
+      passage: passage.trim() || undefined,
+      questions,
+      imageSlots,
+      pointsTotal: questions.reduce((s, q) => s + (q.points || 1), 0),
+      order: editingExercise?.order || folder.exercises.length + 1,
+    };
+
+    onSaveExercise(finalExercise, nextAction);
+
+    if (nextAction === 'add_another') {
+      // Reset form for next exercise
+      setTitle(`Exercise ${folder.exercises.length + 2}: Multiple Choice`);
+      setQuestions([
+        {
+          id: `q_${Date.now()}_1`,
+          number: 1,
+          text: 'Enter question sentence here...',
+          options: [
+            { id: 'opt_1', label: 'A', text: 'Option A' },
+            { id: 'opt_2', label: 'B', text: 'Option B' },
+            { id: 'opt_3', label: 'C', text: 'Option C' },
+            { id: 'opt_4', label: 'D', text: 'Option D' },
+          ],
+          correctAnswer: '',
+          points: 1,
+        },
+      ]);
+      setImageSlots([]);
+      setPassage('');
+      setStep('select_type');
+    }
+  };
+
+  const filteredTypes = Object.values(EXERCISE_REGISTRY).filter((meta) => {
+    const matchesCategory = typeCategory === 'all' || meta.category === typeCategory;
+    const matchesSearch =
+      typeSearch.trim() === '' ||
+      meta.label.toLowerCase().includes(typeSearch.toLowerCase()) ||
+      meta.description.toLowerCase().includes(typeSearch.toLowerCase());
+    return matchesCategory && matchesSearch;
+  });
+
+  return (
+    <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50 select-text">
+      {/* Top Header */}
+      <div className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between shrink-0 shadow-2xs">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={step === 'editor' && !editingExercise ? () => setStep('select_type') : onCancel}
+            className="text-xs font-semibold text-slate-500 hover:text-slate-900 flex items-center gap-1 transition-colors mr-2"
+          >
+            <ArrowLeft size={13} /> {step === 'editor' && !editingExercise ? 'Change Type' : `Back to ${folder.name}`}
+          </button>
+          <span className="text-slate-300">|</span>
+          <span className="text-xs font-bold text-slate-800">
+            {editingExercise ? 'Edit Exercise' : 'Add Exercise to:'} <strong>{folder.name}</strong>
+          </span>
+        </div>
+
+        {step === 'editor' && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => handleSave('stay')}
+              className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-colors"
+            >
+              Save Draft
+            </button>
+            <button
+              onClick={() => handleSave('add_another')}
+              className="px-3.5 py-1.5 bg-white border border-slate-200 hover:border-blue-400 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors"
+            >
+              <Plus size={13} /> Save & Add Another
+            </button>
+            <button
+              onClick={() => handleSave('return')}
+              className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm shadow-blue-500/20 transition-all active:scale-95"
+            >
+              <Check size={14} /> Save & Return to Folder
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* STEP 1: SELECT EXERCISE TYPE */}
+      {step === 'select_type' && (
+        <div className="flex-1 overflow-y-auto p-6 md:p-8 max-w-5xl w-full mx-auto space-y-6">
+          <div>
+            <h1 className="text-lg font-bold text-slate-900 tracking-tight">
+              Select Exercise Format
+            </h1>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Choose one of the 15 standard English exercise types. The editor will automatically configure matching layout and input fields.
+            </p>
+          </div>
+
+          {/* Search & Categories Filter */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={typeSearch}
+                onChange={(e) => setTypeSearch(e.target.value)}
+                placeholder="Search formats (e.g. gap fill, matching, reading, true/false)..."
+                className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-slate-800"
+                autoFocus
+              />
+            </div>
+
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+              {categories.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => setTypeCategory(c.id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+                    typeCategory === c.id
+                      ? 'bg-blue-600 text-white font-bold shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
+                  }`}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Exercise Types Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {filteredTypes.map((meta) => {
+              const layout = TEMPLATE_METADATA[meta.defaultTemplate];
+
+              return (
+                <button
+                  key={meta.type}
+                  onClick={() => handleSelectType(meta.type)}
+                  className="group text-left p-4 rounded-2xl border border-slate-200 bg-white hover:border-blue-400 hover:shadow-md hover:shadow-blue-500/5 transition-all flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span
+                        className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                          meta.category === 'Listening'
+                            ? 'bg-purple-100 text-purple-700'
+                            : meta.category === 'Reading'
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : meta.category === 'Writing'
+                            ? 'bg-amber-100 text-amber-700'
+                            : 'bg-blue-100 text-blue-700'
+                        }`}
+                      >
+                        {meta.category}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-medium">
+                        {layout?.name.split('—')[1] || meta.defaultTemplate}
+                      </span>
+                    </div>
+
+                    <h3 className="text-xs font-bold text-slate-900 group-hover:text-blue-600 transition-colors">
+                      {meta.label}
+                    </h3>
+                    <p className="text-[11px] text-slate-500 mt-1 leading-relaxed line-clamp-2">
+                      {meta.description}
+                    </p>
+                  </div>
+
+                  <div className="mt-4 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
+                    <span>Default slots: {meta.defaultSlotsCount}</span>
+                    <span className="text-blue-600 font-bold group-hover:translate-x-0.5 transition-transform">
+                      Configure →
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* STEP 2: CONTENT EDITOR */}
+      {step === 'editor' && (
+        <div className="flex-1 overflow-y-auto p-6 md:p-8 max-w-4xl w-full mx-auto space-y-6">
+          {/* Exercise Info Card */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <span className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
+                <Sparkles size={14} className="text-blue-600" />
+                Exercise Details & Instructions
+              </span>
+              <span className="text-[11px] font-semibold text-slate-400">
+                Type: {EXERCISE_REGISTRY[exerciseType]?.label || exerciseType}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-12 gap-4">
+              <div className="col-span-8">
+                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                  Exercise Title
+                </label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900"
+                />
+              </div>
+
+              <div className="col-span-4">
+                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                  A4 Print Layout Template
+                </label>
+                <select
+                  value={layoutType}
+                  onChange={(e) => setLayoutType(e.target.value as any)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800"
+                >
+                  <option value="template_a">Template A — Text Only</option>
+                  <option value="template_b">Template B — Text + Image Grid</option>
+                  <option value="template_c">Template C — Text + Single Image</option>
+                  <option value="template_d">Template D — Two Columns</option>
+                  <option value="template_e">Template E — Image + Table</option>
+                </select>
+              </div>
+
+              <div className="col-span-12">
+                <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">
+                  Student Instructions
+                </label>
+                <input
+                  type="text"
+                  value={instructions}
+                  onChange={(e) => setInstructions(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs italic text-slate-800"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Reading Passage (if reading or two-column) */}
+          {(exerciseType.includes('reading') || layoutType === 'template_d') && (
+            <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-2">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <span className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
+                  <BookOpen size={14} className="text-blue-600" />
+                  Reading Passage / Context
+                </span>
+                <span className="text-xs text-slate-400">{passage.length} chars</span>
+              </div>
+              <textarea
+                rows={5}
+                value={passage}
+                onChange={(e) => setPassage(e.target.value)}
+                placeholder="Paste or write the reading text here. It will be formatted into a clean reading column on the A4 page..."
+                className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-xs leading-relaxed text-slate-800 font-sans"
+              />
+            </div>
+          )}
+
+          {/* Image Slots Manager Card */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <span className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
+                <ImageIcon size={14} className="text-blue-600" />
+                Image Placeholders ({imageSlots.length})
+              </span>
+              <button
+                type="button"
+                onClick={handleAddSlot}
+                className="px-3 py-1 bg-blue-50 text-blue-700 rounded-lg text-xs font-bold hover:bg-blue-100 flex items-center gap-1"
+              >
+                <Plus size={12} /> Add Image Slot
+              </button>
+            </div>
+
+            {imageSlots.length === 0 ? (
+              <p className="text-xs text-slate-400 italic">
+                No image slots reserved for this exercise. (Click &apos;+ Add Image Slot&apos; if needed)
+              </p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {imageSlots.map((slot, sIdx) => (
+                  <div
+                    key={slot.slotId}
+                    className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between"
+                  >
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">
+                        Picture {slot.label || sIdx + 1}
+                      </p>
+                      <p className="text-[10px] text-slate-400">
+                        {slot.widthMm} × {slot.heightMm} mm
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveSlot(sIdx)}
+                      className="p-1 text-slate-400 hover:text-rose-600 rounded"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Questions List Card */}
+          <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <span className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
+                <HelpCircle size={14} className="text-blue-600" />
+                Exercise Questions ({questions.length})
+              </span>
+              <button
+                type="button"
+                onClick={handleAddQuestion}
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1 shadow-sm"
+              >
+                <Plus size={13} /> Add Question
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {questions.map((q, qIdx) => (
+                <div
+                  key={q.id}
+                  className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-2.5 flex-1">
+                      <span className="w-6 h-6 rounded-lg bg-blue-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
+                        {q.number || qIdx + 1}
+                      </span>
+                      <textarea
+                        rows={2}
+                        value={q.text}
+                        onChange={(e) => handleUpdateQuestion(qIdx, 'text', e.target.value)}
+                        placeholder="Enter question text or sentence with gap..."
+                        className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-900 resize-none"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleDuplicateQuestion(qIdx)}
+                        className="p-1.5 text-slate-400 hover:text-slate-700 rounded"
+                        title="Duplicate question"
+                      >
+                        <Copy size={13} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveQuestion(qIdx)}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 rounded"
+                        title="Remove question"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Multiple Choice Options */}
+                  {q.options && q.options.length > 0 && (
+                    <div className="pl-8 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {q.options.map((opt, optIdx) => (
+                        <div key={opt.id} className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-slate-500 w-4">
+                            {opt.label}.
+                          </span>
+                          <input
+                            type="text"
+                            value={opt.text}
+                            onChange={(e) => handleUpdateOption(qIdx, optIdx, e.target.value)}
+                            className="flex-1 px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs text-slate-800"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Correct Answer & Points row */}
+                  <div className="pl-8 flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/60 text-xs">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-bold text-slate-500 uppercase">
+                        Correct Answer:
+                      </span>
+                      <input
+                        type="text"
+                        value={q.correctAnswer || ''}
+                        onChange={(e) => handleUpdateQuestion(qIdx, 'correctAnswer', e.target.value)}
+                        placeholder="e.g. A, True, or answer text"
+                        className="px-2.5 py-0.5 rounded-lg text-xs font-bold border border-slate-200 bg-white text-slate-800"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] text-slate-400">Points:</span>
+                      <input
+                        type="number"
+                        value={q.points || 1}
+                        onChange={(e) => handleUpdateQuestion(qIdx, 'points', parseInt(e.target.value, 10) || 1)}
+                        className="w-12 px-2 py-0.5 bg-white border border-slate-200 rounded text-xs text-center font-bold"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

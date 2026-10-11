@@ -1,0 +1,48 @@
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  body, html {
+    background: #ffffff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    color: #111111 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Hide web app UI during print */
+  header,
+  aside,
+  nav,
+  .no-print,
+  .builder-toolbar,
+  .builder-editor-panel,
+  .builder-sidebar {
+    display: none !important;
+  }
+
+  /* Expand worksheet container to full width */
+  .worksheet-preview-container,
+  .worksheet-builder-main {
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    overflow: visible !important;
+  }
+
+  .worksheet-page {
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 auto !important;
+    page-break-after: always !important;
+    break-after: page !important;
+  }
+
+  .worksheet-page:last-child {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+}

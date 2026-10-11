@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "Flow Bridge",
+  "version": "1.0.0",
+  "description": "Authorized bridge connecting Flow Bridge Studio with Google Flow for intelligent image workflows.",
+  "permissions": [
+    "tabs",
+    "storage",
+    "scripting",
+    "debugger",
+    "downloads"
+  ],
+  "host_permissions": [
+    "https://flow.google.com/*",
+    "https://labs.google/*",
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "dist/background.js"
+  },
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_title": "Flow Bridge Status"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://flow.google.com/*",
+        "https://labs.google/*",
+        "<all_urls>"
+      ],
+      "js": ["dist/flow-content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "http://localhost:5173/*",
+        "http://127.0.0.1:5173/*",
+        "http://localhost:3000/*",
+        "http://127.0.0.1:3000/*"
+      ],
+      "js": ["dist/web-bridge.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
