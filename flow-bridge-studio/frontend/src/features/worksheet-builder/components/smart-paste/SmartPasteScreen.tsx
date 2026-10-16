@@ -12,6 +12,13 @@ import {
 } from '../../services/smartPasteParser';
 import { EXERCISE_REGISTRY } from '../../templates/registry';
 import { PRINT_TOKENS } from '../../tokens/printTokens';
+import { AiImagePlanPanel, type AiPlanEditorState } from './AiImagePlanPanel';
+import { analyzeWorksheetWithAI } from '../../services/ai/aiAnalyzer';
+import {
+  compareWithParser, planFromParser, applyPlanToExercises, DEFAULT_STYLE_SUFFIX,
+} from '../../services/ai/imagePlanCompare';
+import { planToJobs } from '../../services/ai/imageJobs';
+import { imageJobStore, startImageJobs } from '../../services/ai/imageJobService';
 
 interface SmartPasteScreenProps {
   folder: LessonFolder;
@@ -28,6 +35,17 @@ export const SmartPasteScreen: React.FC<SmartPasteScreenProps> = ({
   const [pasteText, setPasteText] = useState<string>('');
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // AI image plan (Gemini). Không thay thế luồng parser: chỉ bổ sung kế hoạch ảnh.
+  const [aiState, setAiState] = useState<AiPlanEditorState | null>(null);
+  const [isAiAnalyzing, setIsAiAnalyzing] = useState(false);
+  const [approved, setApproved] = useState<{
+    plan: AiPlanEditorState['plan'];
+    slotMap: Record<string, { exerciseId: string; slotId: string }>;
+    excluded: Set<string>;
+    referenceBySlot: Record<string, string[]>;
+    style: string;
+  } | null>(null);
 
   // Review state
   const [parseResult, setParseResult] = useState<ParseResult | null>(null);
@@ -89,6 +107,71 @@ export const SmartPasteScreen: React.FC<SmartPasteScreenProps> = ({
     }, 400);
   };
 
+  // 4b. Analyze with AI: Gemini -> kế hoạch ảnh; lỗi/không có Gemini -> dùng parser làm dự phòng
+  const handleAnalyzeWithAI = async () => {
+    if (!pasteText.trim()) {
+      setErrorMsg('Please enter or paste English worksheet text to analyze.');
+      return;
+    }
+    setIsAiAnalyzing(true);
+    setErrorMsg(null);
+    try {
+      let parsed: ParseResult | null = null;
+      try { parsed = parseWorksheetText(pasteText); } catch { /* parser lỗi: AI vẫn có thể phân tích */ }
+
+      const outcome = await analyzeWorksheetWithAI(pasteText);
+      if (outcome.ok && outcome.plan) {
+        setAiState({
+          plan: outcome.plan,
+          diffs: parsed ? compareWithParser(outcome.plan, parsed.worksheet.exercises) : [],
+          warnings: outcome.warnings,
+          fromFallback: false,
+          excluded: new Set(),
+          referenceBySlot: {},
+          style: DEFAULT_STYLE_SUFFIX,
+        });
+      } else if (parsed) {
+        setAiState({
+          plan: planFromParser(parsed.worksheet.exercises),
+          diffs: [],
+          warnings: [],
+          fromFallback: true,
+          fallbackReason: outcome.errorMessage || outcome.errorCode,
+          excluded: new Set(),
+          referenceBySlot: {},
+          style: DEFAULT_STYLE_SUFFIX,
+        });
+      } else {
+        setErrorMsg(`AI không dùng được (${outcome.errorMessage || outcome.errorCode}) và parser cũng không đọc được nội dung này.`);
+      }
+    } finally {
+      setIsAiAnalyzing(false);
+    }
+  };
+
+  // 4c. Giáo viên duyệt kế hoạch -> dựng đề bằng parser, áp kế hoạch lên ô ảnh
+  const handleApprovePlan = () => {
+    if (!aiState) return;
+    try {
+      const result = parseWorksheetText(pasteText);
+      const namespace = `${folder.id.slice(-6)}${Date.now().toString(36)}`;
+      const { exercises, slotMap } = applyPlanToExercises(aiState.plan, result.worksheet.exercises, namespace);
+      setParseResult(result);
+      setDetectedExercises(exercises);
+      setActiveExerciseIndex(0);
+      setApproved({
+        plan: aiState.plan,
+        slotMap,
+        excluded: new Set(aiState.excluded),
+        referenceBySlot: aiState.referenceBySlot,
+        style: aiState.style,
+      });
+      setStep('review');
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Không dựng được đề từ kế hoạch này.');
+    }
+  };
+
   // Handlers for modifying detected exercises in review step
   const handleUpdateExercise = (exIdx: number, updated: Exercise) => {
     const updatedList = [...detectedExercises];
@@ -142,6 +225,24 @@ export const SmartPasteScreen: React.FC<SmartPasteScreenProps> = ({
       order: baseOrder + idx + 1,
     }));
     onConfirmImport(reordered);
+
+    // Có kế hoạch AI đã duyệt: đổi thành job (chỉ cho các ô còn tồn tại sau bước review), chạy tuần tự, chống trùng
+    if (approved) {
+      const liveSlotIds = new Set(reordered.flatMap((ex) => ex.imageSlots.map((s) => s.slotId)));
+      const slotMap = Object.fromEntries(Object.entries(approved.slotMap).filter(([, v]) => liveSlotIds.has(v.slotId)));
+      const jobs = planToJobs({
+        plan: approved.plan,
+        worksheetId: folder.id,
+        slotMap,
+        referenceBySlot: approved.referenceBySlot,
+        excluded: approved.excluded,
+        style: approved.style,
+      });
+      if (jobs.length) {
+        imageJobStore.addJobs(jobs);
+        void startImageJobs();
+      }
+    }
   };
 
   // Metrics
@@ -187,7 +288,7 @@ export const SmartPasteScreen: React.FC<SmartPasteScreenProps> = ({
                 Smart Paste — Multi-Exercise Import
               </h1>
               <p className="text-xs text-slate-500 mt-0.5">
-                Copy and paste your complete worksheet text. Exercise boundaries, 15 types, choices, and answer keys are detected automatically.
+                Copy and paste your complete worksheet text. Exercise boundaries, 15 types and choices are detected automatically.
               </p>
             </div>
 
@@ -234,6 +335,17 @@ export const SmartPasteScreen: React.FC<SmartPasteScreenProps> = ({
             </div>
           )}
 
+          {aiState ? (
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              <AiImagePlanPanel
+                state={aiState}
+                onChange={setAiState}
+                onApprove={handleApprovePlan}
+                onDiscard={() => { setAiState(null); setApproved(null); }}
+              />
+            </div>
+          ) : (
+            <>
           {/* Paste Textarea */}
           <div className="flex-1 min-h-0 bg-white rounded-3xl border border-slate-200 shadow-xs flex flex-col overflow-hidden focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 transition-all">
             <textarea
@@ -252,12 +364,38 @@ Example format:
             />
           </div>
 
+            </>
+          )}
+
           {/* Footer Action */}
           <div className="flex items-center justify-between pt-2 shrink-0">
             <p className="text-[11px] text-slate-400">
               Pasted text is preserved intact. Analysis converts exercises into print-ready A4 formats without losing questions.
             </p>
 
+            <div className="flex items-center gap-2">
+            <button
+              onClick={handleAnalyzeWithAI}
+              disabled={isAiAnalyzing || isAnalyzing || !pasteText.trim()}
+              className={`px-5 py-3 rounded-2xl text-xs font-bold flex items-center gap-2 border transition-all active:scale-95 ${
+                pasteText.trim() && !isAiAnalyzing
+                  ? 'bg-violet-50 border-violet-300 text-violet-700 hover:bg-violet-100'
+                  : 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+              }`}
+              title="Gemini đọc cả đề, đề xuất số ảnh và prompt cho từng ảnh (bạn duyệt trước khi tạo)"
+            >
+              {isAiAnalyzing ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
+                  <span>AI đang phân tích...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles size={14} />
+                  <span>Analyze with AI</span>
+                </>
+              )}
+            </button>
             <button
               onClick={handleAnalyzeAndBuild}
               disabled={isAnalyzing || !pasteText.trim()}
@@ -280,6 +418,7 @@ Example format:
                 </>
               )}
             </button>
+            </div>
           </div>
         </div>
       )}
@@ -567,7 +706,7 @@ Example format:
                         )}
                       </div>
 
-                      {/* Questions & Extracted Answer Keys */}
+                      {/* Questions */}
                       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
                         <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                           <span className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
@@ -575,7 +714,7 @@ Example format:
                             Extracted Questions ({currentEx.questions.length})
                           </span>
                           <span className="text-[11px] text-slate-400">
-                            Verify extracted text and answer keys
+                            Verify extracted text
                           </span>
                         </div>
 
@@ -628,28 +767,6 @@ Example format:
                                 </div>
                               )}
 
-                              {/* Answer Key Pill */}
-                              <div className="pl-7 flex items-center gap-2 text-xs">
-                                <span className="text-[11px] font-bold text-slate-500 uppercase">
-                                  Correct Answer:
-                                </span>
-                                <input
-                                  type="text"
-                                  value={q.correctAnswer || ''}
-                                  placeholder="Needs Answer"
-                                  onChange={(e) =>
-                                    handleUpdateQuestion(activeExerciseIndex, qIdx, {
-                                      ...q,
-                                      correctAnswer: e.target.value || undefined,
-                                    })
-                                  }
-                                  className={`px-2.5 py-0.5 rounded-lg text-xs font-bold border ${
-                                    q.correctAnswer
-                                      ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
-                                      : 'bg-amber-50 border-amber-300 text-amber-800 italic'
-                                  }`}
-                                />
-                              </div>
                             </div>
                           ))}
                         </div>

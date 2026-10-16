@@ -24,6 +24,9 @@ dist-ssr/
 credentials.json
 serviceAccountKey.json
 
+# Supabase local CLI temp (contains project ref, pooler URLs)
+**/supabase/.temp/
+
 # Temporary Root Screenshots
 /chrome_flow_win.png
 /google_flow_screen.png

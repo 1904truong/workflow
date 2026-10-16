@@ -43,15 +43,47 @@
         "https://flow.google.com/*",
         "https://labs.google/*"
       ],
-      "js": ["flow-config.js", "content.js"],
-      "css": ["overlay.css"],
+      "js": [
+        "fb-main.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://flow.google.com/*",
+        "https://labs.google/*"
+      ],
+      "js": [
+        "guard.js",
+        "flow-config.js",
+        "content.js"
+      ],
+      "css": [
+        "overlay.css"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ],
+      "js": [
+        "web-bridge.js"
+      ],
       "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["overlay.css"],
-      "matches": ["https://flow.google.com/*", "https://labs.google/*"]
+      "resources": [
+        "overlay.css"
+      ],
+      "matches": [
+        "https://flow.google.com/*",
+        "https://labs.google/*"
+      ]
     }
   ]
 }

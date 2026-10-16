@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   ArrowLeft, Check, Plus, Trash2, Copy, Search, Sparkles, BookOpen, 
   Headphones, PenTool, Image as ImageIcon, HelpCircle
@@ -6,19 +6,37 @@ import {
 import type { LessonFolder, Exercise, QuestionItem, ExerciseType, TemplateLayoutType } from '../../types';
 import { EXERCISE_REGISTRY, TEMPLATE_METADATA } from '../../templates/registry';
 import { PRINT_TOKENS } from '../../tokens/printTokens';
+import { MatchingEditor } from '../matching/MatchingEditor';
+import { MultipleChoiceClozeEditor } from '../cloze/MultipleChoiceClozeEditor';
+import { ListeningGapFillEditor } from '../listening/ListeningGapFillEditor';
+import { MatchingPicturesEditor } from '../matching-pictures/MatchingPicturesEditor';
+import { MatchingHeadingsEditor } from '../matching-headings/MatchingHeadingsEditor';
+import { TfngEditor } from '../tfng/TfngEditor';
+import { GapFillingEditor } from '../gap-filling/GapFillingEditor';
+import { MatchingVocabularyEditor } from '../matching-vocabulary/MatchingVocabularyEditor';
+import { ListeningTrueFalseEditor } from '../listening-true-false/ListeningTrueFalseEditor';
+import { ListeningTableEditor } from '../listening-table/ListeningTableEditor';
+import { GrammarMcqEditor } from '../grammar-mcq/GrammarMcqEditor';
+import type { MatchingData } from '../../services/matching/matchingCore';
+import { createMatching, validateMatching } from '../../services/matching/matchingCore';
 
 interface ManualExerciseBuilderScreenProps {
   folder: LessonFolder;
   editingExercise?: Exercise | null;
+  /** Dạng bài chọn sẵn từ menu Add Exercise: bỏ qua bước chọn dạng bài */
+  initialType?: ExerciseType;
   onSaveExercise: (exercise: Exercise, nextAction: 'return' | 'add_another' | 'stay') => void;
   onCancel: () => void;
+  onDeleteExercise?: (exerciseId: string) => void;
 }
 
 export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenProps> = ({
   folder,
   editingExercise,
+  initialType,
   onSaveExercise,
   onCancel,
+  onDeleteExercise,
 }) => {
   // If editing an existing exercise, start directly in editor mode; otherwise start in type selection
   const [step, setStep] = useState<'select_type' | 'editor'>(editingExercise ? 'editor' : 'select_type');
@@ -57,6 +75,15 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
     ]
   );
 
+  // Matching Information: dữ liệu 6 layout. Bài cũ chưa có thì dựng từ danh sách câu hỏi.
+  const [matching, setMatching] = useState<MatchingData | undefined>(
+    editingExercise?.matching ??
+      (editingExercise?.type === 'matching_information'
+        ? createMatching({ problems: editingExercise.questions.map((q) => ({ id: q.id, text: q.text })) })
+        : undefined)
+  );
+  const isMatchingInfo = exerciseType === 'matching_information';
+
   // Image slots
   const [imageSlots, setImageSlots] = useState(editingExercise?.imageSlots || []);
 
@@ -78,8 +105,16 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
     setTitle(`Exercise ${folder.exercises.length + 1}: ${meta?.label || 'New Exercise'}`);
     setInstructions(meta?.description || 'Answer the questions according to instructions.');
     setLayoutType(meta?.defaultTemplate || 'template_a');
+    if (type === 'matching_information') {
+      setMatching((m) => m ?? createMatching());
+    }
     setStep('editor');
   };
+
+  useEffect(() => {
+    if (initialType && !editingExercise) handleSelectType(initialType);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Question CRUD
   const handleAddQuestion = () => {
@@ -166,6 +201,13 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
 
   // Build final Exercise object and submit
   const handleSave = (nextAction: 'return' | 'add_another' | 'stay') => {
+    if (isMatchingInfo && matching) {
+      const v = validateMatching(matching);
+      if (v.errors.length > 0) {
+        window.alert('Chưa lưu được bài Matching:\n\n• ' + v.errors.join('\n• '));
+        return;
+      }
+    }
     const finalExercise: Exercise = {
       id: editingExercise?.id || `ex_${Date.now()}`,
       type: exerciseType,
@@ -173,9 +215,12 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
       title: title.trim() || 'Exercise',
       instructions: instructions.trim(),
       passage: passage.trim() || undefined,
-      questions,
-      imageSlots,
-      pointsTotal: questions.reduce((s, q) => s + (q.points || 1), 0),
+      questions: isMatchingInfo && matching
+        ? matching.problems.map((p, i) => ({ id: p.id, number: i + 1, text: p.text, points: 1 }))
+        : questions,
+      imageSlots: isMatchingInfo ? [] : imageSlots,
+      matching: isMatchingInfo ? matching : undefined,
+      pointsTotal: isMatchingInfo && matching ? matching.problems.length : questions.reduce((s, q) => s + (q.points || 1), 0),
       order: editingExercise?.order || folder.exercises.length + 1,
     };
 
@@ -213,6 +258,141 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
       meta.description.toLowerCase().includes(typeSearch.toLowerCase());
     return matchesCategory && matchesSearch;
   });
+
+  // Bài Grammar & Vocabulary MC cũ có đoạn văn (Wall Street…) mở bằng trình soạn Cloze; bài mới dạng danh sách câu dùng trình soạn riêng
+  const isCloze =
+    exerciseType === 'grammar_vocab_cloze' ||
+    editingExercise?.cloze !== undefined ||
+    (exerciseType === 'grammar_vocab_multiple_choice' && !!editingExercise && editingExercise.grammarMcq === undefined && !!editingExercise.passage?.trim());
+  const isGrammarMcq = !isCloze && (exerciseType === 'grammar_vocab_multiple_choice' || editingExercise?.grammarMcq !== undefined);
+  const isListeningGapFill = exerciseType === 'listening_gap_fill' || (editingExercise?.listeningGapFill !== undefined);
+  const isMatchingPictures = exerciseType === 'matching_pictures' || (editingExercise?.matchingPictures !== undefined);
+  const isListeningTable = exerciseType === 'listening_table_completion' || (editingExercise?.listeningTable !== undefined);
+  const isListeningTrueFalse = exerciseType === 'listening_true_false' || (editingExercise?.listeningTrueFalse !== undefined);
+  const isMatchingHeadings = exerciseType === 'matching_headings' || (editingExercise?.matchingHeadings !== undefined);
+  const isTfng = exerciseType === 'true_false_not_given' || (editingExercise?.tfng !== undefined);
+  const isGapFilling = exerciseType === 'gap_filling_word_formation' || (editingExercise?.gapFilling !== undefined);
+  const isMatchingVocabulary = exerciseType === 'matching_vocabulary' || (editingExercise?.matchingVocabulary !== undefined);
+
+  if (step === 'editor' && isGrammarMcq) {
+    return (
+      <GrammarMcqEditor
+        folder={folder}
+        editingExercise={editingExercise}
+        onSaveExercise={onSaveExercise}
+        onCancel={!editingExercise ? () => setStep('select_type') : onCancel}
+        onDeleteExercise={onDeleteExercise}
+      />
+    );
+  }
+
+  if (step === 'editor' && isCloze) {
+    return (
+      <MultipleChoiceClozeEditor
+        folder={folder}
+        editingExercise={editingExercise}
+        onSaveExercise={onSaveExercise}
+        onCancel={!editingExercise ? () => setStep('select_type') : onCancel}
+        onDeleteExercise={onDeleteExercise}
+      />
+    );
+  }
+
+  if (step === 'editor' && isListeningGapFill) {
+    return (
+      <ListeningGapFillEditor
+        folder={folder}
+        editingExercise={editingExercise}
+        onSaveExercise={onSaveExercise}
+        onCancel={!editingExercise ? () => setStep('select_type') : onCancel}
+        onDeleteExercise={onDeleteExercise}
+      />
+    );
+  }
+
+  if (step === 'editor' && isListeningTable) {
+    return (
+      <ListeningTableEditor
+        folder={folder}
+        editingExercise={editingExercise}
+        onSaveExercise={onSaveExercise}
+        onCancel={!editingExercise ? () => setStep('select_type') : onCancel}
+        onDeleteExercise={onDeleteExercise}
+      />
+    );
+  }
+
+  if (step === 'editor' && isListeningTrueFalse) {
+    return (
+      <ListeningTrueFalseEditor
+        folder={folder}
+        editingExercise={editingExercise}
+        onSaveExercise={onSaveExercise}
+        onCancel={!editingExercise ? () => setStep('select_type') : onCancel}
+        onDeleteExercise={onDeleteExercise}
+      />
+    );
+  }
+
+  if (step === 'editor' && isMatchingHeadings) {
+    return (
+      <MatchingHeadingsEditor
+        folder={folder}
+        editingExercise={editingExercise}
+        onSaveExercise={onSaveExercise}
+        onCancel={!editingExercise ? () => setStep('select_type') : onCancel}
+        onDeleteExercise={onDeleteExercise}
+      />
+    );
+  }
+
+  if (step === 'editor' && isTfng) {
+    return (
+      <TfngEditor
+        folder={folder}
+        editingExercise={editingExercise}
+        onSaveExercise={onSaveExercise}
+        onCancel={!editingExercise ? () => setStep('select_type') : onCancel}
+        onDeleteExercise={onDeleteExercise}
+      />
+    );
+  }
+
+  if (step === 'editor' && isGapFilling) {
+    return (
+      <GapFillingEditor
+        folder={folder}
+        editingExercise={editingExercise}
+        onSaveExercise={onSaveExercise}
+        onCancel={!editingExercise ? () => setStep('select_type') : onCancel}
+        onDeleteExercise={onDeleteExercise}
+      />
+    );
+  }
+
+  if (step === 'editor' && isMatchingVocabulary) {
+    return (
+      <MatchingVocabularyEditor
+        folder={folder}
+        editingExercise={editingExercise}
+        onSaveExercise={onSaveExercise}
+        onCancel={!editingExercise ? () => setStep('select_type') : onCancel}
+        onDeleteExercise={onDeleteExercise}
+      />
+    );
+  }
+
+  if (step === 'editor' && isMatchingPictures) {
+    return (
+      <MatchingPicturesEditor
+        folder={folder}
+        editingExercise={editingExercise}
+        onSaveExercise={onSaveExercise}
+        onCancel={!editingExercise ? () => setStep('select_type') : onCancel}
+        onDeleteExercise={onDeleteExercise}
+      />
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50 select-text">
@@ -352,8 +532,9 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
 
       {/* STEP 2: CONTENT EDITOR */}
       {step === 'editor' && (
-        <div className="flex-1 overflow-y-auto p-6 md:p-8 max-w-4xl w-full mx-auto space-y-6">
+        <div className={`flex-1 overflow-y-auto p-6 md:p-8 w-full mx-auto space-y-6 ${isMatchingInfo ? 'max-w-[1400px]' : 'max-w-4xl'}`}>
           {/* Exercise Info Card */}
+          {!isMatchingInfo && (
           <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <span className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
@@ -408,7 +589,20 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
               </div>
             </div>
           </div>
+          )}
 
+          {isMatchingInfo && matching ? (
+            <MatchingEditor
+              value={matching}
+              onChange={setMatching}
+              onTitleDetected={(detected) => setInstructions(detected)}
+              title={title}
+              setTitle={setTitle}
+              instructions={instructions}
+              setInstructions={setInstructions}
+            />
+          ) : (
+          <>
           {/* Reading Passage (if reading or two-column) */}
           {(exerciseType.includes('reading') || layoutType === 'template_d') && (
             <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-2">
@@ -552,35 +746,13 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
                     </div>
                   )}
 
-                  {/* Correct Answer & Points row */}
-                  <div className="pl-8 flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200/60 text-xs">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] font-bold text-slate-500 uppercase">
-                        Correct Answer:
-                      </span>
-                      <input
-                        type="text"
-                        value={q.correctAnswer || ''}
-                        onChange={(e) => handleUpdateQuestion(qIdx, 'correctAnswer', e.target.value)}
-                        placeholder="e.g. A, True, or answer text"
-                        className="px-2.5 py-0.5 rounded-lg text-xs font-bold border border-slate-200 bg-white text-slate-800"
-                      />
-                    </div>
 
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[11px] text-slate-400">Points:</span>
-                      <input
-                        type="number"
-                        value={q.points || 1}
-                        onChange={(e) => handleUpdateQuestion(qIdx, 'points', parseInt(e.target.value, 10) || 1)}
-                        className="w-12 px-2 py-0.5 bg-white border border-slate-200 rounded text-xs text-center font-bold"
-                      />
-                    </div>
-                  </div>
                 </div>
               ))}
             </div>
           </div>
+          </>
+          )}
         </div>
       )}
     </div>

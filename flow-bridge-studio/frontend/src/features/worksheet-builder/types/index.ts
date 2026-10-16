@@ -11,6 +11,7 @@ export type ExerciseType =
   | 'matching_vocabulary'
   | 'matching_pictures'
   | 'grammar_vocab_multiple_choice'
+  | 'grammar_vocab_cloze'
   | 'gap_filling_word_formation'
   | 'sentence_rearrangement'
   | 'sentence_construction';
@@ -35,6 +36,10 @@ export interface ImageSlot {
   caption?: string;
   status: 'empty' | 'assigned';
   fitMode?: 'contain' | 'cover';
+  /** Ảnh do AI tạo: prompt đã dùng, đường dẫn trên Supabase Storage, đang chờ giáo viên duyệt */
+  aiPrompt?: string;
+  assetStoragePath?: string;
+  needsReview?: boolean;
 }
 
 export interface ChoiceOption {
@@ -91,6 +96,29 @@ export interface Exercise {
   tableData?: TableData;
   matchingPairs?: MatchingPair[];
   pointsTotal?: number;
+  /** Ngắt trang trước bài này (đặt ở Preview & Export) */
+  pageBreakBefore?: boolean;
+  /** Buộc bài này ở CÙNG TRANG với bài ngay trước (chọn ở Preview & Export > Dồn trang) */
+  mergeWithPrevious?: boolean;
+  /** Dữ liệu bài Matching (6 layout in được). Có giá trị thì trang in dùng MatchingRenderer. */
+  matching?: import('../services/matching/matchingCore').MatchingData;
+  /** Dữ liệu bài Multiple Choice Cloze Test (6 layout in được, xem trước thời gian thực). */
+  cloze?: import('../services/cloze/clozeCore').ClozeData;
+  /** Dữ liệu bài Listening Gap Fill (6 layout in được, xem trước thời gian thực). */
+  listeningGapFill?: import('../services/listening/listeningGapFillCore').ListeningGapFillData;
+  /** Dữ liệu bài Matching Pictures (6 layout in được, xem trước thời gian thực). */
+  matchingPictures?: import('../services/matching-pictures/matchingPicturesCore').MatchingPicturesData;
+  /** Dữ liệu bài Matching Vocabulary (hai cột Word / Definition). */
+  matchingHeadings?: import('../services/matching-headings/matchingHeadingsCore').MatchingHeadingsData;
+  tfng?: import('../services/tfng/tfngCore').TfngData;
+  gapFilling?: import('../services/gap-filling/gapFillingCore').GapFillingData;
+  matchingVocabulary?: import('../services/matching-vocabulary/matchingVocabularyCore').MatchingVocabularyData;
+  /** Dữ liệu bài Listening True / False (câu T/F, audio + QR, ảnh minh họa). */
+  listeningTrueFalse?: import('../services/listening-true-false/listeningTrueFalseCore').ListeningTrueFalseData;
+  /** Dữ liệu bài Listening Table Completion (bảng điền, ảnh/bản đồ, audio + QR, câu hỏi). */
+  listeningTable?: import('../services/listening-table/listeningTableCore').ListeningTableData;
+  /** Dữ liệu bài Grammar & Vocabulary Multiple Choice dạng danh sách câu (6 layout in được). */
+  grammarMcq?: import('../services/grammar-mcq/grammarMcqCore').GrammarMcqData;
   order: number;
 }
 
@@ -109,6 +137,8 @@ export interface PrintSettings {
   lineHeight: number;
   showAnswerKey?: boolean;
   showPlaceholders?: boolean;
+  /** Header/footer kiểu phiếu bài tập (logo, QR, mức độ...). Chỉnh ở màn Preview & Export. */
+  branding?: import('./branding').WorksheetBranding;
 }
 
 export interface ImportMetadata {

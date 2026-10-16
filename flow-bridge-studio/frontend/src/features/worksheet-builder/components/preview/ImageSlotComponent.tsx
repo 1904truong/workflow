@@ -1,5 +1,6 @@
 import type { ImageSlot } from '../../types';
 import { PRINT_TOKENS } from '../../tokens/printTokens';
+import { useEdit } from './EditContext';
 
 interface ImageSlotComponentProps {
   slot: ImageSlot;
@@ -10,10 +11,11 @@ export const ImageSlotComponent: React.FC<ImageSlotComponentProps> = ({
   slot,
   showEmptyPlaceholders = true,
 }) => {
+  const edit = useEdit();
   const hasImage = slot.status === 'assigned' && Boolean(slot.assetUrl);
 
   // If slot is empty and user chose not to print empty boxes, return blank space or minimal placeholder
-  if (!hasImage && !showEmptyPlaceholders) {
+  if (!hasImage && !showEmptyPlaceholders && !edit.editing) {
     return null;
   }
 
@@ -23,7 +25,7 @@ export const ImageSlotComponent: React.FC<ImageSlotComponentProps> = ({
       style={{ width: `${slot.widthMm}mm` }}
     >
       <div
-        className="w-full relative flex items-center justify-center overflow-hidden bg-white"
+        className="w-full relative flex items-center justify-center overflow-hidden bg-white group/img"
         style={{
           width: `${slot.widthMm}mm`,
           height: `${slot.heightMm}mm`,
@@ -47,6 +49,25 @@ export const ImageSlotComponent: React.FC<ImageSlotComponentProps> = ({
             <div className="text-[7.5pt] text-[#aaaaaa] mt-1">
               {slot.widthMm} × {slot.heightMm} mm ({slot.aspectRatio})
             </div>
+          </div>
+        )}
+
+        {edit.editing && (
+          <div className="no-print absolute inset-0 hidden group-hover/img:flex items-center justify-center gap-2 bg-black/40">
+            <label className="cursor-pointer px-2 py-1 rounded-md bg-white text-[10px] font-bold text-slate-800 shadow hover:bg-violet-50">
+              {hasImage ? 'Thay ảnh' : 'Thêm ảnh'}
+              <input
+                type="file"
+                accept="image/*"
+                hidden
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) edit.replaceImage(slot.slotId, f); e.currentTarget.value = ''; }}
+              />
+            </label>
+            {hasImage && (
+              <button type="button" onClick={() => edit.clearImage(slot.slotId)} className="px-2 py-1 rounded-md bg-white text-[10px] font-bold text-rose-600 shadow hover:bg-rose-50">
+                Xóa ảnh
+              </button>
+            )}
           </div>
         )}
 

@@ -12,7 +12,7 @@
     <div class="header-left">
       <div class="logo-circle">
         <svg viewBox="0 0 24 24" class="logo-icon" fill="currentColor">
-          <path d="M4 14.5 C4 9.5 7.5 8 9.5 11.5 C10.5 13.5 11.5 14.5 12 14.5 C12.5 14.5 13.5 13.5 14.5 11.5 C16.5 8 20 9.5 20 14.5 C20 16 18.5 16.5 17.5 14.5 C16.5 12.5 15 11.5 13.5 14.5 C13 15.5 12.5 15.5 12 15.5 C11.5 15.5 11 15.5 10.5 14.5 C9 11.5 7.5 12.5 6.5 14.5 C5.5 16.5 4 16 4 14.5 Z"/>
+          <path d="M12 2l2.4 6.6L21 11l-6.6 2.4L12 20l-2.4-6.6L3 11l6.6-2.4z"/>
         </svg>
       </div>
       <span class="logo-title">Flow Bridge</span>
@@ -50,7 +50,7 @@
       <span class="tab-icon">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
       </span>
-      <span>Tạo ảnh</span>
+      <span>Gen</span>
     </button>
     <button class="nav-tab" data-tab="workflow">
       <span class="tab-icon">
@@ -62,19 +62,19 @@
       <span class="tab-icon">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
       </span>
-      <span>Prompt</span>
+      <span>Prompts</span>
     </button>
     <button class="nav-tab" data-tab="tasks">
       <span class="tab-icon">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="2"/><path d="M9 14l2 2 4-4"/></svg>
       </span>
-      <span>Tác vụ</span>
+      <span>Tasks</span>
     </button>
     <button class="nav-tab" data-tab="library">
       <span class="tab-icon">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="10" y1="14" x2="14" y2="14"/></svg>
       </span>
-      <span>Thư viện</span>
+      <span>Lịch sử</span>
     </button>
   </nav>
 
@@ -82,287 +82,159 @@
   <main class="app-main-content">
     <!-- TAB 1: TẠO ẢNH -->
     <div class="tab-panel active" id="panel-create">
-      <!-- 1. SECTION: NHẬP PROMPT -->
-      <section class="form-section prompt-section">
-        <div class="section-header">
-          <div class="section-title-box">
-            <span class="sparkle-blue">✦</span>
-            <h2 class="section-title">Nhập prompt</h2>
-          </div>
-          <div class="section-actions">
-            <button class="pill-dropdown-btn" id="templatePromptBtn">
-              <span>Mẫu prompt</span>
-              <span class="arrow-down">▾</span>
-            </button>
-            <button class="icon-btn-compact" id="expandPromptBtn" title="Mở rộng">
-              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
-            </button>
-          </div>
-        </div>
+      <!-- Phần cũ giữ lại (ẩn) để không vỡ logic -->
+      <div style="display:none;">
+        <button id="templatePromptBtn"></button><button id="expandPromptBtn"></button><button id="morePromptActionsBtn"></button>
+        <div id="advAccordionToggle"></div>
+        <div id="ratioChips"><button class="chip" data-value="16:9"></button><button class="chip" data-value="4:3"></button><button class="chip" data-value="1:1"></button><button class="chip" data-value="3:4"></button><button class="chip" data-value="9:16"></button></div>
+        <div id="countChips"><button class="chip" data-value="1"></button><button class="chip" data-value="2"></button><button class="chip" data-value="3"></button><button class="chip" data-value="4"></button></div>
+      </div>
 
+      <!-- PROMPT -->
+      <section class="tb-card prompt-section">
+        <div class="tb-prompt-head">
+          <span class="tb-title"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>Prompt</span>
+          <span class="tb-count" id="promptCountBadge">1</span>
+          <span class="tb-muted" id="promptCountHint">prompt → 1 kết quả</span>
+          <label class="tb-toggle-row">
+            <span class="blue-switch"><input type="checkbox" id="multiPromptToggle"><span class="blue-slider"></span></span>
+            <span>Multi-Prompt</span>
+          </label>
+        </div>
         <div class="prompt-box-card">
-          <textarea 
-            id="promptInput" 
-            class="prompt-textarea" 
-            placeholder="Nhập prompt tại đây...&#10;&#10;Ví dụ:&#10;• Biến ảnh thành tranh minh họa phong cách retro&#10;• Thay nền thành studio trắng&#10;• Giữ nguyên bố cục, tăng chi tiết, cinematic style"
-            rows="5"
-          ></textarea>
+          <textarea id="promptInput" class="prompt-textarea" placeholder="Nhập prompt tại đây..." rows="6"></textarea>
+          <div class="prompt-grip" title="Kéo textarea để đổi chiều cao"></div>
           <div class="prompt-card-bottom">
-            <span class="char-counter" id="charCounter">0/4000</span>
+            <button class="icon-btn prompt-scan-btn" id="promptImageBtn" title="Thêm ảnh tham chiếu">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+            </button>
+            <button class="action-pill" id="promptAiBtn" title="Chuẩn hoá & bổ sung gợi ý chất lượng cho prompt">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8L19 13M17.8 6.2L19 5M3 21l9-9M12.2 6.2L11 5"/></svg>
+              <span>Prompt Assistant</span>
+            </button>
+            <button class="action-pill" id="importTxtBtn" title="Nhập prompt từ file .txt (mỗi dòng = 1 prompt)">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-6M9 15l3-3 3 3"/></svg>
+              <span>Import .txt</span>
+            </button>
+            <input type="file" id="importTxtInput" accept=".txt,text/plain" style="display:none">
+            <span class="char-counter" id="charCounter">0 characters</span>
+            <button class="icon-btn" id="savePromptBtn" title="Lưu prompt">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+            </button>
           </div>
-        </div>
-
-        <!-- Sub Action Pills -->
-        <div class="sub-actions-row">
-          <button class="action-pill" id="promptAiBtn">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
-            <span>Prompt AI</span>
-          </button>
-          <button class="action-pill" id="extractImageBtn">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-            <span>Nhập từ ảnh</span>
-          </button>
-          <button class="action-pill" id="savePromptBtn">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-            <span>Lưu prompt</span>
-          </button>
-          <button class="action-pill dots-btn" id="morePromptActionsBtn">•••</button>
         </div>
       </section>
 
-      <!-- 2. SECTION: ẢNH THAM CHIẾU -->
-      <section class="form-section ref-section">
-        <div class="section-header">
-          <div class="section-title-box">
-            <svg viewBox="0 0 24 24" width="15" height="15" class="section-icon-blue" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-            <h2 class="section-title">Ảnh tham chiếu</h2>
+      <!-- NỀN TẢNG -->
+      <div class="platforms-row">
+        <button class="platform-chip active" data-platform="flow"><span class="platform-logo">✦</span><span>Flow</span></button>
+        <button class="platform-chip" data-platform="chatgpt"><span class="platform-logo">◎</span><span>ChatGPT</span></button>
+        <button class="platform-chip" data-platform="grok"><span class="platform-logo">⟳</span><span>Grok</span></button>
+        <button class="platform-chip" data-platform="gemini"><span class="platform-logo">✧</span><span>Gemini</span></button>
+      </div>
+
+      <!-- LOẠI + MODEL + TỶ LỆ + SỐ LƯỢNG -->
+      <section class="tb-params">
+        <div class="tb-seg flow-only">
+          <button class="tb-seg-btn active" type="button"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>Hình ảnh</button>
+          <button class="tb-seg-btn" type="button"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="14" height="14" rx="2"/><path d="M22 8l-6 4 6 4z"/></svg>Video</button>
+        </div>
+        <div class="tb-field flow-only">
+          <span class="tb-flabel">Model</span>
+          <div class="select-wrapper">
+            <select id="modelSelect" class="form-select">
+              <option value="Nano Banana 2.1">🍌 Nano Banana 2.1</option>
+              <option value="Nano Banana 2 Lite">🍌 Nano Banana 2 Lite</option>
+              <option value="Nano Banana Pro">🍌 Nano Banana Pro</option>
+            </select>
+            <span class="select-arrow">▾</span>
           </div>
         </div>
+        <div class="tb-field">
+          <span class="tb-flabel">Tỷ lệ khung hình</span>
+          <div class="select-wrapper">
+            <select id="ratioSelect" class="form-select">
+              <option value="9:16">▯ 9:16</option>
+              <option value="16:9">▭ 16:9</option>
+              <option value="1:1">□ 1:1</option>
+              <option value="4:3">▭ 4:3</option>
+              <option value="3:4">▯ 3:4</option>
+            </select>
+            <span class="select-arrow">▾</span>
+          </div>
+        </div>
+        <div class="tb-field gpt-only">
+          <span class="tb-flabel">Mức suy luận</span>
+          <div class="select-wrapper">
+            <select id="chatgptEffort" class="form-select">
+              <option value="1">Instant</option>
+              <option value="2">Medium</option>
+              <option value="3">High</option>
+            </select>
+            <span class="select-arrow">▾</span>
+          </div>
+        </div>
+        <div class="tb-field flow-only">
+          <span class="tb-flabel">Số lượng</span>
+          <div class="stepper-box tb-stepper">
+            <button class="step-btn" id="stepDec">−</button>
+            <span class="step-val" id="batchCountVal">1</span>
+            <button class="step-btn" id="stepInc">+</button>
+          </div>
+        </div>
+      </section>
 
+      <!-- ẢNH THAM CHIẾU -->
+      <section class="tb-ref">
+        <div class="tb-ref-head">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          <span>Ảnh tham chiếu</span>
+        </div>
         <div class="ref-grid">
-          <!-- Dropzone Card -->
           <div class="ref-card dropzone-card" id="refDropzone">
-            <input type="file" id="refFileInput" accept="image/*" style="display:none;">
-            <div class="drop-circle-plus">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-            </div>
-            <div class="drop-text-primary">Chọn ảnh / Kéo thả vào đây</div>
-            <div class="drop-text-secondary">PNG, JPG, WEBP (tối đa 10MB)</div>
+            <input type="file" id="refFileInput" accept="image/*" multiple style="display:none;">
+            <div class="drop-text-primary" id="refDropText">🖼 Chọn ảnh / Kéo thả vào đây (tối đa 3)</div>
           </div>
-
-          <!-- Preview Item Card -->
-          <div class="ref-card preview-card" id="refPreviewCard">
-            <img src="icons/sample_car.jpg" alt="Preview" class="ref-thumb-img" id="refThumbImg" onerror="this.src='icons/icon128.png'">
-            <button class="thumb-close-btn" id="removeThumbBtn" title="Xóa ảnh">✕</button>
-          </div>
-
-          <!-- Add More Card -->
+          <div id="refThumbs" style="display:contents;"></div>
           <div class="ref-card add-card" id="refAddMoreCard">
             <svg viewBox="0 0 24 24" width="18" height="18" class="add-icon-svg" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-            <span class="add-card-text">Thêm ảnh</span>
           </div>
         </div>
       </section>
 
-      <!-- 3. SECTION: NỀN TẢNG -->
-      <section class="form-section platform-section">
-        <div class="section-header">
-          <div class="section-title-box">
-            <svg viewBox="0 0 24 24" width="15" height="15" class="section-icon-blue" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-            <h2 class="section-title">Nền tảng</h2>
-          </div>
-        </div>
+      <!-- TỰ ĐỘNG TẢI + MAX SPEED -->
+      <section class="tb-toggles">
+        <label class="tb-toggle-row"><span class="blue-switch"><input type="checkbox" id="autoDownloadToggle" checked><span class="blue-slider"></span></span><span>Tự động tải</span></label>
+        <label class="tb-toggle-row flow-only"><span class="blue-switch"><input type="checkbox" id="maxSpeedToggle" checked><span class="blue-slider"></span></span><span>Max Speed</span></label>
+      </section>
 
-        <div class="platforms-row">
-          <button class="platform-chip active" data-platform="flow">
-            <span class="platform-logo g-logo">G</span>
-            <span>Google Flow</span>
-          </button>
-          <button class="platform-chip" data-platform="chatgpt">
-            <span class="platform-logo">🤖</span>
-            <span>ChatGPT</span>
-          </button>
-          <button class="platform-chip" data-platform="grok">
-            <span class="platform-logo">𝕏|</span>
-            <span>Grok</span>
-          </button>
-          <button class="platform-chip" data-platform="muse">
-            <span class="platform-logo">▲</span>
-            <span>Muse</span>
-          </button>
+      <!-- CTA -->
+      <section class="tb-cta">
+        <button class="main-generate-btn" id="generateMainBtn">
+          <span class="btn-star">✦</span>
+          <span class="btn-label">Tạo</span>
+        </button>
+        <div class="tb-sec-row">
+          <button class="sec-action-btn" id="addToQueueBtn"><span>＋ Thêm vào hàng đợi</span></button>
+          <button class="sec-action-btn stop-btn" id="stopTaskBtn"><span>■ Dừng</span></button>
+          <button class="sec-action-btn" id="testFlowDomBtn"><span>🔍 Kiểm tra</span></button>
+          <button class="sec-action-btn" id="debugFlowConfigBtn"><span>⚙ Chẩn đoán</span></button>
         </div>
       </section>
 
-      <!-- 4. SECTION: MODEL & TỶ LỆ KHUNG HÌNH (2 COLUMNS) -->
-      <section class="form-section params-section">
-        <div class="params-grid">
-          <!-- Col 1: Model -->
-          <div class="param-col">
-            <label class="param-label">
-              <span class="label-icon">🍌</span>
-              <span>Model</span>
-            </label>
-            <div class="select-wrapper">
-              <select id="modelSelect" class="form-select">
-                <option value="Nano Banana 2.1">🍌 Nano Banana 2.1</option>
-                <option value="Nano Banana 2 Lite">🍌 Nano Banana 2 Lite</option>
-                <option value="Nano Banana Pro">🍌 Nano Banana Pro</option>
-              </select>
-              <button class="info-icon-btn" title="Thông tin mô hình">ⓘ</button>
-              <span class="select-arrow">▾</span>
-            </div>
-          </div>
-
-          <!-- Col 2: Ratio (ẩn, thay bằng chip bên dưới nhưng vẫn giữ làm nguồn giá trị) -->
-          <div class="param-col" style="display:none;">
-            <label class="param-label">
-              <span class="label-icon">📐</span>
-              <span>Tỷ lệ khung hình</span>
-            </label>
-            <div class="select-wrapper">
-              <select id="ratioSelect" class="form-select">
-                <option value="9:16">■ 9:16 (Dọc)</option>
-                <option value="16:9">■ 16:9 (Ngang)</option>
-                <option value="1:1">■ 1:1 (Vuông)</option>
-                <option value="4:3">■ 4:3</option>
-                <option value="3:4">■ 3:4</option>
-              </select>
-              <span class="select-arrow">▾</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="chip-group-block">
-          <div class="param-label"><span class="label-icon">📐</span><span>Tỷ lệ khung hình</span></div>
-          <div class="chip-row" id="ratioChips">
-            <button type="button" class="chip" data-value="16:9"><i class="rt rt-169"></i>16:9</button>
-            <button type="button" class="chip" data-value="4:3"><i class="rt rt-43"></i>4:3</button>
-            <button type="button" class="chip" data-value="1:1"><i class="rt rt-11"></i>1:1</button>
-            <button type="button" class="chip" data-value="3:4"><i class="rt rt-34"></i>3:4</button>
-            <button type="button" class="chip" data-value="9:16"><i class="rt rt-916"></i>9:16</button>
-          </div>
-        </div>
-
-        <div class="chip-group-block">
-          <div class="param-label"><span class="label-icon">📚</span><span>Số ảnh mỗi lần tạo</span></div>
-          <div class="chip-row" id="countChips">
-            <button type="button" class="chip" data-value="1">x1</button>
-            <button type="button" class="chip" data-value="2">x2</button>
-            <button type="button" class="chip" data-value="3">x3</button>
-            <button type="button" class="chip" data-value="4">x4</button>
-          </div>
-        </div>
-      </section>
-
-      <!-- 5. SECTION: CÀI ĐẶT NÂNG CAO & TOGGLES -->
-      <section class="form-section advanced-section">
-        <div class="accordion-header" id="advAccordionToggle">
-          <div class="accordion-title">
-            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-            <span>Cài đặt nâng cao</span>
-          </div>
-          <span class="accordion-arrow">▾</span>
-        </div>
-
-        <div class="features-cards-row">
-          <!-- Card 1: Max Speed -->
-          <div class="feature-card">
-            <div class="feature-title-box">
-              <span class="feature-icon yellow">⚡</span>
-              <span class="feature-name">Max Speed</span>
-              <span class="feature-sub-tag">Ưu tiên</span>
-              <span class="crown-icon">👑</span>
-            </div>
-            <label class="blue-switch">
-              <input type="checkbox" id="maxSpeedToggle" checked>
-              <span class="blue-slider"></span>
-            </label>
-          </div>
-
-          <!-- Card 2: Tự động tải -->
-          <div class="feature-card">
-            <div class="feature-title-box">
-              <span class="feature-icon blue">⬇️</span>
-              <span class="feature-name">Tự động tải</span>
-              <span class="crown-icon">👑</span>
-            </div>
-            <label class="blue-switch">
-              <input type="checkbox" id="autoDownloadToggle" checked>
-              <span class="blue-slider"></span>
-            </label>
-          </div>
-
-          <!-- Card 3: Tạo nhiều ảnh -->
-          <div class="feature-card stepper-feature" style="display:none;">
-            <div class="feature-title-box">
-              <span class="feature-icon purple">📚</span>
-              <span class="feature-name">Tạo nhiều ảnh</span>
-            </div>
-            <div class="stepper-box">
-              <button class="step-btn" id="stepDec">-</button>
-              <span class="step-val" id="batchCountVal">1</span>
-              <button class="step-btn" id="stepInc">+</button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- 6. SECTION: MAIN CTA & ACTION BUTTONS -->
-      <section class="form-section cta-section">
-        <!-- Main Primary Blue Button -->
-        <div class="primary-cta-group">
-          <button class="main-generate-btn" id="generateMainBtn">
-            <span class="btn-star">✦</span>
-            <span class="btn-label">Tạo ngay</span>
-            <span class="btn-kbd-shortcut">Ctrl + Enter</span>
-            <span class="btn-divider">|</span>
-            <span class="btn-chevron">▾</span>
-          </button>
-        </div>
-
-        <!-- Secondary Actions Row -->
-        <div class="secondary-actions-row">
-          <button class="sec-action-btn" id="addToQueueBtn">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
-            <span>Thêm vào hàng đợi</span>
-          </button>
-          <button class="sec-action-btn stop-btn" id="stopTaskBtn">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-            <span>Dừng tác vụ</span>
-          </button>
-        </div>
-        <div class="secondary-actions-row" style="margin-top: 6px;">
-          <button class="sec-action-btn" id="testFlowDomBtn" style="flex: 1; border: 1px solid rgba(56, 189, 248, 0.35); color: #38bdf8; background: rgba(56, 189, 248, 0.05); cursor: pointer;">
-            <span>🔍 Kiểm tra nút Google Flow</span>
-          </button>
-        </div>
-        <div class="secondary-actions-row" style="margin-top: 6px;">
-          <button class="sec-action-btn" id="debugFlowConfigBtn" style="flex: 1; border: 1px solid rgba(56, 189, 248, 0.35); color: #38bdf8; background: rgba(56, 189, 248, 0.05); cursor: pointer;">
-            <span>⚙ Đọc cấu hình Flow (chẩn đoán)</span>
-          </button>
-        </div>
-      </section>
-
-      <!-- 7. SECTION: GOOGLE FLOW STATUS FOOTER -->
       <footer class="flow-status-card">
         <div class="status-info-left">
-          <div class="status-indicator-green" id="flowLiveStatus">
-            <span class="green-ring"></span>
-            <span class="green-core"></span>
-          </div>
+          <div class="status-indicator-green" id="flowLiveStatus"><span class="green-ring"></span><span class="green-core"></span></div>
           <div class="status-text-stack">
             <span class="status-main-label" id="flowStatusTitle">Sẵn sàng</span>
             <span class="status-sub-label" id="flowStatusSub">Đã kết nối với Google Flow</span>
           </div>
         </div>
-        <button class="open-flow-btn" id="openFlowTabBtn">
-          <span>Mở Google Flow</span>
-          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-        </button>
+        <button class="open-flow-btn" id="openFlowTabBtn"><span>Mở Google Flow</span></button>
       </footer>
     </div>
 
-    <!-- TAB: THƯ VIỆN ẢNH (Supabase) -->
+<!-- TAB: THƯ VIỆN ẢNH (Supabase) -->
     <div class="tab-panel lib-panel" id="panel-library" style="display:none;">
       <section class="lib-card" id="libCloudCard">
         <div class="lib-card-head">
@@ -447,7 +319,7 @@
             </div>
             <div class="modal-engine-card">
               <span class="engine-sparkle">✦</span>
-              <span class="engine-name">Flow</span>
+              <span class="engine-name" id="modalEngineName">Flow</span>
               <span class="engine-type">📷 Ảnh</span>
               <span class="engine-ready">✓ Sẵn sàng</span>
             </div>
@@ -455,7 +327,7 @@
         </div>
 
         <!-- Field: Model -->
-        <div class="modal-row">
+        <div class="modal-row flow-only">
           <label class="modal-label">Model</label>
           <div class="modal-select-wrapper">
             <select id="modalModelSelect" class="modal-select">
@@ -483,7 +355,7 @@
         </div>
 
         <!-- Field 3: Số lượng -->
-        <div class="modal-row">
+        <div class="modal-row flow-only">
           <label class="modal-label">Số lượng</label>
           <div class="modal-stepper">
             <button class="stepper-btn" id="modalStepDec">-</button>
@@ -493,7 +365,7 @@
         </div>
 
         <!-- Field 4: Tải xuống -->
-        <div class="modal-row">
+        <div class="modal-row flow-only">
           <label class="modal-label">Tải xuống</label>
           <div class="modal-select-wrapper">
             <select id="modalResolutionSelect" class="modal-select">
@@ -548,7 +420,7 @@
       </div>
 
       <div class="modal-body" style="padding: 18px 16px;">
-        <div class="login-notice-card" style="background: rgba(59, 130, 246, 0.12); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 8px; padding: 12px; display: flex; gap: 10px; margin-bottom: 14px;">
+        <div class="login-notice-card" style="background: rgba(196, 241, 53, 0.12); border: 1px solid rgba(196, 241, 53, 0.3); border-radius: 8px; padding: 12px; display: flex; gap: 10px; margin-bottom: 14px;">
           <span style="font-size: 20px;">🔐</span>
           <div>
             <div style="font-weight: 700; color: #f8fafc; font-size: 12px; margin-bottom: 2px;">Bước 1: Đăng nhập tài khoản</div>
@@ -558,19 +430,19 @@
 
         <div style="margin-bottom: 12px;">
           <label style="display:block; font-size: 11px; color: #94a3b8; margin-bottom: 5px; font-weight: 600;">Email tài khoản</label>
-          <input type="email" id="loginEmailInput" class="login-input" placeholder="Nhập email của bạn..." value="truonghoang1904@gmail.com" style="width: 100%; padding: 8px 12px; background: #0e121a; border: 1px solid #232938; border-radius: 6px; color: #fff; font-size: 12px; outline: none;">
+          <input type="email" id="loginEmailInput" class="login-input" placeholder="Nhập email của bạn..." value="truonghoang1904@gmail.com" style="width: 100%; padding: 8px 12px; background: #0c0c0e; border: 1px solid #26262c; border-radius: 6px; color: #fff; font-size: 12px; outline: none;">
         </div>
 
         <div style="margin-bottom: 16px;">
           <label style="display:block; font-size: 11px; color: #94a3b8; margin-bottom: 5px; font-weight: 600;">Khóa bản quyền / Mật khẩu</label>
-          <input type="password" id="loginTokenInput" class="login-input" placeholder="Mật khẩu hoặc Access Key..." value="••••••••••••" style="width: 100%; padding: 8px 12px; background: #0e121a; border: 1px solid #232938; border-radius: 6px; color: #fff; font-size: 12px; outline: none;">
+          <input type="password" id="loginTokenInput" class="login-input" placeholder="Mật khẩu hoặc Access Key..." value="••••••••••••" style="width: 100%; padding: 8px 12px; background: #0c0c0e; border: 1px solid #26262c; border-radius: 6px; color: #fff; font-size: 12px; outline: none;">
         </div>
 
         <div style="display: flex; flex-direction: column; gap: 8px;">
-          <button class="primary-login-btn" id="submitLoginBtn" style="width: 100%; padding: 10px; background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color: #fff; border: none; border-radius: 7px; font-weight: 700; font-size: 12px; cursor: pointer; transition: 0.2s;">
+          <button class="primary-login-btn" id="submitLoginBtn" style="width: 100%; padding: 10px; background: linear-gradient(135deg, #c4f135 0%, #8fcf17 100%); color: #fff; border: none; border-radius: 7px; font-weight: 700; font-size: 12px; cursor: pointer; transition: 0.2s;">
             <span>Đăng nhập ngay</span>
           </button>
-          <button class="quick-login-btn" id="quickLoginBtn" style="width: 100%; padding: 8px; background: rgba(255,255,255,0.06); color: #cbd5e1; border: 1px solid #232938; border-radius: 7px; font-size: 11px; cursor: pointer;">
+          <button class="quick-login-btn" id="quickLoginBtn" style="width: 100%; padding: 8px; background: rgba(255,255,255,0.06); color: #cbd5e1; border: 1px solid #26262c; border-radius: 7px; font-size: 11px; cursor: pointer;">
             <span>⚡ Đăng nhập bằng Google Account</span>
           </button>
         </div>

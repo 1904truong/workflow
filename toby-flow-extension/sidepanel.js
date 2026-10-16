@@ -19,9 +19,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const flowStatusSub = document.getElementById("flowStatusSub");
   const refDropzone = document.getElementById("refDropzone");
   const refFileInput = document.getElementById("refFileInput");
-  const refPreviewCard = document.getElementById("refPreviewCard");
-  const refThumbImg = document.getElementById("refThumbImg");
-  const removeThumbBtn = document.getElementById("removeThumbBtn");
   const refAddMoreCard = document.getElementById("refAddMoreCard");
   const popoutBtn = document.getElementById("popoutBtn");
 
@@ -126,7 +123,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const submitModeHint = document.getElementById("submitModeHint");
 
   let batchCount = 1;
-  let referenceImageData = null;
   let submitMode = "auto"; // 'auto' or 'manual'
   let isMultiPrompt = false;
 
@@ -154,9 +150,83 @@ document.addEventListener("DOMContentLoaded", () => {
   // Character Counter
   function updateCharCount() {
     const text = promptInput.value;
-    charCounter.textContent = `${text.length}/4000`;
+    charCounter.textContent = `${text.length} characters`;
+    const multiOn = document.getElementById("multiPromptToggle")?.checked;
+    const n = multiOn ? Math.max(1, text.split("\n").filter((l) => l.trim()).length) : 1;
+    const badge = document.getElementById("promptCountBadge");
+    const hint = document.getElementById("promptCountHint");
+    if (badge) badge.textContent = n;
+    if (hint) hint.textContent = n > 1 ? `${n} prompt → ${n} kết quả (chạy lần lượt)` : "prompt → 1 kết quả";
   }
   promptInput.addEventListener("input", updateCharCount);
+  updateCharCount();
+  document.getElementById("multiPromptToggle")?.addEventListener("change", updateCharCount);
+
+  // ── Thanh công cụ dưới ô prompt ──
+  const flashBtn = (btn, msg) => {
+    if (!btn) return;
+    const old = btn.title;
+    btn.title = msg;
+    btn.classList.add("flash");
+    setTimeout(() => { btn.classList.remove("flash"); btn.title = old; }, 1400);
+  };
+  const setPrompt = (text) => {
+    promptInput.value = text;
+    promptInput.dispatchEvent(new Event("input", { bubbles: true }));
+  };
+
+  // Import .txt: mỗi dòng là một prompt; nhiều dòng thì tự bật Multi-Prompt
+  const importTxtBtn = document.getElementById("importTxtBtn");
+  const importTxtInput = document.getElementById("importTxtInput");
+  importTxtBtn.addEventListener("click", () => importTxtInput.click());
+  importTxtInput.addEventListener("change", () => {
+    const f = importTxtInput.files && importTxtInput.files[0];
+    importTxtInput.value = "";
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = String(reader.result || "").replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n").trim();
+      if (!text) return flashBtn(importTxtBtn, "File trống");
+      setPrompt(text.slice(0, 4000));
+      const multi = document.getElementById("multiPromptToggle");
+      const lines = text.split("\n").filter((l) => l.trim()).length;
+      if (multi && multi.checked !== lines > 1) { multi.checked = lines > 1; multi.dispatchEvent(new Event("change", { bubbles: true })); }
+      flashBtn(importTxtBtn, `Đã nhập ${lines} dòng`);
+    };
+    reader.readAsText(f, "utf-8");
+  });
+
+  // Prompt Assistant (theo quy tắc, không dùng AI bên ngoài): chuẩn hoá khoảng trắng, viết hoa đầu câu,
+  // thêm gợi ý giữ nhân vật/phong cách nếu có ảnh tham chiếu, và gợi ý chất lượng.
+  document.getElementById("promptAiBtn").addEventListener("click", function () {
+    const raw = promptInput.value.trim();
+    if (!raw) { promptInput.focus(); return flashBtn(this, "Hãy nhập prompt trước"); }
+    const lines = raw.split("\n").map((l) => l.replace(/\s+/g, " ").trim()).filter(Boolean);
+    const hasRefs = typeof refImages !== "undefined" && refImages.length > 0;
+    const improved = lines.map((l) => {
+      let t = l.charAt(0).toUpperCase() + l.slice(1);
+      t = t.replace(/[.\s]+$/, "");
+      if (hasRefs && !/giữ nguyên|không thay đổi|consistent/i.test(t)) t += ", giữ nguyên nhân vật và phong cách như ảnh tham chiếu";
+      if (!/chất lượng|chi tiết|sắc nét|high quality|detailed/i.test(t)) t += ", chi tiết, sắc nét, chất lượng cao";
+      return t + ".";
+    });
+    setPrompt(improved.join("\n").slice(0, 4000));
+    flashBtn(this, "Đã cải thiện prompt");
+  });
+
+  // Nút quét ảnh bên trái: thêm ảnh tham chiếu
+  document.getElementById("promptImageBtn").addEventListener("click", () => refFileInput.click());
+
+  // Lưu prompt (bookmark): giữ tối đa 50 prompt, không trùng
+  document.getElementById("savePromptBtn").addEventListener("click", function () {
+    const text = promptInput.value.trim();
+    if (!text) return flashBtn(this, "Chưa có prompt để lưu");
+    chrome.storage.local.get(["savedPrompts"], (res) => {
+      const list = (res.savedPrompts || []).filter((p) => p.text !== text);
+      list.unshift({ text, at: Date.now() });
+      chrome.storage.local.set({ savedPrompts: list.slice(0, 50) }, () => flashBtn(this, "Đã lưu prompt"));
+    });
+  });
 
   // Stepper Main
   stepDec.addEventListener("click", () => {
@@ -196,28 +266,96 @@ document.addEventListener("DOMContentLoaded", () => {
   refDropzone.addEventListener("click", () => refFileInput.click());
   refAddMoreCard.addEventListener("click", () => refFileInput.click());
 
+  const MAX_REF = 3;
+  const refThumbs = document.getElementById("refThumbs");
+  const refImages = []; // data URLs, tối đa MAX_REF
+  const refReason = [];
+  const refStatus = []; // "pending" | "uploading" | "done" | "failed" (song song refImages)
+
   refFileInput.addEventListener("change", (e) => {
-    if (e.target.files && e.target.files[0]) {
-      handleImageFile(e.target.files[0]);
-    }
+    addRefFiles(e.target.files);
+    refFileInput.value = "";
+  });
+  refDropzone.addEventListener("dragover", (e) => e.preventDefault());
+  refDropzone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    addRefFiles(e.dataTransfer.files);
   });
 
-  function handleImageFile(file) {
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      referenceImageData = evt.target.result;
-      refThumbImg.src = referenceImageData;
-      refPreviewCard.style.display = "flex";
-    };
-    reader.readAsDataURL(file);
+  function addRefFiles(files) {
+    const room = MAX_REF - refImages.length;
+    Array.from(files || [])
+      .filter((f) => f.type.startsWith("image/"))
+      .slice(0, room)
+      .forEach((file) => {
+        const reader = new FileReader();
+        reader.onload = (evt) => {
+          if (refImages.length >= MAX_REF) return;
+          refImages.push(evt.target.result);
+          refStatus.push("pending");
+          renderRefs();
+        };
+        reader.readAsDataURL(file);
+      });
   }
 
-  removeThumbBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    referenceImageData = null;
-    refFileInput.value = "";
-    refThumbImg.src = "";
-    refPreviewCard.style.display = "none";
+  function renderRefs() {
+    refThumbs.textContent = "";
+    refImages.forEach((src, i) => {
+      const card = document.createElement("div");
+      card.className = "ref-card preview-card";
+      card.style.display = "flex";
+      const img = document.createElement("img");
+      img.className = "ref-thumb-img";
+      img.src = src;
+      const btn = document.createElement("button");
+      btn.className = "thumb-close-btn";
+      btn.title = "Xóa ảnh";
+      btn.textContent = "✕";
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        refImages.splice(i, 1);
+        refStatus.splice(i, 1);
+        renderRefs();
+      });
+      const badge = document.createElement("div");
+      badge.className = "ref-badge " + (refStatus[i] || "pending");
+      badge.title = refReason[i] || "";
+      badge.textContent = { done: "✓ Đã upload", uploading: "Đang upload…", failed: "Lỗi upload" }[refStatus[i]] || "Chờ upload";
+      const num = document.createElement("span");
+      num.className = "ref-num";
+      num.textContent = i + 1;
+      card.append(img, btn, num, badge);
+      refThumbs.appendChild(card);
+    });
+    refAddMoreCard.style.display = refImages.length >= MAX_REF ? "none" : "";
+    refDropzone.style.display = refImages.length ? "none" : "";
+    if (refImages.length) refAddMoreCard.title = `Thêm ảnh (${refImages.length}/${MAX_REF})`;
+  }
+  renderRefs();
+
+  // Lệnh từ web Studio: điền prompt + ảnh tham chiếu vào side panel (chuyển về Flow) để người dùng thấy
+  function applyWebFill(fill) {
+    if (!fill) return;
+    document.querySelector('.platform-chip[data-platform="flow"]')?.click();
+    if (fill.prompt) setPrompt(String(fill.prompt).slice(0, 4000));
+    refImages.length = 0; refStatus.length = 0;
+    (fill.referenceImages || []).slice(0, MAX_REF).forEach((src) => { refImages.push(src); refStatus.push("pending"); });
+    renderRefs();
+  }
+  chrome.storage.local.get(["lastWebRequest"], (res) => {
+    const f = res && res.lastWebRequest;
+    if (f && Date.now() - (f.at || 0) < 10 * 60 * 1000) applyWebFill(f); // side panel mở sau khi web gửi lệnh
+    if (f) chrome.storage.local.remove("lastWebRequest"); // chỉ áp dụng một lần
+  });
+  chrome.runtime.onMessage.addListener((m) => { if (m && m.type === "WEB_FILL") applyWebFill(m.payload); });
+
+  chrome.runtime.onMessage.addListener((m) => {
+    if (m && m.type === "REF_STATUS" && refStatus[m.index] !== undefined) {
+      refStatus[m.index] = m.status;
+      refReason[m.index] = m.reason || "";
+      renderRefs();
+    }
   });
 
   // Platforms Switcher
@@ -226,6 +364,9 @@ document.addEventListener("DOMContentLoaded", () => {
     chip.addEventListener("click", () => {
       platformChips.forEach((c) => c.classList.remove("active"));
       chip.classList.add("active");
+      currentPlatform = chip.dataset.platform || "flow";
+      applyPlatformUI();
+      if (currentPlatform === "flow") checkFlowStatus(); else openPlatformTab();
     });
   });
 
@@ -248,8 +389,49 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
+  // Nền tảng đang chọn (flow | chatgpt | grok | gemini)
+  let currentPlatform = "flow";
+  const PLATFORM_NAMES = { flow: "Google Flow", chatgpt: "ChatGPT", grok: "Grok", gemini: "Gemini" };
+
+  // Đổi giao diện theo nền tảng: ẩn mục chỉ của Flow (model, số lượng, video, Max Speed...), đổi chữ nút Tạo
+  function applyPlatformUI() {
+    document.body.dataset.platform = currentPlatform;
+    const label = currentPlatform === "flow" ? "Tạo" : `Tạo bằng ${PLATFORM_NAMES[currentPlatform]}`;
+    const btnLabel = generateMainBtn.querySelector(".btn-label");
+    if (btnLabel) btnLabel.textContent = label;
+    const eng = document.getElementById("modalEngineName");
+    if (eng) eng.textContent = currentPlatform === "flow" ? "Flow" : PLATFORM_NAMES[currentPlatform];
+  }
+  applyPlatformUI();
+
+  function renderPlatformStatus(st) {
+    const name = PLATFORM_NAMES[currentPlatform];
+    openFlowTabBtn.querySelector("span").textContent = "Mở " + name;
+    if (!st || !st.hasTab) {
+      flowLiveStatus.classList.add("offline");
+      flowStatusTitle.textContent = `Chưa mở ${name}`;
+      flowStatusSub.textContent = `Bấm 'Mở ${name}' để chuyển sang tab và đăng nhập`;
+    } else if (!st.loggedIn) {
+      flowLiveStatus.classList.add("offline");
+      flowStatusTitle.textContent = `Chưa đăng nhập ${name}`;
+      flowStatusSub.textContent = (st.reason || "Hãy đăng nhập ở tab vừa mở") + " — đăng nhập xong sẽ tự nhận";
+    } else {
+      flowLiveStatus.classList.remove("offline");
+      flowStatusTitle.textContent = "Sẵn sàng";
+      flowStatusSub.textContent = `Đã đăng nhập ${name}`;
+    }
+  }
+
   // Check Google Flow connection status
   function checkFlowStatus() {
+    if (currentPlatform !== "flow") {
+      const asked = currentPlatform;
+      chrome.runtime.sendMessage({ type: "CHECK_PLATFORM", payload: { platform: asked } }, (st) => {
+        if (asked === currentPlatform) renderPlatformStatus(chrome.runtime.lastError ? null : st);
+      });
+      return;
+    }
+    openFlowTabBtn.querySelector("span").textContent = "Mở Google Flow";
     chrome.runtime.sendMessage({ type: "GET_FLOW_STATUS" }, (response) => {
       if (chrome.runtime.lastError || !response || !response.connected) {
         flowLiveStatus.classList.add("offline");
@@ -271,8 +453,20 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Open Google Flow Button
   openFlowTabBtn.addEventListener("click", () => {
-    chrome.tabs.create({ url: "https://flow.google.com/" });
+    if (currentPlatform === "flow") { chrome.tabs.create({ url: "https://flow.google.com/" }); return; }
+    openPlatformTab();
   });
+
+  // Chuyển sang (hoặc mở) tab của nền tảng đang chọn; chưa đăng nhập thì hiện yêu cầu đăng nhập
+  function openPlatformTab() {
+    const asked = currentPlatform;
+    if (asked === "flow") return;
+    flowStatusTitle.textContent = `Đang mở ${PLATFORM_NAMES[asked]}...`;
+    chrome.runtime.sendMessage({ type: "OPEN_PLATFORM", payload: { platform: asked } }, (st) => {
+      if (asked !== currentPlatform) return;
+      renderPlatformStatus(chrome.runtime.lastError ? null : st);
+    });
+  }
 
   // Popout / Independent window
   popoutBtn.addEventListener("click", () => {
@@ -368,10 +562,14 @@ document.addEventListener("DOMContentLoaded", () => {
       model: modelSelect.value,
       resolution: modalResolutionSelect?.value || "1K",
       autoSubmit: submitMode === "auto",
-      referenceImage: referenceImageData,
+      referenceImages: refImages.slice(),
+      platform: document.querySelector(".platform-chip.active")?.dataset.platform || "flow",
+      chatgptEffort: Number(document.getElementById("chatgptEffort")?.value || 1),
       autoDownload: autoDownloadToggle ? autoDownloadToggle.checked : true,
     };
 
+    refStatus.fill("pending");
+    renderRefs();
     closeConfirmModal();
 
     generateMainBtn.style.opacity = "0.7";
@@ -380,6 +578,14 @@ document.addEventListener("DOMContentLoaded", () => {
     chrome.runtime.sendMessage({ type: "DISPATCH_GENERATE", payload }, (resp) => {
       generateMainBtn.disabled = false;
       generateMainBtn.style.opacity = "1";
+      if (resp && resp.error === "NOT_LOGGED_IN") {
+        flowStatusTitle.textContent = `Chưa đăng nhập ${resp.platformName || ""}`;
+        flowStatusSub.textContent = "Hãy đăng nhập ở tab vừa mở rồi bấm Tạo lại";
+        flowLiveStatus.classList.add("offline");
+        alert(`Chưa đăng nhập ${resp.platformName || "nền tảng"} (${resp.reason || ""}).` + String.fromCharCode(10) + "Đã chuyển sang tab đó — hãy đăng nhập rồi bấm Tạo lại.");
+      } else if (resp && resp.success === false && resp.error) {
+        alert(resp.error);
+      }
     });
   }
 
@@ -607,7 +813,10 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   $("libSaveConfig").addEventListener("click", async () => {
-    const url = $("libUrl").value.trim();
+    let url = $("libUrl").value.trim();
+    // Dán URL có đuôi (vd .../rest/v1/ hay .../auth/v1/) vẫn dùng được: chỉ giữ phần gốc https://xxxx.supabase.co
+    try { const u = new URL(url); if (/\.supabase\.(co|in)$/i.test(u.hostname)) url = u.origin; } catch (_) {}
+    $("libUrl").value = url;
     const anonKey = $("libAnonKey").value.trim();
     if (!/^https:\/\/[^/]+\.supabase\.(co|in)\/?$/i.test(url) && !/^https?:\/\/(localhost|127\.0\.0\.1)/i.test(url)) {
       setMsg("URL không hợp lệ (dạng https://xxxx.supabase.co)", "err"); return;

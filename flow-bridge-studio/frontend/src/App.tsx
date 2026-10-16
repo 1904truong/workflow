@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import type { LessonFolder, Exercise } from './features/worksheet-builder/types';
+import type { LessonFolder, Exercise, ExerciseType } from './features/worksheet-builder/types';
 import { folderStorage } from './features/worksheet-builder/services/folderStorageService';
 import { AppSidebar, type MainNavId } from './features/worksheet-builder/components/layout/AppSidebar';
 import { AppHeader, type BreadcrumbItem } from './features/worksheet-builder/components/layout/AppHeader';
@@ -9,6 +9,7 @@ import { LessonFoldersScreen } from './features/worksheet-builder/components/fol
 import { CreateFolderScreen } from './features/worksheet-builder/components/folders/CreateFolderScreen';
 import { FolderDetailScreen } from './features/worksheet-builder/components/folders/FolderDetailScreen';
 import { SmartPasteScreen } from './features/worksheet-builder/components/smart-paste/SmartPasteScreen';
+import { setJobAssignHandler, startImageJobs } from './features/worksheet-builder/services/ai/imageJobService';
 import { ManualExerciseBuilderScreen } from './features/worksheet-builder/components/exercises/ManualExerciseBuilderScreen';
 import { ImageStudioScreen } from './features/worksheet-builder/components/images/ImageStudioScreen';
 import { PreviewExportScreen } from './features/worksheet-builder/components/export/PreviewExportScreen';
@@ -27,7 +28,7 @@ export type ScreenState =
   | { type: 'create_folder'; editingFolder?: LessonFolder | null }
   | { type: 'folder_detail'; folderId: string }
   | { type: 'smart_paste'; folderId: string }
-  | { type: 'add_exercise'; folderId: string; editingExercise?: Exercise | null }
+  | { type: 'add_exercise'; folderId: string; editingExercise?: Exercise | null; initialType?: ExerciseType }
   | { type: 'images'; folderId?: string }
   | { type: 'export'; folderId: string }
   | { type: 'history' }
@@ -45,11 +46,23 @@ export default function App() {
   const [extensionConnected, setExtensionConnected] = useState<boolean>(false);
   const [flowStatus, setFlowStatus] = useState<string>('UNKNOWN');
 
-  // Load folders on mount
+  // Load folders on mount and default to Listening Gap Fill worksheet
   useEffect(() => {
     const load = async () => {
       const list = await folderStorage.listFolders();
       setFolders(list);
+
+      const london = list.find((f) => f.id === 'folder_unit_2_london');
+      if (london && london.exercises.length > 0) {
+        const matchingPicturesEx =
+          london.exercises.find((e) => e.type === 'matching_pictures') ||
+          london.exercises[0];
+        setActiveScreen({
+          type: 'add_exercise',
+          folderId: london.id,
+          editingExercise: matchingPicturesEx,
+        });
+      }
     };
     load();
   }, []);
@@ -336,6 +349,40 @@ export default function App() {
     persistFolder(updated);
   };
 
+  // Hàng đợi tạo ảnh AI: khi một job xong, gắn ảnh vào ĐÚNG ô (theo slotId) của đề đang lưu.
+  // Đăng ký lại mỗi lần danh sách đề đổi để hàm luôn thấy dữ liệu mới nhất.
+  useEffect(() => {
+    setJobAssignHandler((job, result) => {
+      const target = folders.find((f) => f.id === job.worksheetId);
+      if (!target) return false;
+      let found = false;
+      const exercises = target.exercises.map((ex) => ({
+        ...ex,
+        imageSlots: ex.imageSlots.map((s) => {
+          if (s.slotId !== job.slotId) return s;
+          found = true;
+          return {
+            ...s,
+            assetUrl: result.imageUrl,
+            assetStoragePath: result.storagePath,
+            aiPrompt: job.prompt,
+            status: 'assigned' as const,
+            needsReview: true, // giáo viên phải duyệt trước khi xuất
+          };
+        }),
+      }));
+      if (!found) return false;
+      handleUpdateFolderExercises(target.id, exercises);
+      return true;
+    });
+    return () => setJobAssignHandler(null);
+  });
+
+  // Mở lại trang: job đang dở được xếp lại hàng đợi (xem createJobStore) -> chạy tiếp
+  useEffect(() => {
+    void startImageJobs();
+  }, []);
+
   // Smart Paste confirmed import
   const handleSmartPasteConfirm = (folderId: string, newExercises: Exercise[]) => {
     const target = folders.find((f) => f.id === folderId);
@@ -451,6 +498,7 @@ export default function App() {
         <AppHeader
           breadcrumbs={breadcrumbs}
           saveStatus={saveStatus}
+          hideSaveStatus={activeScreen.type === 'add_exercise'}
         />
 
         {/* 3. Screen View Container: ONLY render the currently active screen */}
@@ -497,8 +545,8 @@ export default function App() {
                 onOpenSmartPaste={() =>
                   setActiveScreen({ type: 'smart_paste', folderId: currentFolder.id })
                 }
-                onOpenAddExercise={() =>
-                  setActiveScreen({ type: 'add_exercise', folderId: currentFolder.id })
+                onOpenAddExercise={(initialType) =>
+                  setActiveScreen({ type: 'add_exercise', folderId: currentFolder.id, initialType })
                 }
                 onEditExercise={(exerciseId) => {
                   const ex = currentFolder.exercises.find((e) => e.id === exerciseId);
@@ -587,9 +635,11 @@ export default function App() {
               <ManualExerciseBuilderScreen
                 folder={currentFolder}
                 editingExercise={activeScreen.editingExercise}
+                initialType={activeScreen.initialType}
                 onSaveExercise={(ex, nextAction) =>
                   handleSaveExercise(currentFolder.id, ex, nextAction)
                 }
+                onDeleteExercise={(exId) => handleDeleteExercise(currentFolder.id, exId)}
                 onCancel={() =>
                   setActiveScreen({ type: 'folder_detail', folderId: currentFolder.id })
                 }
@@ -641,6 +691,7 @@ export default function App() {
                 onUpdatePrintSettings={(key, value) =>
                   handleUpdatePrintSettings(currentFolder.id, key, value)
                 }
+                onUpdateExercises={(exercises) => handleUpdateFolderExercises(currentFolder.id, exercises)}
               />
             );
           })()}

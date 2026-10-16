@@ -92,7 +92,7 @@ const CLOUD_HANDLERS = {
   CLOUD_RETRY: async (p) => { await cloud.retryItem(p.id); return {}; },
   CLOUD_CLEAR_DONE: async () => { await cloud.clearDone(); return {}; },
   CLOUD_LIST: async (p) => ({ rows: await cloud.listImages(p || {}) }),
-  CLOUD_SIGN_URLS: async (p) => ({ urls: await cloud.signUrls(p.paths) }),
+  CLOUD_SIGN_URLS: async (p) => ({ urls: await cloud.signUrls(p.paths, p.expiresIn || undefined) }),
   CLOUD_DELETE: async (p) => { await cloud.deleteImage(p); return {}; },
   // Content script không đọc được ảnh cross-origin: background (có host permission) tải hộ
   CLOUD_FETCH_IMAGE: async (p) => {
@@ -137,7 +137,7 @@ async function ensureActiveFlowTab() {
 
 // Gửi click/phím "thật" (isTrusted = true) qua Chrome DevTools Protocol.
 // Google Flow bỏ qua các sự kiện click do script tự tạo.
-async function trustedInput(tabId, { x, y, pressEnter, pressEscape }) {
+async function trustedInput(tabId, { x, y, pressEnter, pressEscape, pressKeys, pressCombo, pressText }) {
   const target = { tabId };
   await chrome.debugger.attach(target, "1.3");
   try {
@@ -152,6 +152,25 @@ async function trustedInput(tabId, { x, y, pressEnter, pressEscape }) {
       await send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", buttons: 1, clickCount: 1 });
       await send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", buttons: 0, clickCount: 1 });
     }
+    if (typeof pressText === "string" && pressText) { // gõ ký tự thật vào phần tử đang focus (vd "@")
+      await send("Input.insertText", { text: pressText });
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    if (pressCombo) { // vd: Ctrl+Shift+M  { key: "M", code: "KeyM", vk: 77, modifiers: 10 }  (Alt=1, Ctrl=2, Meta=4, Shift=8)
+      const c = { key: pressCombo.key, code: pressCombo.code, windowsVirtualKeyCode: pressCombo.vk, nativeVirtualKeyCode: pressCombo.vk, modifiers: pressCombo.modifiers };
+      await send("Input.dispatchKeyEvent", { type: "rawKeyDown", ...c });
+      await send("Input.dispatchKeyEvent", { type: "keyUp", ...c });
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    if (Array.isArray(pressKeys)) {
+      const codes = { Home: 36, End: 35, Backspace: 8, Delete: 46, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Tab: 9, Space: 32 };
+      for (const k of pressKeys) {
+        const kk = { key: k === "Space" ? " " : k, code: k, windowsVirtualKeyCode: codes[k] || 0, nativeVirtualKeyCode: codes[k] || 0 };
+        await send("Input.dispatchKeyEvent", { type: "keyDown", ...kk });
+        await send("Input.dispatchKeyEvent", { type: "keyUp", ...kk });
+        await new Promise((r) => setTimeout(r, 120));
+      }
+    }
     if (pressEnter) {
       const key = { key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 };
       await send("Input.dispatchKeyEvent", { type: "keyDown", text: "\r", ...key });
@@ -159,6 +178,89 @@ async function trustedInput(tabId, { x, y, pressEnter, pressEscape }) {
     }
   } finally {
     await chrome.debugger.detach(target).catch(() => {});
+  }
+}
+
+// ChatGPT / Grok / Gemini: tìm tab đang mở (hoặc mở mới), tiêm chat-content.js rồi gửi lệnh chạy
+// reqId (từ web Studio) -> tab web đã gửi lệnh
+const webRequests = new Map();
+
+const CHAT_PLATFORMS = {
+  chatgpt: { match: ["https://chatgpt.com/*", "https://chat.openai.com/*"], open: "https://chatgpt.com/", name: "ChatGPT" },
+  grok: { match: ["https://grok.com/*"], open: "https://grok.com/", name: "Grok" },
+  gemini: { match: ["https://gemini.google.com/*"], open: "https://gemini.google.com/app", name: "Gemini" },
+};
+
+// Hàm này được tiêm vào trang (phải tự đủ, không dùng biến ngoài): kiểm tra đã đăng nhập chưa
+function pageLoginProbe(platform) {
+  const vis = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+  const url = location.href;
+  if (/accounts\.google\.com|\/login|\/signin|\/sign-in|\/auth\/|\/i\/flow\/login/i.test(url)) return { loggedIn: false, reason: "Đang ở trang đăng nhập" };
+  const inputSel = { chatgpt: "#prompt-textarea, div.ProseMirror[contenteditable='true']", gemini: "rich-textarea, .ql-editor", grok: "textarea, div.tiptap[contenteditable='true'], div.ProseMirror[contenteditable='true']" }[platform] || "textarea";
+  const hasInput = [...document.querySelectorAll(inputSel)].some(vis);
+  const loginRe = /^(log ?in|sign ?in|sign ?up|get started|đăng nhập|đăng ký)$/i;
+  const loginBtn = [...document.querySelectorAll("a, button, [role='button']")].filter(vis).some((b) => {
+    const t = (b.textContent || "").trim();
+    return t.length < 24 && loginRe.test(t);
+  });
+  if (loginBtn) return { loggedIn: false, reason: "Thấy nút Đăng nhập" };
+  if (!hasInput) return { loggedIn: false, reason: "Chưa thấy ô nhập (trang đang tải hoặc cần đăng nhập)" };
+  return { loggedIn: true, reason: "OK" };
+}
+
+async function findPlatformTab(platform) {
+  const cfg = CHAT_PLATFORMS[platform];
+  let [tab] = await chrome.tabs.query({ url: cfg.match, active: true, currentWindow: true });
+  if (!tab) [tab] = await chrome.tabs.query({ url: cfg.match });
+  return tab || null;
+}
+
+async function waitTabLoaded(tab) {
+  await new Promise((resolve) => {
+    const listener = (id, info) => { if (id === tab.id && info.status === "complete") { chrome.tabs.onUpdated.removeListener(listener); resolve(); } };
+    chrome.tabs.onUpdated.addListener(listener);
+    setTimeout(() => { chrome.tabs.onUpdated.removeListener(listener); resolve(); }, 30000);
+  });
+  await new Promise((r) => setTimeout(r, 2500));
+}
+
+// Kiểm tra đăng nhập; open=true thì mở tab nếu chưa có, activate=true thì chuyển sang tab đó
+async function checkPlatform(platform, { open = false, activate = false } = {}) {
+  const cfg = CHAT_PLATFORMS[platform];
+  if (!cfg) return { ok: false, error: "UNKNOWN_PLATFORM" };
+  let tab = await findPlatformTab(platform);
+  if (!tab) {
+    if (!open) return { ok: true, hasTab: false, loggedIn: false, reason: `Chưa mở ${cfg.name}`, name: cfg.name };
+    tab = await chrome.tabs.create({ url: cfg.open, active: true });
+    await waitTabLoaded(tab);
+  } else if (activate) {
+    await chrome.tabs.update(tab.id, { active: true });
+    await chrome.windows.update(tab.windowId, { focused: true }).catch(() => {});
+  }
+  try {
+    const [r] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: pageLoginProbe, args: [platform] });
+    const res = (r && r.result) || { loggedIn: false, reason: "Không đọc được trang" };
+    return { ok: true, hasTab: true, tabId: tab.id, name: cfg.name, ...res };
+  } catch (e) {
+    return { ok: true, hasTab: true, tabId: tab.id, name: cfg.name, loggedIn: false, reason: "Không đọc được trang: " + (e && e.message || e) };
+  }
+}
+
+async function dispatchToChatPlatform(payload) {
+  const cfg = CHAT_PLATFORMS[payload.platform];
+  try {
+    // Phải đăng nhập trước: nếu chưa thì chuyển người dùng sang tab đó để đăng nhập
+    const st = await checkPlatform(payload.platform, { open: true, activate: true });
+    if (!st.loggedIn) return { success: false, error: "NOT_LOGGED_IN", platformName: cfg.name, reason: st.reason };
+    const tab = { id: st.tabId };
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["guard.js", "chat-content.js"] });
+    return await new Promise((resolve) => {
+      chrome.tabs.sendMessage(tab.id, { type: "RUN_CHAT_AUTOMATION", payload }, (res) => {
+        resolve(chrome.runtime.lastError ? { success: false, error: chrome.runtime.lastError.message } : (res || { success: true }));
+      });
+    });
+  } catch (e) {
+    return { success: false, error: `Không chạy được trên ${cfg.name}: ${e && e.message || e}` };
   }
 }
 
@@ -190,7 +292,118 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true;
     }
 
+    case "WEB_FLOW_STATUS": {
+      getFlowTab().then((tab) => {
+        if (!tab) return sendResponse({ ok: true, status: "FLOW_TAB_NOT_FOUND" });
+        // Có tab Flow là đủ: nếu đang ở trang chủ, extension tự bấm "Dự án mới" khi tạo ảnh
+        sendResponse({ ok: true, status: "CONNECTED" });
+      });
+      return true;
+    }
+
+    case "WEB_TRIGGER_GENERATE": {
+      (async () => {
+        const { reqId, prompt, options = {} } = payload || {};
+        // Hiện prompt + ảnh từ web vào side panel (nếu đang mở) và nhớ lại để lần mở side panel sau vẫn thấy
+        const fill = { prompt, referenceImages: Array.isArray(options.referenceImages) ? options.referenceImages.slice(0, 3) : [], at: Date.now() };
+        chrome.storage.local.set({ lastWebRequest: fill }).catch?.(() => {});
+        chrome.runtime.sendMessage({ type: "WEB_FILL", payload: fill }).catch(() => {});
+        // Chưa có tab Flow thì tự mở; đang ở trang chủ Flow thì content.js tự chọn "Dự án mới"
+        const tab = await ensureActiveFlowTab();
+        if (!tab) return sendResponse({ ok: false, code: "FLOW_TAB_NOT_FOUND", message: "Không mở được tab Google Flow" });
+        // nhớ tab web đã gửi lệnh để trả kết quả về đúng chỗ
+        webRequests.set(reqId, { webTabId: sender.tab ? sender.tab.id : null, startedAt: Date.now() });
+        const saved = await chrome.storage.local.get(["imageSettings"]);
+        const s = (saved && saved.imageSettings) || {};
+        const runPayload = {
+          prompts: [prompt],
+          aspectRatio: options.aspectRatio || s.aspectRatio || "16:9",
+          batchCount: 1,
+          model: options.model || s.model || "",
+          autoDownload: false, // ảnh được trả về cho web, không tự tải về máy
+          platform: "flow",
+          referenceImages: Array.isArray(options.referenceImages) ? options.referenceImages.slice(0, 3) : [],
+          _webReq: reqId,
+        };
+        await chrome.tabs.update(tab.id, { active: true });
+        if (tab.windowId) await chrome.windows.update(tab.windowId, { focused: true }).catch(() => {});
+        const send = () => chrome.tabs.sendMessage(tab.id, { type: "RUN_AUTOMATION", payload: runPayload }, (res) => {
+          if (chrome.runtime.lastError) {
+            chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["guard.js", "flow-config.js", "content.js"] }, () => {
+              setTimeout(() => chrome.tabs.sendMessage(tab.id, { type: "RUN_AUTOMATION", payload: runPayload }, () => {}), 500);
+            });
+          }
+        });
+        send();
+        sendResponse({ ok: true, started: true });
+      })().catch((e) => sendResponse({ ok: false, code: "FAILED", message: String(e && e.message || e) }));
+      return true;
+    }
+
+    case "WEB_ANALYZE_WORKSHEET": {
+      // Web Studio gửi nội dung bài tập -> extension gọi Edge Function analyze-worksheet bằng phiên Supabase đang đăng nhập.
+      // Khóa Gemini chỉ nằm trong secrets của server; web không giữ khóa hay token nào.
+      (async () => {
+        const settings = await cloud.getSettings();
+        if (!settings.url || !settings.anonKey) return { ok: false, code: "NOT_CONFIGURED", message: "Extension chưa cấu hình Supabase (tab Lịch sử → Cấu hình kết nối)" };
+        const sess = await cloud.getSession();
+        if (!sess) return { ok: false, code: "NOT_SIGNED_IN", message: "Extension chưa đăng nhập Supabase (tab Lịch sử → Đăng nhập)" };
+        const text = (payload && payload.text) || "";
+        let res;
+        try {
+          res = await fetch(`${settings.url}/functions/v1/analyze-worksheet`, {
+            method: "POST",
+            headers: { apikey: settings.anonKey, Authorization: `Bearer ${sess.access_token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ text }),
+          });
+        } catch (e) {
+          return { ok: false, code: "NETWORK", message: "Không gọi được Supabase: " + (e && e.message || e) };
+        }
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 404) return { ok: false, code: "FUNCTION_NOT_DEPLOYED", message: "Chưa triển khai Edge Function analyze-worksheet trên Supabase" };
+        if (!res.ok) return { ok: false, code: data.code || ("HTTP_" + res.status), message: data.error || data.message || ("HTTP " + res.status), details: data.details };
+        return { ok: true, plan: data.plan, warnings: data.warnings || [], model: data.model };
+      })().then(sendResponse).catch((e) => sendResponse({ ok: false, code: "ERROR", message: e.message || String(e) }));
+      return true;
+    }
+
+    case "WEB_CLOUD_LIST": {
+      // Web Studio xin danh sách ảnh đã lưu trên Supabase (kèm link xem có chữ ký 24 giờ)
+      (async () => {
+        const st = await cloud.status();
+        if (!st.configured) return { ok: false, code: "NOT_CONFIGURED", message: "Extension chưa cấu hình Supabase (tab Lịch sử → Cấu hình kết nối)" };
+        if (!st.signedIn) return { ok: false, code: "NOT_SIGNED_IN", message: "Extension chưa đăng nhập Supabase (tab Lịch sử → Đăng nhập)" };
+        const limit = Math.min(200, Math.max(1, Number(payload && payload.limit) || 60));
+        const rows = await cloud.listImages({ search: (payload && payload.search) || "", limit, offset: Number(payload && payload.offset) || 0 });
+        const urls = rows.length ? await cloud.signUrls(rows.map((r) => r.storage_path), 86400) : {};
+        return {
+          ok: true,
+          images: rows.map((r) => ({
+            id: r.id, prompt: r.prompt, model: r.model, aspectRatio: r.aspect_ratio, createdAt: r.created_at,
+            width: r.width, height: r.height, sizeBytes: r.size_bytes, storagePath: r.storage_path, url: urls[r.storage_path] || null,
+          })),
+        };
+      })().then(sendResponse).catch((e) => sendResponse({ ok: false, code: e.code || "ERROR", message: e.message || String(e) }));
+      return true;
+    }
+
+    case "WEB_GEN_DONE": {
+      // content.js (tab Flow) báo kết quả -> chuyển tiếp về tab web đã gửi lệnh
+      const { reqId } = payload || {};
+      const req = webRequests.get(reqId);
+      webRequests.delete(reqId);
+      if (req && req.webTabId != null) {
+        chrome.tabs.sendMessage(req.webTabId, { type: "WEB_GEN_RESULT", reqId, ...(payload || {}) }).catch(() => {});
+      }
+      sendResponse({ ok: true });
+      return;
+    }
+
     case "DISPATCH_GENERATE": {
+      if (payload && payload.platform && payload.platform !== "flow" && CHAT_PLATFORMS[payload.platform]) {
+        dispatchToChatPlatform(payload).then(sendResponse);
+        return true;
+      }
       ensureActiveFlowTab().then(async (tab) => {
         if (!tab) {
           sendResponse({ success: false, error: "CANNOT_OPEN_FLOW" });
@@ -202,7 +415,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           if (chrome.runtime.lastError) {
             // Tiêm script nếu chưa có
             chrome.scripting.executeScript(
-              { target: { tabId: tab.id }, files: ["flow-config.js", "content.js"] },
+              { target: { tabId: tab.id }, files: ["guard.js", "flow-config.js", "content.js"] },
               () => {
                 setTimeout(() => {
                   chrome.tabs.sendMessage(tab.id, { type: "RUN_AUTOMATION", payload }, (r) => {
@@ -216,6 +429,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           }
         });
       });
+      return true;
+    }
+
+    case "WAIT_DOWNLOAD": {
+      // Chờ Chrome bắt đầu một lượt tải mới (để biết chắc cú bấm "Tải xuống" có hiệu lực)
+      const timeoutMs = (payload && payload.timeoutMs) || 8000;
+      let done = false;
+      const finish = (res) => { if (done) return; done = true; chrome.downloads.onCreated.removeListener(onCreated); sendResponse(res); };
+      const onCreated = (item) => finish({ started: true, filename: item.filename || "", url: (item.url || "").slice(0, 80) });
+      chrome.downloads.onCreated.addListener(onCreated);
+      setTimeout(() => finish({ started: false }), timeoutMs);
+      return true;
+    }
+
+    case "OPEN_PLATFORM": {
+      checkPlatform(payload && payload.platform, { open: true, activate: true }).then(sendResponse);
+      return true;
+    }
+
+    case "CHECK_PLATFORM": {
+      checkPlatform(payload && payload.platform).then(sendResponse);
       return true;
     }
 
@@ -248,6 +482,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case "STOP_ALL_TASKS": {
+      Object.values(CHAT_PLATFORMS).forEach((p) => {
+        chrome.tabs.query({ url: p.match }, (tabs) => tabs.forEach((t) => chrome.tabs.sendMessage(t.id, { type: "STOP_AUTOMATION" }).catch(() => {})));
+      });
       getFlowTab().then((tab) => {
         if (tab) {
           chrome.tabs.sendMessage(tab.id, { type: "STOP_AUTOMATION" });

@@ -10,12 +10,15 @@ interface AppHeaderProps {
   breadcrumbs: BreadcrumbItem[];
   saveStatus?: 'saved' | 'saving' | 'unsaved';
   schoolName?: string;
+  /** Ẩn nhãn Saved của thanh này (màn đang tự hiện trạng thái lưu riêng ở khe thao tác) */
+  hideSaveStatus?: boolean;
 }
 
 export const AppHeader: React.FC<AppHeaderProps> = ({
   breadcrumbs,
   saveStatus = 'saved',
   schoolName = 'Cambridge International Academy',
+  hideSaveStatus = false,
 }) => {
   return (
     <header className="h-14 bg-white border-b border-slate-200 px-6 flex items-center justify-between shrink-0 z-20 shadow-2xs">
@@ -52,10 +55,13 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
         })}
       </nav>
 
+      {/* Khe thao tác: các màn (ví dụ trình soạn Cloze) gắn nút của mình vào đây qua portal */}
+      <div id="app-header-actions" className="flex items-center gap-2 ml-auto pl-4 shrink-0" />
+
       {/* Right: Autosave Status & School Badge */}
       <div className="flex items-center gap-3 shrink-0 pl-4">
         {/* Autosave Status Badge */}
-        <div className="flex items-center gap-1.5 text-xs font-medium">
+        <div className={`flex items-center gap-1.5 text-xs font-medium ${hideSaveStatus ? 'hidden' : ''}`}>
           {saveStatus === 'saved' && (
             <span className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full text-[11px] flex items-center gap-1 font-semibold">
               <Check size={12} className="text-emerald-600" />

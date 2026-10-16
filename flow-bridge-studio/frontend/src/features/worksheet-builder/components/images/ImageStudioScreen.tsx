@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { ImageJobQueuePanel } from './ImageJobQueuePanel';
 import { 
   ArrowLeft, Wand2, Image as ImageIcon, Upload, Trash2, Sparkles, 
   Check, ArrowRight, Loader2
@@ -29,6 +30,8 @@ export const ImageStudioScreen: React.FC<ImageStudioScreenProps> = ({
   const [copiedPromptKey, setCopiedPromptKey] = useState<string | null>(null);
   const [generatingSlotKey, setGeneratingSlotKey] = useState<string | null>(null);
   const [genError, setGenError] = useState<string | null>(null);
+  // Kết quả lần tạo gần nhất: nguồn ảnh (Supabase / Flow) + ô ảnh nào
+  const [genResult, setGenResult] = useState<{ source: string; label: string; warning?: string } | null>(null);
   const [activeFilter, setActiveFilter] = useState<'all' | 'empty' | 'assigned'>('all');
 
   // Gather all slots across all exercises in folder
@@ -67,6 +70,7 @@ export const ImageStudioScreen: React.FC<ImageStudioScreenProps> = ({
     const slotKey = `${item.exIdx}_${item.slotIdx}`;
     setGeneratingSlotKey(slotKey);
     setGenError(null);
+    setGenResult(null);
 
     const promptText = generatePromptForSlot(item);
     const reqId = `gen_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -76,14 +80,21 @@ export const ImageStudioScreen: React.FC<ImageStudioScreenProps> = ({
       type: 'TRIGGER_GENERATE',
       source: 'web',
       timestamp: Date.now(),
-      payload: { prompt: promptText },
+      payload: {
+        prompt: promptText,
+        // Nếu ô ảnh đã có ảnh do người dùng tải lên (data URL) thì gửi kèm làm ảnh tham chiếu cho extension
+        referenceImages:
+          typeof item.slot.assetUrl === 'string' && item.slot.assetUrl.startsWith('data:image/')
+            ? [item.slot.assetUrl]
+            : [],
+      },
     };
 
     // Timeout fallback (90s)
     const timeout = setTimeout(() => {
       setGeneratingSlotKey(null);
-      setGenError('Hết thời gian chờ tạo ảnh từ Google Flow (90s). Hãy kiểm tra lại tab Flow.');
-    }, 90000);
+      setGenError('Hết thời gian chờ tạo ảnh từ Google Flow (5 phút). Hãy kiểm tra lại tab Flow và extension.');
+    }, 300000);
 
     const responseHandler = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
@@ -108,6 +119,11 @@ export const ImageStudioScreen: React.FC<ImageStudioScreenProps> = ({
         targetEx.imageSlots = updatedSlots;
         updatedExercises[item.exIdx] = targetEx;
         onUpdateFolderExercises(updatedExercises);
+        setGenResult({
+          source: data.payload.source === 'supabase' ? 'supabase' : 'flow',
+          label: String(item.slot.label ?? ''),
+          warning: data.payload.warning,
+        });
       } else {
         const code = data.error?.code || data.payload?.status;
         const rawMsg = data.error?.message || data.payload?.message;
@@ -125,6 +141,8 @@ export const ImageStudioScreen: React.FC<ImageStudioScreenProps> = ({
           errMsg = 'Không thể kết nối Extension. Hãy vào chrome://extensions bấm nút Reload 🔄 rồi F5 lại trang này.';
         } else if (rawMsg) {
           errMsg = rawMsg;
+        } else if (code) {
+          errMsg = `Không thể tạo ảnh từ Google Flow (mã lỗi: ${code}).`;
         }
 
         setGenError(errMsg);
@@ -133,6 +151,17 @@ export const ImageStudioScreen: React.FC<ImageStudioScreenProps> = ({
 
     window.addEventListener('message', responseHandler);
     window.postMessage(envelope, window.location.origin);
+  };
+
+  // Giáo viên xác nhận ảnh AI -> bỏ cờ "chờ duyệt" (xuất file chỉ cảnh báo khi còn ảnh chưa duyệt)
+  const approveSlot = (exIdx: number, slotIdx: number) => {
+    const updatedExercises = [...folder.exercises];
+    const ex = { ...updatedExercises[exIdx] };
+    const slots = [...ex.imageSlots];
+    slots[slotIdx] = { ...slots[slotIdx], needsReview: false };
+    ex.imageSlots = slots;
+    updatedExercises[exIdx] = ex;
+    onUpdateFolderExercises(updatedExercises);
   };
 
   const triggerUpload = (exIdx: number, slotIdx: number) => {
@@ -291,6 +320,31 @@ export const ImageStudioScreen: React.FC<ImageStudioScreenProps> = ({
           </div>
         </div>
 
+        <ImageJobQueuePanel worksheetId={folder.id} />
+
+        {genResult && (
+          <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs text-emerald-900 flex items-start justify-between gap-3 animate-in fade-in leading-relaxed">
+            <div className="flex-1">
+              <strong className="font-bold block mb-0.5">
+                {genResult.source === 'supabase'
+                  ? `✓ Đã tạo ảnh cho Picture ${genResult.label} và lưu trên Supabase`
+                  : `✓ Đã tạo ảnh cho Picture ${genResult.label} (ảnh trực tiếp từ Google Flow)`}
+              </strong>
+              <span>
+                {genResult.source === 'supabase'
+                  ? 'Ảnh đang hiển thị là ảnh lấy về từ Supabase (link có hiệu lực 7 ngày).'
+                  : genResult.warning || 'Ảnh chưa được lưu lên Supabase.'}
+              </span>
+            </div>
+            <button
+              onClick={() => setGenResult(null)}
+              className="text-xs font-bold text-emerald-700 hover:text-emerald-900 shrink-0 px-2 py-1 bg-white border border-emerald-200 rounded-lg"
+            >
+              ✕ Đóng
+            </button>
+          </div>
+        )}
+
         {genError && (
           <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 flex items-start justify-between gap-3 animate-in fade-in leading-relaxed">
             <div className="flex-1">
@@ -382,6 +436,21 @@ export const ImageStudioScreen: React.FC<ImageStudioScreenProps> = ({
                           alt={item.slot.caption || `Slot ${item.slot.label}`}
                           className="w-full h-full object-contain"
                         />
+                        {item.slot.needsReview && (
+                          <span className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded-md bg-amber-500 text-white text-[9px] font-bold shadow">
+                            AI · chờ duyệt
+                          </span>
+                        )}
+                        {/* Nhãn nguồn ảnh: Supabase (đã lưu trên cloud) hay Flow / tải lên */}
+                        {item.slot.assetUrl.includes('/storage/v1/object/sign/') ? (
+                          <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded-md bg-emerald-600 text-white text-[9px] font-bold shadow">
+                            ☁ Supabase
+                          </span>
+                        ) : /^https?:/.test(item.slot.assetUrl) && !/unsplash|images\.pexels|picsum/i.test(item.slot.assetUrl) ? (
+                          <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded-md bg-amber-500 text-white text-[9px] font-bold shadow">
+                            Flow
+                          </span>
+                        ) : null}
                         <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-[10px] font-bold">
                           Replace Image
                         </div>
@@ -457,6 +526,17 @@ export const ImageStudioScreen: React.FC<ImageStudioScreenProps> = ({
                             </>
                           )}
                         </button>
+
+                        {item.slot.needsReview && (
+                          <button
+                            type="button"
+                            onClick={() => approveSlot(item.exIdx, item.slotIdx)}
+                            className="px-3 py-1 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs"
+                            title="Xác nhận ảnh AI này đúng chủ đề và đúng ô"
+                          >
+                            ✓ Duyệt ảnh
+                          </button>
+                        )}
 
                         <button
                           type="button"

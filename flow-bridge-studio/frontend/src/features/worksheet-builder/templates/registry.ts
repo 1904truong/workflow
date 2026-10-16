@@ -114,6 +114,14 @@ export const EXERCISE_REGISTRY: Record<ExerciseType, ExerciseTypeMeta> = {
     defaultSlotsCount: 0,
     description: 'Standard 4-option (A, B, C, D) grammar and vocabulary test questions.',
   },
+  grammar_vocab_cloze: {
+    type: 'grammar_vocab_cloze',
+    label: 'Multiple Choice Cloze Test',
+    category: 'Grammar & Vocab',
+    defaultTemplate: 'template_a',
+    defaultSlotsCount: 0,
+    description: 'Reading passage with numbered blanks, each with A, B, C, D options.',
+  },
   gap_filling_word_formation: {
     type: 'gap_filling_word_formation',
     label: 'Gap Filling / Word Formation',

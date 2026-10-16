@@ -170,6 +170,28 @@
       });
     }
 
+    // Thư mục/ tên file chỉ gồm a-z 0-9 _ - (tránh ký tự lạ trong key của Storage)
+    const asciiSlug = (s, max = 20) => {
+      const full = String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/gi, "d")
+        .toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+      if (full.length <= max) return full;
+      const cut = full.slice(0, max);
+      const i = cut.lastIndexOf("_");
+      return (i >= 8 ? cut.slice(0, i) : cut).replace(/_+$/g, "");
+    };
+    const folderName = (s) => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "Khac";
+    function buildReadablePath(uid, item, withUserFolder = false) {
+      const d = new Date(item.createdAt || Date.now());
+      const p = (n) => String(n).padStart(2, "0");
+      const day = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+      const hm = `${p(d.getHours())}-${p(d.getMinutes())}`;
+      const meta = item.meta || {};
+      const name = asciiSlug(meta.slug || meta.prompt) || "anh";
+      const idx = (meta.index || 0) > 0 ? `_${meta.index + 1}` : "";
+      const rel = `${folderName(meta.platform)}/${day}/${name}_${hm}${idx}_${item.sha256.slice(0, 8)}.${MIME_EXT[item.mime]}`;
+      return withUserFolder ? `${uid}/${rel}` : rel;
+    }
+
     // ───────────── Enqueue ─────────────
     async function enqueue({ jobId, meta, bytes, width, height, tabId, source }) {
       if (!jobId) throw new CloudError("INVALID", "Thiếu jobId");
@@ -209,7 +231,9 @@
         return;
       }
       const uid = sess.user.id;
-      const path = `${uid}/${item.jobId}/${item.sha256.slice(0, 32)}.${MIME_EXT[item.mime]}`;
+      // Đường dẫn dễ đọc, tất định (retry không tạo file trùng): <Nền tảng>/<ngày tạo>/<tên ngắn>_<giờ-phút>_<mã>.<ext>
+      // (không có thư mục <user_id> ngoài cùng). Nếu Supabase chưa chạy 002_flat_paths.sql thì tự rơi về đường dẫn cũ có <user_id>/.
+      let path = buildReadablePath(uid, item, false);
       await updateItem(item.id, { status: "uploading", error: null, storagePath: path });
 
       const blob = await blobs.get(item.id);
@@ -226,14 +250,20 @@
       });
 
       // 2. object (đường dẫn tất định; 409 = đã upload đúng ảnh này ở lần trước)
+      const putObject = (p) => api("storage", `/object/${BUCKET}/${encodePath(p)}`, {
+        method: "POST",
+        headers: { "Content-Type": item.mime, "x-upsert": "false", "cache-control": "max-age=31536000" },
+        body: blob.bytes
+      });
       try {
-        await api("storage", `/object/${BUCKET}/${encodePath(path)}`, {
-          method: "POST",
-          headers: { "Content-Type": item.mime, "x-upsert": "false", "cache-control": "max-age=31536000" },
-          body: blob.bytes
-        });
+        await putObject(path);
       } catch (e) {
-        if (e.code !== "CONFLICT") throw e;
+        if (e.code === "PERMISSION_DENIED") {
+          // Policy cũ chỉ cho ghi trong <user_id>/... -> dùng đường dẫn cũ (chạy 002_flat_paths.sql để bỏ thư mục này)
+          path = buildReadablePath(uid, item, true);
+          await updateItem(item.id, { storagePath: path });
+          try { await putObject(path); } catch (e2) { if (e2.code !== "CONFLICT") throw e2; }
+        } else if (e.code !== "CONFLICT") throw e;
       }
 
       // 3. metadata (idempotent theo user_id+sha256)

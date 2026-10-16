@@ -175,7 +175,7 @@ export const SmartPasteModal: React.FC<SmartPasteModalProps> = ({
               <p className="text-xs text-slate-500">
                 {step === 'input' 
                   ? 'Paste raw test paper or document. Automatically creates 15 exercise types, choices, and images.'
-                  : 'Review detected exercises, edit questions, inspect answer keys, and verify print layouts.'}
+                  : 'Review detected exercises, edit questions, and verify print layouts.'}
               </p>
             </div>
           </div>
@@ -590,7 +590,7 @@ Example formats supported:
                           )}
                         </div>
 
-                        {/* Questions & Extracted Answer Keys */}
+                        {/* Questions */}
                         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs space-y-3">
                           <div className="flex items-center justify-between pb-2 border-b border-slate-100">
                             <span className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
@@ -598,7 +598,7 @@ Example formats supported:
                               Extracted Questions ({currentEx.questions.length})
                             </span>
                             <span className="text-[11px] text-slate-400">
-                              Verify extracted text and answer keys
+                              Verify extracted text
                             </span>
                           </div>
 
@@ -651,28 +651,6 @@ Example formats supported:
                                   </div>
                                 )}
 
-                                {/* Extracted Answer Key pill/input */}
-                                <div className="pl-7 flex items-center gap-2 text-xs">
-                                  <span className="text-[11px] font-bold text-slate-500 uppercase">
-                                    Correct Answer:
-                                  </span>
-                                  <input
-                                    type="text"
-                                    value={q.correctAnswer || ''}
-                                    placeholder="Needs Answer"
-                                    onChange={(e) =>
-                                      handleUpdateQuestion(activeExerciseIndex, qIdx, {
-                                        ...q,
-                                        correctAnswer: e.target.value || undefined,
-                                      })
-                                    }
-                                    className={`px-2.5 py-0.5 rounded-lg text-xs font-bold border ${
-                                      q.correctAnswer
-                                        ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
-                                        : 'bg-amber-50 border-amber-300 text-amber-800 italic'
-                                    }`}
-                                  />
-                                </div>
                               </div>
                             ))}
                           </div>

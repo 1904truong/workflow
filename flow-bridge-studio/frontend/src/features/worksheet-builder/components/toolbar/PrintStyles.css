@@ -33,6 +33,10 @@
     overflow: visible !important;
   }
 
+  .demo-page {
+    display: none !important;
+  }
+
   .worksheet-page {
     box-shadow: none !important;
     border: none !important;

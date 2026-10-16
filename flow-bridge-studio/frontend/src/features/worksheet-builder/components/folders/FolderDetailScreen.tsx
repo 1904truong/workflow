@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   Plus, Sparkles, Printer, FileText, ArrowLeft, ArrowUp, ArrowDown, 
-  Trash2, Copy, Edit3, Image as ImageIcon, KeyRound, 
-  Award, Clock, BookOpen, Layers
+  Trash2, Copy, Edit3, Image as ImageIcon, 
+  Award, Clock, BookOpen, Layers, ChevronDown
 } from 'lucide-react';
-import type { LessonFolder, Exercise } from '../../types';
+import type { LessonFolder, Exercise, ExerciseType } from '../../types';
 import { EXERCISE_REGISTRY } from '../../templates/registry';
 import { exportWorksheetToDocx } from '../../services/docxExportService';
 import { folderToWorksheet } from '../../types';
@@ -13,7 +13,8 @@ interface FolderDetailScreenProps {
   folder: LessonFolder;
   onBackToFolders: () => void;
   onOpenSmartPaste: () => void;
-  onOpenAddExercise: () => void;
+  /** type: dạng bài đã chọn trong menu (bỏ qua bước chọn dạng bài) */
+  onOpenAddExercise: (type?: ExerciseType) => void;
   onEditExercise: (exerciseId: string) => void;
   onOpenImages: () => void;
   onOpenPreviewExport: () => void;
@@ -23,6 +24,62 @@ interface FolderDetailScreenProps {
   onDeleteExercise: (exerciseId: string) => void;
   onInsertSampleExercises?: () => void;
 }
+
+const CATEGORY_ORDER = ['Listening', 'Reading', 'Grammar & Vocab', 'Writing'] as const;
+
+/** Nút "Add Exercise" dạng dropdown: chọn dạng bài là vào thẳng trình soạn */
+const AddExerciseMenu: React.FC<{ onPick: (type: ExerciseType) => void }> = ({ onPick }) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="px-4 py-2.5 bg-slate-900 hover:bg-black text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all active:scale-95"
+      >
+        <Plus size={14} />
+        <span>Add Exercise</span>
+        <ChevronDown size={13} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div role="menu" className="absolute right-0 top-full mt-2 w-72 max-h-[26rem] overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl z-30 p-1.5">
+          {CATEGORY_ORDER.map((cat) => {
+            const items = Object.values(EXERCISE_REGISTRY).filter((m) => m.category === cat);
+            if (items.length === 0) return null;
+            return (
+              <div key={cat} className="pb-1">
+                <div className="px-2.5 py-1.5 text-[11px] font-semibold text-slate-400">{cat}</div>
+                {items.map((m) => (
+                  <button
+                    key={m.type}
+                    role="menuitem"
+                    onClick={() => { setOpen(false); onPick(m.type); }}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs text-slate-800 hover:bg-slate-100 focus:bg-slate-100 focus:outline-none"
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const FolderDetailScreen: React.FC<FolderDetailScreenProps> = ({
   folder,
@@ -105,14 +162,6 @@ export const FolderDetailScreen: React.FC<FolderDetailScreenProps> = ({
               <span>Word .doc</span>
             </button>
             <button
-              onClick={() => exportWorksheetToDocx(folderToWorksheet(folder), 'teacher_key')}
-              className="px-2.5 py-1.5 bg-white border border-slate-200 hover:border-slate-300 text-rose-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-2xs transition-colors"
-              title="Download Teacher Key Word DOCX"
-            >
-              <Award size={13} className="text-rose-600" />
-              <span>+ Key</span>
-            </button>
-            <button
               onClick={onEditFolderInfo}
               className="px-3 py-1.5 bg-white border border-slate-200 hover:border-slate-300 text-slate-600 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors"
             >
@@ -184,13 +233,7 @@ export const FolderDetailScreen: React.FC<FolderDetailScreenProps> = ({
               <span>Smart Paste</span>
             </button>
 
-            <button
-              onClick={onOpenAddExercise}
-              className="px-4 py-2.5 bg-slate-900 hover:bg-black text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all active:scale-95"
-            >
-              <Plus size={14} />
-              <span>Add Exercise</span>
-            </button>
+            <AddExerciseMenu onPick={(t) => onOpenAddExercise(t)} />
 
             <button
               onClick={onOpenPreviewExport}
@@ -246,7 +289,7 @@ export const FolderDetailScreen: React.FC<FolderDetailScreenProps> = ({
 
                 {/* Option 2: Add Manually */}
                 <button
-                  onClick={onOpenAddExercise}
+                  onClick={() => onOpenAddExercise()}
                   className="p-4 rounded-2xl border border-slate-200 bg-white hover:border-slate-300 hover:shadow-xs text-left transition-all group flex flex-col justify-between"
                 >
                   <div>
@@ -288,8 +331,6 @@ export const FolderDetailScreen: React.FC<FolderDetailScreenProps> = ({
             <div className="space-y-3">
               {folder.exercises.map((exercise, idx) => {
                 const meta = EXERCISE_REGISTRY[exercise.type];
-                const keyedAnswersCount = exercise.questions.filter((q) => !!q.correctAnswer).length;
-                const isKeyComplete = keyedAnswersCount === exercise.questions.length && exercise.questions.length > 0;
 
                 return (
                   <div
@@ -371,17 +412,6 @@ export const FolderDetailScreen: React.FC<FolderDetailScreenProps> = ({
                         </span>
                       )}
 
-                      <span
-                        className={`flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-lg border ${
-                          isKeyComplete
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : 'bg-amber-50 text-amber-700 border-amber-200'
-                        }`}
-                        title={isKeyComplete ? 'All answers keyed' : `${exercise.questions.length - keyedAnswersCount} question(s) need answer keys`}
-                      >
-                        <KeyRound size={11} />
-                        {keyedAnswersCount}/{exercise.questions.length} Keys
-                      </span>
                     </div>
 
                     {/* Right: Actions */}

@@ -6,7 +6,7 @@ interface WorksheetHeaderProps {
 }
 
 export const WorksheetHeader: React.FC<WorksheetHeaderProps> = ({ worksheet }) => {
-  const { showStudentInfo, mode } = worksheet.printSettings;
+  const { showStudentInfo } = worksheet.printSettings;
 
   return (
     <header className="w-full text-[#111111] mb-[6mm]">
@@ -30,11 +30,6 @@ export const WorksheetHeader: React.FC<WorksheetHeaderProps> = ({ worksheet }) =
         >
           {worksheet.title || 'ENGLISH WORKSHEET'}
         </h1>
-        {mode === 'teacher_key' && (
-          <span className="px-2 py-0.5 border border-red-600 text-red-600 font-bold text-[9pt] uppercase tracking-wider rounded">
-            Teacher Answer Key
-          </span>
-        )}
       </div>
 
       {/* Student Information Box */}

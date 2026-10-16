@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { 
   Folder, Plus, Search, Grid, List, MoreVertical, Clock, 
-  Award, Layers, Copy, Trash2, Edit3, ArrowRight, FileText
+  Layers, Copy, Trash2, Edit3, ArrowRight, FileText
 } from 'lucide-react';
 import type { LessonFolder } from '../../types';
 import { exportWorksheetToDocx } from '../../services/docxExportService';
@@ -255,15 +255,6 @@ export const LessonFoldersScreen: React.FC<LessonFoldersScreenProps> = ({
                               className="w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2"
                             >
                               <FileText size={13} className="text-blue-600" /> Export Student DOCX
-                            </button>
-                            <button
-                              onClick={() => {
-                                handleExportQuick(folder, 'teacher_key');
-                                setActiveMenuId(null);
-                              }}
-                              className="w-full px-3 py-1.5 text-left text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-                            >
-                              <Award size={13} className="text-rose-600" /> Export Teacher Key
                             </button>
                             <div className="border-t border-slate-100 my-1" />
                             <button

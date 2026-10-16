@@ -1,6 +1,7 @@
 import React from 'react';
 import { Images, Image as ImageIcon, ArrowRight } from 'lucide-react';
 import type { LessonFolder } from '../../types';
+import { SupabaseLibrary } from './SupabaseLibrary';
 
 interface GalleryScreenProps {
   folders: LessonFolder[];
@@ -42,6 +43,11 @@ export const GalleryScreen: React.FC<GalleryScreenProps> = ({
           </div>
         </div>
 
+        {/* Ảnh đã lưu trên Supabase (qua extension) */}
+        <SupabaseLibrary />
+
+        {/* Ảnh đang gán trong các lesson folder */}
+        <h2 className="text-sm font-bold text-slate-700 pt-2">Ảnh đang dùng trong các Lesson Folder</h2>
         {/* Images Grid */}
         {assignedImages.length === 0 ? (
           <div className="bg-white border-2 border-dashed border-slate-200 rounded-3xl p-12 text-center flex flex-col items-center">

@@ -346,7 +346,7 @@ class FlowFloatingMonitor {
   }
 
   downloadTask(task) {
-    task.results.forEach((url, i) => downloadResult(url, `Flow_${task.id}_${Date.now()}_${i + 1}.png`));
+    task.results.forEach((url, i) => downloadResult(url, FBGuard.fileName(task.prompt, i, task.results.length)));
   }
 }
 
@@ -580,7 +580,7 @@ const GenerateButtonController = {
     // Step 2b: Click chuột thật (isTrusted) qua background/CDP — Flow bỏ qua click giả lập
     try {
       const br = btn.getBoundingClientRect();
-      const res = await chrome.runtime.sendMessage({
+      const res = await FBGuard.send({
         type: "TRUSTED_CLICK",
         payload: { x: Math.round(br.left + br.width / 2), y: Math.round(br.top + br.height / 2) }
       });
@@ -1057,6 +1057,350 @@ const Flow = {
 // 4. MAIN GENERATION FLOW (5 Bước thực hiện chuẩn tài liệu)
 // ════════════════════════════════════════════════════════════
 let flowRunning = false;
+let lastRunOk = false; // lần chạy gần nhất có tạo ảnh xong thật không
+
+function dataUrlToFile(dataUrl, name) {
+  const [head, b64] = dataUrl.split(",");
+  const mime = (head.match(/data:([^;]+)/) || [])[1] || "image/png";
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new File([bytes], name, { type: mime });
+}
+
+const visible = (el) => !!el && el.getBoundingClientRect().width > 0 && el.getBoundingClientRect().height > 0;
+
+async function waitFor(fn, timeoutMs = 8000, step = 250) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < timeoutMs) {
+    const v = fn();
+    if (v) return v;
+    await sleep(step);
+  }
+  return null;
+}
+
+// Đếm ảnh đã đính trong composer (ảnh thật, bỏ icon nhỏ)
+function countComposerImages(composerBox) {
+  if (!composerBox) return 0;
+  const cr = composerBox.getBoundingClientRect();
+  const picker = (typeof getPickerRoot === "function") ? getPickerRoot() : null;
+  // Thumbnail ảnh tham chiếu có thể nằm trong hoặc ngay phía trên khung soạn thảo
+  return [...document.querySelectorAll("img")].filter((im) => {
+    if (picker && picker.contains(im)) return false;
+    const r = im.getBoundingClientRect();
+    if (r.width < 24 || r.height < 24) return false;
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    return cx >= cr.left - 4 && cx <= cr.right + 4 && cy >= cr.top - 160 && cy <= cr.bottom + 4;
+  }).length;
+}
+
+// Đưa 1 file vào Flow bằng nhiều cách, mỗi cách xác minh số ảnh trong composer tăng lên mới dừng.
+const countTagged = (stem) => (document.body.innerText.toLowerCase().split(stem).length - 1)
+  + [...document.querySelectorAll("img[alt], [aria-label]")].filter((e) => ((e.getAttribute("alt") || "") + (e.getAttribute("aria-label") || "")).toLowerCase().includes(stem)).length;
+
+async function pushFileToFlow(file, composerBox, inputEl) {
+  const before = countComposerImages(composerBox);
+  // Thành công = ảnh xuất hiện trong composer HOẶC tên file mới xuất hiện trong thư viện Flow (tránh tải lặp)
+  const stem = file.name.replace(/\.\w+$/, "").toLowerCase();
+  const beforeTagged = countTagged(stem);
+  const grew = () => countComposerImages(Flow.findComposerBox() || composerBox) > before || countTagged(stem) > beforeTagged || hasProgressPercent();
+  const mkDt = () => { const dt = new DataTransfer(); dt.items.add(file); return dt; };
+  const target = inputEl || composerBox;
+
+  const strategies = [
+    ["paste", () => { target.focus?.(); target.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: mkDt() })); }],
+    ["drop", () => {
+      const dt = mkDt();
+      for (const t of ["dragenter", "dragover", "drop"]) composerBox.dispatchEvent(new DragEvent(t, { bubbles: true, cancelable: true, dataTransfer: dt }));
+    }],
+    ["file-input", () => {
+      const inputs = [...document.querySelectorAll('input[type="file"]')].filter((el) => !el.accept || /image/i.test(el.accept));
+      const fi = inputs[inputs.length - 1];
+      if (!fi) return;
+      fi.files = mkDt().files;
+      fi.dispatchEvent(new Event("input", { bubbles: true }));
+      fi.dispatchEvent(new Event("change", { bubbles: true }));
+    }],
+  ];
+  for (const [name, run] of strategies) {
+    try { run(); } catch (e) { console.warn("[Flow Bridge] strategy lỗi:", name, e); continue; }
+    if (await waitFor(grew, 15000)) return name;
+  }
+  return null;
+}
+
+// Nút "+" ở góc trái composer (mở danh sách ảnh đã tải lên)
+function findComposerAddButton(composerBox) {
+  const btns = [...composerBox.querySelectorAll("button, [role='button']")].filter(visible);
+  const byIcon = btns.find((b) => (b.textContent || "").trim().toLowerCase() === "add" || /^[+＋]$/.test((b.textContent || "").trim()));
+  return byIcon || btns.sort((x, y) => x.getBoundingClientRect().left - y.getBoundingClientRect().left)[0] || null;
+}
+
+const reportRef = (index, status, reason) => { try { if (reason) console.warn("[Flow Bridge] Ảnh", index + 1, "lỗi:", reason); chrome.runtime.sendMessage({ type: "REF_STATUS", index, status, reason }).catch?.(() => {}); } catch (_) {} };
+
+// Nút "Thêm vào câu lệnh" trong hộp chọn thành phần
+function findAddToPromptButton() {
+  return [...document.querySelectorAll("button, [role='button']")].filter(visible).find((b) => {
+    const t = (b.textContent || "").trim().toLowerCase();
+    return t.includes("thêm vào câu lệnh") || t.includes("add to prompt");
+  }) || null;
+}
+
+const findPickerSearch = () => [...document.querySelectorAll("input")].filter(visible).find((i) => /thành phần|asset|component/i.test(i.placeholder || ""));
+const hasProgressPercent = () => [...document.querySelectorAll("div, span")].some((e) => visible(e) && e.children.length === 0 && /^\d{1,3}%$/.test((e.textContent || "").trim()));
+
+// Gốc của bảng chọn thành phần: tổ tiên gần nhất của ô tìm kiếm có chứa danh sách + nút "Tất cả"
+function getPickerRoot() {
+  let el = findPickerSearch();
+  while (el && el !== document.body) {
+    const t = el.textContent || "";
+    if (/tất cả|all/i.test(t) && /hình ảnh|image/i.test(t) && el.getBoundingClientRect().width > 500) return el;
+    el = el.parentElement;
+  }
+  return null;
+}
+
+function realClick(el) {
+  const r = el.getBoundingClientRect();
+  const o = { bubbles: true, cancelable: true, composed: true, view: window, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: 0 };
+  for (const t of ["pointerover", "pointerenter", "mouseover", "pointerdown", "mousedown", "pointerup", "mouseup", "click"]) {
+    const Ev = t.startsWith("pointer") ? PointerEvent : MouseEvent;
+    el.dispatchEvent(new Ev(t, { ...o, pointerId: 1, isPrimary: true }));
+  }
+}
+
+async function trustedClick(el) {
+  try {
+    const r = el.getBoundingClientRect();
+    const res = await FBGuard.send({ type: "TRUSTED_CLICK", payload: { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) } });
+    if (res && res.success) return true;
+  } catch (_) {}
+  el.click?.();
+  return false;
+}
+
+async function openPicker(composerBox) {
+  if (findPickerSearch()) return true;
+  const box = Flow.findComposerBox() || composerBox;
+  const btns = [...box.querySelectorAll("button, [role='button']")].filter(visible);
+  const desc = (b) => `${(b.textContent || "").trim().slice(0, 20)}|${b.getAttribute("aria-label") || ""}@${Math.round(b.getBoundingClientRect().left)}`;
+  console.log("[Flow Bridge] Nút trong composer:", btns.map(desc));
+  // Ưu tiên nút "+"/add, sau đó các nút còn lại từ trái sang phải (bỏ nút ngoài cùng bên phải = gửi)
+  const byLeft = [...btns].sort((x, y) => x.getBoundingClientRect().left - y.getBoundingClientRect().left);
+  const isPlus = (b) => /^(add|add_2|\+|＋)$/i.test((b.textContent || "").trim()) || /add|thêm|tải lên|upload/i.test(b.getAttribute("aria-label") || "");
+  // Ứng viên số 1: nút ngay bên TRÁI chữ "Tác nhân" cùng hàng
+  const agentEl = [...document.querySelectorAll("button, [role='button'], div, span")].filter(visible).find((e) => /^(tác nhân|agent)$/i.test((e.textContent || "").trim()));
+  let nextToAgent = null;
+  if (agentEl) {
+    const ar = agentEl.getBoundingClientRect();
+    const allBtns = [...document.querySelectorAll("button, [role='button']")].filter(visible).filter((b) => !b.contains(agentEl) && !agentEl.contains(b));
+    nextToAgent = allBtns
+      .filter((b) => { const r = b.getBoundingClientRect(); return r.right <= ar.left + 4 && Math.abs((r.top + r.height / 2) - (ar.top + ar.height / 2)) < 30; })
+      .sort((x, y) => y.getBoundingClientRect().right - x.getBoundingClientRect().right)[0] || null;
+    console.log("[Flow Bridge] Chữ 'Tác nhân' tìm thấy; nút bên trái:", nextToAgent ? desc(nextToAgent) : null);
+  } else console.warn("[Flow Bridge] Không thấy chữ 'Tác nhân'");
+  const cands = [...(nextToAgent ? [nextToAgent] : []), ...btns.filter(isPlus), ...byLeft.slice(0, -1)].filter((b, i, arr) => arr.indexOf(b) === i).slice(0, 5);
+  for (const b of cands) {
+    console.log("[Flow Bridge] Thử mở bảng bằng nút:", desc(b));
+    // 1) Chuột thật (isTrusted) qua background/CDP — Flow bỏ qua click giả lập
+    try {
+      const r = b.getBoundingClientRect();
+      const res = await FBGuard.send({ type: "TRUSTED_CLICK", payload: { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) } });
+      console.log("[Flow Bridge] Trusted click nút '+':", res && (res.success ? "OK" : res.error));
+    } catch (e) { console.warn("[Flow Bridge] Trusted click lỗi:", e); }
+    if (await waitFor(findPickerSearch, 2500, 150)) return true;
+    // 2) dự phòng: click giả lập
+    realClick(b);
+    if (await waitFor(findPickerSearch, 2000, 150)) return true;
+    b.click?.();
+    if (await waitFor(findPickerSearch, 1500, 150)) return true;
+  }
+  return false;
+}
+
+// Giống TobyFlow, với TỪNG ảnh (xong ảnh này mới sang ảnh kế):
+//  1) Mở bảng thành phần bằng "+" cạnh "Tác nhân"
+//  2) Upload ảnh NGAY TRONG bảng ("Tải nội dung…"), chờ dòng ảnh hiện ra và hết quay
+//  3) Chọn dòng ảnh -> "Thêm vào câu lệnh"
+// Sau khi đủ ảnh mới điền prompt và tạo (xử lý ở runFlowGeneration).
+async function uploadInsidePicker(file, dt) {
+  // a) bấm "Tải nội dung…" với chặn hộp thoại thư mục (fb-main.js) rồi đưa file vào input
+  const uploadBtn = [...(getPickerRoot() || document).querySelectorAll("button, [role='button'], div, span")].filter(visible).find((e) => e.children.length <= 3 && /tải nội dung|upload/i.test((e.textContent || "").trim()) && (e.textContent || "").trim().length < 30);
+  let fi = null;
+  if (uploadBtn) {
+    document.querySelectorAll("input[data-fb-file]").forEach((x) => x.removeAttribute("data-fb-file"));
+    document.dispatchEvent(new CustomEvent("fb-intercept-on"));
+    (uploadBtn.closest("button, [role='button']") || uploadBtn).click();
+    fi = await waitFor(() => document.querySelector("input[data-fb-file]"), 3000, 100);
+    document.dispatchEvent(new CustomEvent("fb-intercept-off"));
+  }
+  if (fi) {
+    fi.files = dt.files;
+    fi.dispatchEvent(new Event("input", { bubbles: true }));
+    fi.dispatchEvent(new Event("change", { bubbles: true }));
+    return "upload-button";
+  }
+  // b) kéo-thả vào bảng thành phần
+  const zone = getPickerRoot();
+  if (zone) {
+    for (const t of ["dragenter", "dragover", "drop"]) zone.dispatchEvent(new DragEvent(t, { bubbles: true, cancelable: true, dataTransfer: dt }));
+    return "drop-picker";
+  }
+  return null;
+}
+
+const pickerRows = (stem) => [...(getPickerRoot() || document).querySelectorAll("div, li, button, [role='option']")].filter(visible).filter((el) => {
+  const t = (el.textContent || "").toLowerCase();
+  return t.includes(stem) && t.length < 150 && el.getBoundingClientRect().width < 500;
+}).sort((x, y) => (x.textContent || "").length - (y.textContent || "").length);
+
+async function closePicker() {
+  if (!findPickerSearch()) return;
+  try { await FBGuard.send({ type: "TRUSTED_CLICK", payload: { pressEscape: true } }); } catch (_) {}
+  if (await waitFor(() => !findPickerSearch(), 2500, 150)) return;
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", keyCode: 27, bubbles: true }));
+  await waitFor(() => !findPickerSearch(), 2500, 150);
+}
+
+// PHA 1: upload TỪNG ảnh vào thư viện Flow (trong bảng thành phần), chờ ảnh hiện ra & tải xong rồi mới sang ảnh kế.
+// PHA 2: mở lại bảng, với TỪNG ảnh: chọn ảnh -> "Thêm vào câu lệnh" -> xác nhận ảnh vào ô nhập.
+// Số ảnh mà prompt nhắc tới ("ảnh 1", "ảnh 1 và 2", "hình số 2", "image 3"...). Không nhắc -> dùng tất cả.
+function pickRefIndices(prompt, n) {
+  const all = Array.from({ length: n }, (_, i) => i);
+  const found = new Set();
+  const re = /(?:ảnh|hình|image|img|picture|photo)s?\s*(?:số|so|no\.?|#)?\s*(\d+(?:\s*(?:,|và|va|&|and|\+|\/)\s*\d+)*)(?!\s*(?:bạn|bé|em|người|nhân vật|con|chú|cô|anh|chị|cậu|đứa|trẻ|học sinh|cái|chiếc|mẫu|kiểu|phiên bản|lần|giây|phút|bức|tấm|ảnh|hình))/gi;
+  let m;
+  while ((m = re.exec(prompt || ""))) {
+    (m[1].match(/\d+/g) || []).forEach((d) => { const k = parseInt(d, 10) - 1; if (k >= 0 && k < n) found.add(k); });
+  }
+  return found.size ? [...found].sort((a, b) => a - b) : all;
+}
+
+// opts.lib: bộ nhớ dùng chung cho cả hàng đợi (upload 1 lần, các prompt sau dùng lại ảnh đã có trong thư viện)
+// opts.needed: các chỉ số ảnh (0-based) mà prompt này cần đính
+async function attachReferenceImages(dataUrls, composerBox, inputEl, opts = {}) {
+  const tag = "flow_" + Date.now().toString(36);
+  const lib = opts.lib || {};
+  const reuse = !!(lib.stems && lib.url === location.href && lib.n === dataUrls.length);
+  const stems = reuse ? lib.stems : [];
+  const uploaded = reuse ? lib.uploaded : [];
+  const needed = opts.needed || dataUrls.map((_, i) => i);
+  if (reuse) console.log("[Flow Bridge] Dùng lại ảnh đã upload trong thư viện, không upload lại");
+  else dataUrls.forEach((_, i) => reportRef(i, "pending"));
+
+  // ── PHA 1: upload (bỏ qua nếu đã upload cho hàng đợi này) ──
+  for (let i = 0; !reuse && i < dataUrls.length; i++) {
+    if (monitor.isStopped) return 0;
+    const ext = (dataUrls[i].match(/data:image\/(\w+)/) || [])[1] || "png";
+    const name = `${tag}_${String(i + 1).padStart(2, "0")}.${ext}`;
+    const stem = name.replace(/\.\w+$/, "").toLowerCase();
+    stems.push(stem);
+    reportRef(i, "uploading");
+    composerBox = Flow.findComposerBox() || composerBox;
+    if (!(await openPicker(composerBox))) { reportRef(i, "failed", "Không mở được bảng thành phần (nút +)"); continue; }
+    await sleep(800);
+    const dt = new DataTransfer(); dt.items.add(dataUrlToFile(dataUrls[i], name));
+    const how = await uploadInsidePicker(null, dt);
+    console.log(`[Flow Bridge] PHA 1 — ảnh ${i + 1}: upload trong bảng qua`, how);
+    if (!how) { reportRef(i, "failed", "Không upload được trong bảng thành phần"); await closePicker(); continue; }
+    const row = await waitFor(() => pickerRows(stem)[0], 30000, 300);
+    if (!row) { reportRef(i, "failed", "Upload xong nhưng ảnh không hiện trong bảng thành phần"); await closePicker(); continue; }
+    // chờ ảnh tải xong: hết % / hết vòng quay và nút "Thêm vào câu lệnh" (khi chọn dòng) bật
+    await trustedClick(pickerRows(stem)[0] || row);
+    const ready = await waitFor(() => {
+      const b = findAddToPromptButton();
+      return b && !b.disabled && b.getAttribute("aria-disabled") !== "true" && !hasProgressPercent() ? b : null;
+    }, 90000, 400);
+    console.log(`[Flow Bridge] PHA 1 — ảnh ${i + 1}: ${ready ? "đã tải xong, nằm trong thư viện" : "CHƯA sẵn sàng"}`);
+    uploaded[i] = !!ready;
+    if (!ready) reportRef(i, "failed", "Ảnh chưa tải xong (nút 'Thêm vào câu lệnh' không bật)");
+    await closePicker();
+    await sleep(700);
+  }
+
+  if (!reuse) { lib.stems = stems; lib.uploaded = uploaded; lib.url = location.href; lib.n = dataUrls.length; }
+
+  // ── PHA 2: thêm từng ảnh cần dùng vào câu lệnh ──
+  let picked = 0;
+  console.log("[Flow Bridge] Prompt này dùng ảnh số:", needed.map((k) => k + 1).join(", "));
+  for (const i of needed) {
+    if (monitor.isStopped) return picked;
+    if (!uploaded[i]) continue;
+    composerBox = Flow.findComposerBox() || composerBox;
+    const cnt0 = countComposerImages(composerBox);
+    if (!(await openPicker(composerBox))) { reportRef(i, "failed", "Không mở lại được bảng thành phần"); continue; }
+    await sleep(800);
+    // gõ tên ảnh vào ô tìm kiếm để lọc đúng ảnh
+    const sbox = findPickerSearch();
+    if (sbox) {
+      sbox.focus();
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(sbox, stems[i]);
+      sbox.dispatchEvent(new Event("input", { bubbles: true }));
+      await sleep(1200);
+    }
+    const row = await waitFor(() => pickerRows(stems[i])[0], 8000, 300);
+    if (!row) { reportRef(i, "failed", "Không thấy ảnh khi mở lại bảng"); await closePicker(); continue; }
+    console.log(`[Flow Bridge] PHA 2 — chọn ảnh ${i + 1}:`, (row.textContent || "").trim().slice(0, 60));
+    await trustedClick(row);
+    const grew = () => countComposerImages(Flow.findComposerBox() || composerBox) > cnt0;
+    // Có bản Flow thêm ảnh ngay khi chọn dòng; có bản cần bấm "Thêm vào câu lệnh" -> chấp nhận cả hai
+    const addBtn = await waitFor(() => { if (grew()) return "grew"; const b = findAddToPromptButton(); return b && !b.disabled ? b : null; }, 8000, 300);
+    if (!addBtn) { reportRef(i, "failed", "Không thấy nút 'Thêm vào câu lệnh' và ảnh chưa vào ô nhập"); await closePicker(); continue; }
+    if (addBtn !== "grew") await trustedClick(addBtn);
+    let ok = await waitFor(grew, 5000);
+    if (!ok) {
+      const again = findAddToPromptButton();
+      if (again) { console.warn("[Flow Bridge] Chưa thấy ảnh vào ô nhập, bấm lại 'Thêm vào câu lệnh'"); await trustedClick(again); ok = await waitFor(grew, 5000); }
+    }
+    console.log(`[Flow Bridge] PHA 2 — ảnh ${i + 1}: ô nhập ${cnt0} -> ${countComposerImages(Flow.findComposerBox() || composerBox)} ảnh`);
+    if (ok) { picked++; reportRef(i, "done"); } else reportRef(i, "failed", "Đã bấm 'Thêm vào câu lệnh' nhưng ảnh chưa vào ô nhập");
+    await closePicker();
+    await sleep(900);
+  }
+  const actual = countComposerImages(Flow.findComposerBox() || composerBox);
+  console.log(`[Flow Bridge] Đã đính ${picked}/${needed.length} ảnh (ô nhập đếm ${actual})`);
+  if (actual >= needed.length) needed.forEach((k) => reportRef(k, "done"));
+  await sleep(800);
+  return Math.min(needed.length, Math.max(picked, actual));
+}
+
+// Lệnh từ web Studio: lưu ảnh mới tạo lên Supabase, chờ upload xong, trả về link ảnh Supabase (có chữ ký, hiệu lực 7 ngày)
+async function webResultViaSupabase(waitResult, jobId, meta) {
+  const flowFallback = (note) => ({ ok: true, imageUrl: waitResult.urls[0], imageUrls: waitResult.urls, source: "flow", warning: note });
+  try {
+    const st = await cloudMsg("CLOUD_STATUS").catch(() => null);
+    if (!st || !st.ok || !st.configured || !st.signedIn) return flowFallback("Chưa cấu hình/đăng nhập Supabase trong extension — trả ảnh trực tiếp từ Flow");
+    const ex = await extractOriginalImage(waitResult.imgs[0]);
+    const r = await cloudMsg("CLOUD_ENQUEUE", { jobId, meta: { ...meta, index: 0 }, base64: ex.base64, width: ex.width, height: ex.height, source: ex.source });
+    if (!r || !r.ok) throw new Error(`${r && r.code}: ${r && r.error}`);
+    await cloudMsg("CLOUD_FINISH_JOB", { jobId, expected: 1 }).catch(() => null);
+    // chờ hàng đợi upload xong (tối đa 150 giây)
+    let item = null;
+    const t0 = Date.now();
+    while (Date.now() - t0 < 150000) {
+      const q = await cloudMsg("CLOUD_QUEUE").catch(() => null);
+      item = q && q.ok && (q.queue || []).find((x) => x.id === r.id);
+      if (item && item.status === "done") break;
+      if (item && item.status === "failed") throw new Error("Upload Supabase thất bại: " + (item.error || "không rõ"));
+      await sleep(1500);
+    }
+    if (!item || item.status !== "done" || !item.storagePath) throw new Error("Quá thời gian chờ upload Supabase");
+    const signed = await cloudMsg("CLOUD_SIGN_URLS", { paths: [item.storagePath], expiresIn: 604800 });
+    const url = signed && signed.ok && signed.urls && signed.urls[item.storagePath];
+    if (!url) throw new Error("Không tạo được link ảnh Supabase");
+    return { ok: true, imageUrl: url, imageUrls: [url], source: "supabase", storagePath: item.storagePath };
+  } catch (e) {
+    console.warn("[Flow Bridge][Web] Lưu/lấy ảnh Supabase lỗi:", e.message);
+    return flowFallback("Lưu Supabase lỗi (" + e.message + ") — trả ảnh trực tiếp từ Flow");
+  }
+}
+
+// Lượt chạy do web Studio yêu cầu: báo kết quả (thành công/thất bại) về background để chuyển về trang web
+function reportToWeb(payload, data) {
+  if (!payload || !payload._webReq) return;
+  try { chrome.runtime.sendMessage({ type: "WEB_GEN_DONE", payload: { reqId: payload._webReq, ...data } }); } catch (_) {}
+}
 
 async function runFlowGeneration(payload) {
   const { prompts = [], aspectRatio = "9:16", batchCount = 1, model = "", autoDownload = true } = payload;
@@ -1067,9 +1411,12 @@ async function runFlowGeneration(payload) {
 
   if (flowRunning) {
     console.warn("[Flow Bridge] Đang có tác vụ chạy, bỏ qua yêu cầu mới");
+    reportToWeb(payload, { ok: false, code: "BUSY", message: "Extension đang bận với một tác vụ khác, hãy thử lại sau" });
     return;
   }
   flowRunning = true;
+  lastRunOk = false;
+  FBGuard.show();
 
   showTopNoticeBanner();
   monitor.show();
@@ -1142,6 +1489,19 @@ async function runFlowGeneration(payload) {
     console.log("[Flow Bridge][Bước 3] Tìm thấy ô prompt:", inputEl.tagName, inputEl.className);
     inputEl.focus?.();
 
+    // ── Ảnh tham chiếu (tối đa 3): đính vào Flow để giữ nhất quán nhân vật/phong cách/bối cảnh ──
+    const refs = (payload.referenceImages || []).slice(0, 3);
+    let refsPicked = 0;
+    // Chỉ khi chạy hàng đợi nhiều prompt (Import .txt / Multi-Prompt) mới chọn ảnh theo số nhắc trong prompt; prompt đơn dùng tất cả ảnh như bình thường
+    const refNeeded = payload._refLib ? pickRefIndices(prompt, refs.length) : refs.map((_, k) => k);
+    if (refs.length) {
+      monitor.setState(GEN_STATE.PREPARING_INPUT, `Đang đính ảnh tham chiếu số ${refNeeded.map((k) => k + 1).join(", ")}...`);
+      refsPicked = await attachReferenceImages(refs, composerBox, inputEl, { lib: payload._refLib, needed: refNeeded });
+      composerBox = Flow.findComposerBox() || composerBox;
+      inputEl = Flow.findInput(composerBox) || inputEl;
+      inputEl.focus?.();
+    }
+
     // Điền prompt đa chiến lược (hỗ trợ cả textarea, input và contenteditable)
     const promptNorm = normalizeText(prompt);
     let inserted = false;
@@ -1160,16 +1520,27 @@ async function runFlowGeneration(payload) {
       inserted = true;
     } else {
       // ContentEditable hoặc div
+      // Chỉ xóa khi ô còn chữ cũ; xóa khi ô trống có thể xóa luôn ảnh tham chiếu vừa đính
       try {
-        const sel = window.getSelection();
-        if (sel) {
+        if ((inputEl.innerText || inputEl.textContent || "").trim()) {
+          const sel = window.getSelection();
+          if (sel) {
+            const range = document.createRange();
+            range.selectNodeContents(inputEl);
+            sel.removeAllRanges();
+            sel.addRange(range);
+          }
+          document.execCommand("selectAll", false, null);
+          document.execCommand("delete", false, null);
+        } else {
+          // đặt con trỏ cuối ô, không chọn gì
+          const sel = window.getSelection();
           const range = document.createRange();
           range.selectNodeContents(inputEl);
+          range.collapse(false);
           sel.removeAllRanges();
           sel.addRange(range);
         }
-        document.execCommand("selectAll", false, null);
-        document.execCommand("delete", false, null);
       } catch (_) {}
 
       const execOk = document.execCommand("insertText", false, prompt);
@@ -1195,6 +1566,12 @@ async function runFlowGeneration(payload) {
     const squash = (t) => t.replace(/\s+/g, "");
     if (!squash(readText).includes(squash(promptNorm))) {
       throw new Error("Prompt chưa được điền vào ô nhập của Flow (xác minh thất bại), đã dừng trước khi Generate");
+    }
+
+    if (refs.length) {
+      const nAtt = countComposerImages(Flow.findComposerBox() || composerBox);
+      console.log(`[Flow Bridge] Trước khi Generate: ${nAtt}/${refNeeded.length} ảnh tham chiếu còn trong ô nhập`);
+      if (Math.max(refsPicked, nAtt) < refNeeded.length) throw new Error(`Chỉ đính được ${refsPicked}/${refNeeded.length} ảnh tham chiếu (ô nhập đếm ${nAtt}) — dừng trước khi Generate để không tạo sai ảnh`);
     }
 
     // ── BƯỚC 5: Cuối cùng chọn nút gen ảnh (Mũi tên sang phải màu trắng) ──
@@ -1273,11 +1650,27 @@ async function runFlowGeneration(payload) {
       }
     }
 
+    // Dự phòng: bấm Enter thật (isTrusted) vào ô nhập — không phụ thuộc toạ độ nút (bố cục đổi khi có ảnh đính kèm)
+    if (!genResult.confirmed && inputEl && inputEl.isConnected) {
+      console.warn("[Flow Bridge] Vẫn chưa xác nhận, thử Enter thật trong ô nhập...");
+      try {
+        const ir = inputEl.getBoundingClientRect();
+        // đặt con trỏ vào cuối chữ bằng chuột thật rồi nhấn Enter thật
+        await FBGuard.send({ type: "TRUSTED_CLICK", payload: { x: Math.round(ir.left + Math.min(ir.width - 10, 200)), y: Math.round(ir.bottom - 14) } });
+        inputEl.focus?.();
+        await sleep(200);
+        await FBGuard.send({ type: "TRUSTED_CLICK", payload: { pressEnter: true } });
+      } catch (e) { console.warn("[Flow Bridge] Enter thật lỗi:", e); }
+      await sleep(400);
+      genResult = await verifyGenerationStarted(genBaseline, 6000);
+    }
+
     if (!genResult.confirmed) {
       // Generation may have started but we couldn't detect it
       // Do NOT mark as completed, report as unconfirmed
       console.warn("[Flow Bridge] " + GEN_STATE.UNCONFIRMED, genResult);
       monitor.setState(GEN_STATE.UNCONFIRMED, "Chưa xác nhận bắt đầu tạo");
+      reportToWeb(payload, { ok: false, code: "GENERATE_START_UNCONFIRMED", message: "Chưa xác nhận Google Flow đã bắt đầu tạo ảnh" });
       monitor.finishTask(monitor.currentTask, "failed", { note: "chưa xác nhận bắt đầu" });
       showTopNoticeBanner("⚠ Flow Bridge: Chưa xác nhận Google Flow bắt đầu tạo. Vui lòng kiểm tra trang Flow.");
       return;
@@ -1296,27 +1689,35 @@ async function runFlowGeneration(payload) {
     hideTopNoticeBanner();
 
     if (waitResult.status === "stopped") {
+      reportToWeb(payload, { ok: false, code: "STOPPED", message: "Đã dừng" });
       return; // monitor.stop() đã cập nhật thẻ
     }
 
     if (waitResult.status === "done") {
+      lastRunOk = true;
       monitor.setState(GEN_STATE.COMPLETED, `Hoàn tất · ${waitResult.urls.length} ảnh`);
       monitor.finishTask(monitor.currentTask, "done", { results: waitResult.urls });
       const cloudState = await cloudMsg("CLOUD_STATUS").catch(() => null);
-      if (cloudState && cloudState.ok && cloudState.enabled) {
+      if (payload._webReq) {
+        // Lệnh từ web Studio: lưu ảnh lên Supabase rồi trả ảnh Supabase về cho web (không có Supabase thì trả ảnh Flow)
+        monitor.setState(GEN_STATE.COMPLETED, "Đang lưu ảnh lên Supabase để trả về web...");
+        reportToWeb(payload, await webResultViaSupabase(waitResult, jobId, { platform: "Flow", prompt, model, aspectRatio, expected: 1 }));
+      } else if (cloudState && cloudState.ok && cloudState.enabled) {
         // Auto Save Cloud bật: chỉ lưu lên Supabase, không tự tải về máy
         await saveImagesToCloud(monitor.currentTask, jobId, waitResult.imgs, {
-          prompt, model, aspectRatio, expected: batchCount
+          platform: "Flow", prompt, model, aspectRatio, expected: batchCount
         });
       } else if (autoDownload) {
-        waitResult.urls.forEach((u, i) => downloadResult(u, `Flow_${Date.now()}_${i + 1}.png`));
+        waitResult.urls.forEach((u, i) => downloadResult(u, FBGuard.fileName(prompt, i, waitResult.urls.length)));
       }
     } else if (waitResult.status === "error") {
       monitor.setState(GEN_STATE.FAILED, "Flow báo lỗi");
+      reportToWeb(payload, { ok: false, code: "GENERATE_FAILED", message: waitResult.message || "Google Flow báo lỗi khi tạo ảnh" });
       monitor.finishTask(monitor.currentTask, "failed", { note: waitResult.message });
     } else {
       // Hết thời gian: KHÔNG tuyên bố hoàn tất
       monitor.setState(GEN_STATE.UNCONFIRMED, "Quá thời gian chờ");
+      reportToWeb(payload, { ok: false, code: "TIMEOUT", message: "Quá thời gian chờ ảnh từ Google Flow" });
       monitor.finishTask(monitor.currentTask, "timeout");
     }
 
@@ -1324,12 +1725,36 @@ async function runFlowGeneration(payload) {
     console.error("[Flow Bridge] Generation error:", err);
     const cancelled = String(err.message).startsWith("USER_CANCELLED");
     monitor.setState(GEN_STATE.FAILED, "Lỗi: " + err.message);
+    reportToWeb(payload, { ok: false, code: /nút tạo|generate/i.test(err.message) ? "GENERATE_BUTTON_NOT_FOUND" : (/prompt|soạn thảo|nhập/i.test(err.message) ? "PREPARATION_FAILED" : "FAILED"), message: err.message });
     monitor.finishTask(monitor.currentTask, cancelled ? "stopped" : "failed", { note: String(err.message).slice(0, 60) });
     hideTopNoticeBanner();
     if (!cancelled) alert("Flow Bridge: " + err.message);
   } finally {
     flowRunning = false;
     monitor.stopTimer();
+    FBGuard.hide();
+  }
+}
+
+// Nhiều prompt (Multi-Prompt / Import .txt): chạy LẦN LƯỢT, mỗi prompt = 1 lần tạo ảnh riêng.
+// Dừng cả hàng đợi nếu một prompt lỗi hoặc người dùng bấm dừng.
+async function runPromptQueue(payload) {
+  const prompts = (payload.prompts || []).filter((p) => p && p.trim());
+  if (prompts.length <= 1) return runFlowGeneration(payload);
+  if (flowRunning) { console.warn("[Flow Bridge] Đang có tác vụ chạy, bỏ qua hàng đợi mới"); return; }
+  const refLib = {}; // chia sẻ ảnh tham chiếu đã upload giữa các prompt
+  FBGuard.show();
+  try {
+  for (let i = 0; i < prompts.length; i++) {
+    console.log(`[Flow Bridge] === Hàng đợi: prompt ${i + 1}/${prompts.length} ===`);
+    await runFlowGeneration({ ...payload, prompts: [prompts[i]], _refLib: refLib });
+    if (monitor.isStopped) { console.log("[Flow Bridge] Hàng đợi dừng do người dùng"); return; }
+    if (!lastRunOk) { console.warn(`[Flow Bridge] Prompt ${i + 1} chưa tạo xong, dừng hàng đợi`); return; }
+    if (i < prompts.length - 1) await sleep(2500);
+  }
+  console.log("[Flow Bridge] === Hàng đợi hoàn tất ===");
+  } finally {
+    FBGuard.hide();
   }
 }
 
@@ -1338,7 +1763,7 @@ async function runFlowGeneration(payload) {
 // ════════════════════════════════════════════════════════════
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "RUN_AUTOMATION") {
-    runFlowGeneration(message.payload);
+    runPromptQueue(message.payload);
     sendResponse({ success: true });
     return true;
   }

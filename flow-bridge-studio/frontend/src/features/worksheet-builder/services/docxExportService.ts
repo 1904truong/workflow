@@ -1,3 +1,4 @@
+import { passageParagraphs } from './gap-filling/gapFillingCore';
 import type { Worksheet } from '../types';
 
 /**
@@ -158,24 +159,175 @@ export function exportWorksheetToDocx(worksheet: Worksheet, mode: 'student' | 't
         ${ex.passage ? `<div class="passage">${escapeXml(ex.passage).replace(/\n/g, '<br/>')}</div>` : ''}
 
         <!-- Questions -->
-        <div class="questions-list">
-          ${ex.questions.map((q, qIdx) => `
-            <div class="question">
-              <span class="question-num">${q.number || qIdx + 1}.</span> ${escapeXml(q.text)}
-              ${isTeacher && q.correctAnswer ? `
-                <span class="answer-key-badge">Key: [${escapeXml(String(q.correctAnswer))}]</span>
-              ` : ''}
-
-              ${q.options && q.options.length > 0 ? `
-                <div class="options">
-                  ${q.options.map((opt) => `
-                    <div><strong>${escapeXml(opt.label)}.</strong> ${escapeXml(opt.text)} ${isTeacher && q.correctAnswer === opt.label ? '✓' : ''}</div>
+        ${ex.cloze ? `
+          <table style="width: 100%; border-collapse: collapse; margin-top: 8pt; margin-bottom: 8pt;">
+            ${ex.questions.map((q, qIdx) => `
+              <tr>
+                <td style="border: none; width: 32pt; font-weight: bold; padding: 3pt 0; vertical-align: middle;">
+                  ${q.number || qIdx + 1}.
+                </td>
+                <td style="border: none; padding: 3pt 0; vertical-align: middle;">
+                  ${(q.options || []).map(opt => `
+                    <span style="display: inline-block; min-width: 120pt; margin-right: 16pt;">
+                      <strong>${escapeXml(opt.label)}.</strong> ${escapeXml(opt.text)}
+                      ${isTeacher && (q.correctAnswer === opt.label || q.correctAnswer === opt.label.toUpperCase()) ? ' <span style="color: #2563eb; font-weight: bold;">✓</span>' : ''}
+                    </span>
                   `).join('')}
-                </div>
-              ` : ''}
-            </div>
-          `).join('')}
-        </div>
+                </td>
+              </tr>
+            `).join('')}
+          </table>
+        ` : ex.listeningGapFill ? `
+          <div style="margin-top: 8pt; margin-bottom: 8pt;">
+            ${isTeacher ? `
+              <div style="background-color: #eff6ff; border: 1pt solid #bfdbfe; padding: 6pt 10pt; margin-top: 8pt;">
+                <strong style="color: #1e40af; font-size: 10pt;">ANSWER KEY:</strong>
+                <table style="width: 100%; border: none; margin-top: 4pt;">
+                  <tr>
+                    ${ex.listeningGapFill.blanks.slice(0, 6).map(b => `
+                      <td style="border: none; padding: 2pt 4pt; font-size: 9.5pt;">
+                        <strong>(${b.label})</strong> ${escapeXml(b.correctAnswer || '—')}
+                      </td>
+                    `).join('')}
+                  </tr>
+                  ${ex.listeningGapFill.blanks.length > 6 ? `
+                    <tr>
+                      ${ex.listeningGapFill.blanks.slice(6).map(b => `
+                        <td style="border: none; padding: 2pt 4pt; font-size: 9.5pt;">
+                          <strong>(${b.label})</strong> ${escapeXml(b.correctAnswer || '—')}
+                        </td>
+                      `).join('')}
+                    </tr>
+                  ` : ''}
+                </table>
+              </div>
+            ` : ''}
+          </div>
+        ` : ex.grammarMcq ? `
+          <div style="margin-top: 8pt; margin-bottom: 8pt;">
+            ${ex.grammarMcq.questions.map((q, i) => `<p style="margin: 0 0 2pt 0;"><strong>${i + 1}.</strong> ${escapeXml(q.text)}</p>
+              <p style="margin: 0 0 8pt 14pt;">${q.options.map((o, oi) => `<strong>${String.fromCharCode(97 + oi)}.</strong> ${escapeXml(o.text)}`).join('&#160;&#160;&#160;&#160;')}</p>`).join('')}
+          </div>
+        ` : ex.listeningTable ? `
+          <div style="margin-top: 8pt; margin-bottom: 8pt;">
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>${ex.listeningTable.table.columns.map((c) => `<th style="border: 0.75pt solid #3b6fd4; padding: 4pt;">${escapeXml(c)}</th>`).join('')}</tr>
+              ${ex.listeningTable.table.rows.map((r) => `<tr>${r.cells.map((c, ci) => `<td style="border: 0.75pt solid #3b6fd4; padding: 4pt; vertical-align: top;">${ci === 0 ? '<strong>' : ''}${escapeXml(c).replace(/\n/g, '<br/>')}${ci === 0 ? '</strong>' : ''}</td>`).join('')}</tr>`).join('')}
+            </table>
+            <ol style="margin-top: 8pt;">${ex.listeningTable.questions.map((q) => `<li style="margin-bottom: 6pt;">${escapeXml(q.text)} ____________________</li>`).join('')}</ol>
+          </div>
+        ` : ex.listeningTrueFalse ? `
+          <div style="margin-top: 8pt; margin-bottom: 8pt;">
+            <table style="width: 100%; border-collapse: collapse;">
+              ${ex.listeningTrueFalse.statements.map((st, i) => `<tr>
+                <td style="width: 6%; padding: 5pt 4pt;"><strong>${i + 1}.</strong></td>
+                <td style="width: 70%; padding: 5pt 4pt;">${escapeXml(st.text)}</td>
+                <td style="width: 24%; padding: 5pt 4pt; border-bottom: 0.75pt solid #444;">&#160;</td>
+              </tr>`).join('')}
+            </table>
+          </div>
+        ` : ex.matchingHeadings ? `
+          <div style="margin-top: 8pt; margin-bottom: 8pt;">
+            ${ex.matchingHeadings.passageTitle ? `<p style="text-align: center;"><strong>${escapeXml(ex.matchingHeadings.passageTitle)}</strong></p>` : ''}
+            ${ex.matchingHeadings.paragraphs.map((p) => `<p style="text-align: justify; text-indent: 22pt;">${escapeXml(p.text)}</p>`).join('')}
+            <table style="width: 100%; border-collapse: collapse; margin-top: 8pt;">
+              ${Array.from({ length: Math.max(ex.matchingHeadings.paragraphs.length, ex.matchingHeadings.ideas.length) }).map((_, i) => {
+                const idea = ex.matchingHeadings?.ideas[i];
+                return `<tr>
+                  <td style="width: 30%; padding: 3pt 4pt;">${ex.matchingHeadings?.paragraphs[i] ? `<strong>${i + 1}.</strong> Paragraph ${i + 1}` : ''}</td>
+                  <td style="width: 70%; padding: 3pt 4pt;">${idea ? `<strong>${String.fromCharCode(97 + (i % 26))}.</strong> ${escapeXml(idea.text)}` : ''}</td>
+                </tr>`;
+              }).join('')}
+            </table>
+          </div>
+        ` : ex.gapFilling ? `
+          <div style="margin-top: 8pt; margin-bottom: 8pt;">
+            ${ex.gapFilling.words.length ? `<p style="text-align: center; border: 1pt solid #111; padding: 4pt;"><strong>${ex.gapFilling.words.map((w) => escapeXml(w.text)).join(' &#160;&#160;&#160; ')}</strong></p>` : ''}
+            ${passageParagraphs(ex.gapFilling.passage).map((para) => `<p style="text-align: justify; line-height: 200%;">${escapeXml(para.replace(/_{3,}/g, '____________'))}</p>`).join('')}
+          </div>
+        ` : ex.tfng ? `
+          <div style="margin-top: 8pt; margin-bottom: 8pt;">
+            <table style="width: 100%; border-collapse: collapse;">
+              ${ex.tfng.statements.map((st, i) => `<tr>
+                <td style="width: 6%; padding: 5pt 4pt;"><strong>${i + 1}.</strong></td>
+                <td style="width: 74%; padding: 5pt 4pt;">${escapeXml(st.text)}</td>
+                <td style="width: 20%; padding: 5pt 4pt;"><strong>T &#160;&#160; F &#160;&#160; NG</strong></td>
+              </tr>`).join('')}
+            </table>
+          </div>
+        ` : ex.matchingVocabulary ? `
+          <div style="margin-top: 8pt; margin-bottom: 8pt;">
+            <table style="width: 100%; border-collapse: collapse;">
+              ${Array.from({ length: Math.max(ex.matchingVocabulary.words.length, ex.matchingVocabulary.definitions.length) }).map((_, i) => {
+                const w = ex.matchingVocabulary?.words[i];
+                const d = ex.matchingVocabulary?.definitions[i];
+                return `<tr>
+                  <td style="width: 45%; padding: 5pt 4pt;">${w ? `<strong>${i + 1}.</strong> ${escapeXml(w.text)}` : ''}</td>
+                  <td style="width: 8%; padding: 5pt 4pt;">${w ? '[ &#160;&#160;]' : ''}</td>
+                  <td style="width: 47%; padding: 5pt 4pt; border-left: 0.5pt solid #999;">${d ? `<strong>${String.fromCharCode(97 + (i % 26))}.</strong> ${escapeXml(d.text)}` : ''}</td>
+                </tr>`;
+              }).join('')}
+            </table>
+          </div>
+        ` : ex.matchingPictures ? `
+          <div style="margin-top: 8pt; margin-bottom: 8pt;">
+            <table style="width: 100%; border-collapse: collapse; margin-top: 6pt;">
+              ${ex.matchingPictures.paragraphs.map(p => {
+                const map = ex.matchingPictures?.answerMapping.find(m => m.paragraphId === p.id);
+                const targetImg = ex.matchingPictures?.images.find(img => img.id === map?.imageId);
+                const answerLetter = targetImg ? targetImg.label : '';
+                return `
+                  <tr>
+                    <td style="border: 1pt solid #e2e8f0; padding: 6pt; width: 80%;">
+                      <strong>Paragraph ${p.order}:</strong> ${escapeXml(p.text)}
+                    </td>
+                    <td style="border: 1pt solid #e2e8f0; padding: 6pt; width: 20%; text-align: center; font-weight: bold; font-size: 11pt; color: #1d4ed8;">
+                      [ ${isTeacher ? escapeXml(answerLetter) : '&nbsp;&nbsp;&nbsp;'} ]
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </table>
+
+            ${isTeacher ? `
+              <div style="background-color: #eff6ff; border: 1pt solid #bfdbfe; padding: 6pt 10pt; margin-top: 8pt;">
+                <strong style="color: #1e40af; font-size: 10pt;">TEACHER ANSWER KEY:</strong>
+                <table style="width: 100%; border: none; margin-top: 4pt;">
+                  <tr>
+                    ${ex.matchingPictures.paragraphs.map(p => {
+                      const map = ex.matchingPictures?.answerMapping.find(m => m.paragraphId === p.id);
+                      const targetImg = ex.matchingPictures?.images.find(img => img.id === map?.imageId);
+                      return `
+                        <td style="border: none; padding: 2pt 4pt; font-size: 9.5pt;">
+                          <strong>P${p.order}</strong> &rarr; Image <strong>${targetImg?.label || '—'}</strong> (${escapeXml(targetImg?.caption || '')})
+                        </td>
+                      `;
+                    }).join('')}
+                  </tr>
+                </table>
+              </div>
+            ` : ''}
+          </div>
+        ` : `
+          <div class="questions-list">
+            ${ex.questions.map((q, qIdx) => `
+              <div class="question">
+                <span class="question-num">${q.number || qIdx + 1}.</span> ${escapeXml(q.text)}
+                ${isTeacher && q.correctAnswer ? `
+                  <span class="answer-key-badge">Key: [${escapeXml(String(q.correctAnswer))}]</span>
+                ` : ''}
+
+                ${q.options && q.options.length > 0 ? `
+                  <div class="options">
+                    ${q.options.map((opt) => `
+                      <div><strong>${escapeXml(opt.label)}.</strong> ${escapeXml(opt.text)} ${isTeacher && q.correctAnswer === opt.label ? '✓' : ''}</div>
+                    `).join('')}
+                  </div>
+                ` : ''}
+              </div>
+            `).join('')}
+          </div>
+        `}
       </div>
     `).join('')}
 

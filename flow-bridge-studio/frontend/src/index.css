@@ -1,9 +1,18 @@
 @import "tailwindcss";
 
+/* Font của giao diện web: Geist (chữ) + Geist Mono (mã), cỡ 15px, giãn dòng 1.75 */
+@theme {
+  --font-sans: 'Geist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
 body {
   background-color: #F9FAFB;
   color: #111827;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* Custom scrollbar for a modern look */
@@ -19,4 +28,23 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #9CA3AF;
+}
+
+code, pre, kbd, samp {
+  font-family: var(--font-mono);
+}
+
+/* Ô chữ đang sửa trực tiếp trên trang xem trước */
+.edit-field {
+  cursor: text;
+  border-radius: 2px;
+  outline: 1px dashed transparent;
+  outline-offset: 2px;
+  min-width: 1ch;
+}
+.edit-field:hover { outline-color: #a78bfa; background: rgba(167, 139, 250, 0.08); }
+.edit-field:focus { outline: 2px solid #7c3aed; background: rgba(167, 139, 250, 0.12); }
+.edit-field:empty::before { content: attr(data-placeholder); color: #aaa; }
+@media print {
+  .edit-field { outline: none !important; background: none !important; }
 }

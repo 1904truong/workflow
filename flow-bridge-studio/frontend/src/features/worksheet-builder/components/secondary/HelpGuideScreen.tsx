@@ -50,7 +50,7 @@ export const HelpGuideScreen: React.FC = () => {
               <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-bold text-[10px] flex items-center justify-center mb-2">4</span>
               <h3 className="font-bold text-slate-900 mb-1">Preview & Export</h3>
               <p className="text-slate-500 text-[11px] leading-relaxed">
-                Download printable Student Copy or Teacher Answer Key in PDF and editable DOCX formats.
+                Download the printable worksheet in PDF and editable DOCX formats.
               </p>
             </div>
           </div>

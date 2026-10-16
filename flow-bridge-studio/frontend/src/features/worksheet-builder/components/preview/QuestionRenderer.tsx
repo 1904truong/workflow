@@ -1,5 +1,6 @@
 import type { QuestionItem, ExerciseType } from '../../types';
 import { PRINT_TOKENS } from '../../tokens/printTokens';
+import { Editable, useEdit } from './EditContext';
 
 interface QuestionRendererProps {
   question: QuestionItem;
@@ -8,12 +9,13 @@ interface QuestionRendererProps {
   isTeacherKey?: boolean;
 }
 
-export const QuestionRenderer: React.FC<QuestionRendererProps> = ({
+const QuestionBody: React.FC<QuestionRendererProps> = ({
   question,
   exerciseType,
   index,
   isTeacherKey = false,
 }) => {
+  const edit = useEdit();
   const qNum = question.number ?? index + 1;
 
   // Multiple Choice Questions
@@ -27,7 +29,7 @@ export const QuestionRenderer: React.FC<QuestionRendererProps> = ({
         <div className="flex items-start gap-1.5 leading-[1.35]">
           <span className="font-bold min-w-[20px]">{qNum}.</span>
           <div className="flex-1">
-            <span>{question.text}</span>
+            <Editable value={question.text} onCommit={(v) => edit.setQuestionText(question.id, v)} />
             {isTeacherKey && question.correctAnswer && (
               <span className="ml-2 font-bold text-red-600 text-[10pt]">[ Ans: {question.correctAnswer} ]</span>
             )}
@@ -64,7 +66,7 @@ export const QuestionRenderer: React.FC<QuestionRendererProps> = ({
       <div className="mb-[3mm] text-[11pt] flex items-start justify-between gap-4" style={{ fontFamily: PRINT_TOKENS.typography.fontFamily }}>
         <div className="flex items-start gap-1.5 leading-[1.35] flex-1">
           <span className="font-bold min-w-[20px]">{qNum}.</span>
-          <span>{question.text}</span>
+          <Editable value={question.text} onCommit={(v) => edit.setQuestionText(question.id, v)} />
         </div>
 
         <div className="flex items-center gap-2 shrink-0 text-[10pt] font-semibold text-[#444444]">
@@ -114,7 +116,7 @@ export const QuestionRenderer: React.FC<QuestionRendererProps> = ({
         <div className="flex items-start gap-1.5 leading-[1.35]">
           <span className="font-bold min-w-[20px]">{qNum}.</span>
           <div className="flex-1">
-            <span>{question.text}</span>
+            <Editable value={question.text} onCommit={(v) => edit.setQuestionText(question.id, v)} />
             {isTeacherKey && question.correctAnswer ? (
               <span className="ml-2 font-bold text-red-600 underline">
                 ({question.correctAnswer})
@@ -163,7 +165,7 @@ export const QuestionRenderer: React.FC<QuestionRendererProps> = ({
         <div className="flex items-start gap-1.5 leading-[1.35]">
           <span className="font-bold min-w-[20px]">{qNum}.</span>
           <div className="flex-1">
-            <span>{question.text}</span>
+            <Editable value={question.text} onCommit={(v) => edit.setQuestionText(question.id, v)} />
             {isTeacherKey && question.correctAnswer && (
               <div className="mt-1 text-red-600 font-bold text-[10pt]">
                 Sample Answer: {question.correctAnswer}
@@ -193,11 +195,30 @@ export const QuestionRenderer: React.FC<QuestionRendererProps> = ({
     <div className="mb-[3mm] text-[11pt] flex items-start gap-1.5" style={{ fontFamily: PRINT_TOKENS.typography.fontFamily }}>
       <span className="font-bold min-w-[20px]">{qNum}.</span>
       <div className="flex-1">
-        <span>{question.text}</span>
+        <Editable value={question.text} onCommit={(v) => edit.setQuestionText(question.id, v)} />
         {isTeacherKey && question.correctAnswer && (
           <span className="ml-2 font-bold text-red-600">[ {question.correctAnswer} ]</span>
         )}
       </div>
+    </div>
+  );
+};
+
+/** Bọc câu hỏi: khi đang ở chế độ sửa, rê chuột vào sẽ hiện nút xóa câu */
+export const QuestionRenderer: React.FC<QuestionRendererProps> = (props) => {
+  const edit = useEdit();
+  if (!edit.editing) return <QuestionBody {...props} />;
+  return (
+    <div className="relative group/q">
+      <QuestionBody {...props} />
+      <button
+        type="button"
+        className="no-print absolute -right-1 top-0 hidden group-hover/q:flex items-center justify-center w-5 h-5 rounded-full bg-white border border-rose-300 text-rose-600 text-[11px] leading-none shadow hover:bg-rose-50"
+        title="Xóa câu hỏi này"
+        onClick={() => { if (window.confirm('Xóa câu hỏi này?')) edit.deleteQuestion(props.question.id); }}
+      >
+        ✕
+      </button>
     </div>
   );
 };

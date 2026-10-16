@@ -1,5 +1,7 @@
 import type { LessonFolder, ExportHistoryItem } from '../types';
 import { DEFAULT_SAMPLE_WORKSHEET } from './sampleWorksheets';
+import { createListeningGapFill } from './listening/listeningGapFillCore';
+import { createMatchingPictures } from './matching-pictures/matchingPicturesCore';
 
 const FOLDERS_STORAGE_KEY = 'flow_bridge_folders_v2';
 const ACTIVE_FOLDER_ID_KEY = 'flow_bridge_active_folder_id';
@@ -9,6 +11,64 @@ const EXPORT_HISTORY_KEY = 'flow_bridge_export_history_v1';
  * Initial sample lesson folders for teacher demonstration
  */
 const INITIAL_SAMPLE_FOLDERS: LessonFolder[] = [
+  {
+    id: 'folder_unit_2_london',
+    name: 'Unit 2: London',
+    gradeLevel: 'Level 2',
+    subject: 'English',
+    unitTopic: 'Things to See and Do in London',
+    lessonTitle: 'London Sightseeing & Landmarks',
+    description: 'Listening comprehension and picture matching activities covering famous London attractions, audio QR code, and 6 printable layouts.',
+    estimatedDuration: 45,
+    targetSkills: ['Listening', 'Vocabulary', 'Matching', 'Reading'],
+    schoolName: 'PINTA ENGLISH ACADEMY',
+    teacherName: 'MAI LINH',
+    totalPoints: 17,
+    status: 'ready',
+    printSettings: {
+      ...DEFAULT_SAMPLE_WORKSHEET.printSettings,
+      paperSize: 'A4',
+      branding: {
+        ...DEFAULT_SAMPLE_WORKSHEET.printSettings.branding,
+        enabled: true,
+        docTitle: 'DAILY WORKSHEET',
+        level: '2',
+        worksheetNo: 'WS-Imp-4-1-1',
+        teacherName: 'MAI LINH',
+        teacherPhone: '086 6866 003',
+        showScoreBox: true,
+        showStickers: true,
+      },
+    },
+    exercises: [
+      {
+        id: 'ex_u2_listen_gap_fill',
+        type: 'listening_gap_fill',
+        layoutType: 'template_a',
+        title: 'Exercise 3: LISTEN AND FILL IN THE GAP',
+        instructions: 'Listen to the audio recording and fill in the missing words.',
+        pointsTotal: 12,
+        order: 3,
+        imageSlots: [],
+        questions: [],
+        listeningGapFill: createListeningGapFill(),
+      },
+      {
+        id: 'ex_u2_matching_pictures',
+        type: 'matching_pictures',
+        layoutType: 'template_a',
+        title: 'Exercise 4: MATCH EACH PARAGRAPH OF EXERCISE 3 AND THE APPROPRIATE PICTURE',
+        instructions: 'Match each paragraph of Exercise 3 and the appropriate picture.',
+        pointsTotal: 5,
+        order: 4,
+        imageSlots: [],
+        questions: [],
+        matchingPictures: createMatchingPictures(),
+      },
+    ],
+    createdAt: Date.now() - 3600000,
+    updatedAt: Date.now(),
+  },
   {
     id: 'folder_unit_5_nature',
     name: 'Unit 5: Nature & Environment',
@@ -120,7 +180,20 @@ export class FolderStorageService {
         localStorage.setItem(FOLDERS_STORAGE_KEY, JSON.stringify(INITIAL_SAMPLE_FOLDERS));
         return INITIAL_SAMPLE_FOLDERS;
       }
-      return JSON.parse(data);
+      const folders: LessonFolder[] = JSON.parse(data);
+      const londonSample = INITIAL_SAMPLE_FOLDERS.find((f) => f.id === 'folder_unit_2_london');
+      if (londonSample) {
+        const existingLondon = folders.find((f) => f.id === 'folder_unit_2_london');
+        if (!existingLondon) {
+          folders.unshift(londonSample);
+          localStorage.setItem(FOLDERS_STORAGE_KEY, JSON.stringify(folders));
+        } else if (!existingLondon.exercises.some((e) => e.type === 'matching_pictures')) {
+          existingLondon.exercises = londonSample.exercises;
+          existingLondon.printSettings = londonSample.printSettings;
+          localStorage.setItem(FOLDERS_STORAGE_KEY, JSON.stringify(folders));
+        }
+      }
+      return folders;
     } catch (e) {
       console.error('Failed to load lesson folders from storage', e);
       return INITIAL_SAMPLE_FOLDERS;
