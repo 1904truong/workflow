@@ -94,7 +94,7 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
         <ListeningGapFillRenderer data={exercise.listeningGapFill} exerciseIndex={exerciseIndex + 1} isTeacherKey={isTeacherKey} />
       )}
 
-      {exercise.grammarMcq && <GrammarMcqRenderer data={exercise.grammarMcq} exerciseIndex={exerciseIndex + 1} hideExerciseHeading={true} />}
+      {exercise.grammarMcq && <GrammarMcqRenderer data={exercise.grammarMcq} exerciseIndex={exerciseIndex + 1} />}
 
       {exercise.listeningTable && (
         <ListeningTableRenderer data={{ ...exercise.listeningTable, exerciseNumber: undefined }} exerciseIndex={exerciseIndex + 1} />
