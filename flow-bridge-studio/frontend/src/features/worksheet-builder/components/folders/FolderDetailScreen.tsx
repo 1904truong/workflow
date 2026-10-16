@@ -57,7 +57,7 @@ const AddExerciseMenu: React.FC<{ onPick: (type: ExerciseType) => void }> = ({ o
       {open && (
         <div role="menu" className="absolute right-0 top-full mt-2 w-72 max-h-[26rem] overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl z-30 p-1.5">
           {CATEGORY_ORDER.map((cat) => {
-            const items = Object.values(EXERCISE_REGISTRY).filter((m) => m.category === cat);
+            const items = Object.values(EXERCISE_REGISTRY).filter((m) => !m.hidden && m.category === cat);
             if (items.length === 0) return null;
             return (
               <div key={cat} className="pb-1">
@@ -330,7 +330,8 @@ export const FolderDetailScreen: React.FC<FolderDetailScreenProps> = ({
             /* Ordered Exercise Cards List */
             <div className="space-y-3">
               {folder.exercises.map((exercise, idx) => {
-                const meta = EXERCISE_REGISTRY[exercise.type];
+                // Bài cũ lưu dữ liệu Cloze dưới loại Grammar MC: hiển thị đúng tên dạng Cloze
+                const meta = EXERCISE_REGISTRY[exercise.cloze ? 'grammar_vocab_cloze' : exercise.type];
 
                 return (
                   <div

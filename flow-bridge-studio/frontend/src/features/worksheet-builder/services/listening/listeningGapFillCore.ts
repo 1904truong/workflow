@@ -348,7 +348,100 @@ export const formatBlankLabel = (
   return `(${blank.label.toLowerCase()})`;
 };
 
-// ── Insert Blank at cursor position in a specific paragraph ──
+// ── Sắp xếp và đánh lại thứ tự nhãn các chỗ trống từ trên xuống dưới ──
+export const resequenceListeningBlanks = (data: ListeningGapFillData): ListeningGapFillData => {
+  const isNumbered = data.settings.blankNumbering === 'numbers';
+  const isUpper = data.settings.blankNumbering === 'letters_upper';
+
+  const alphabet = 'abcdefghijklmnopqrstuvwxyz'.split('');
+  const getLabel = (idx: number) => {
+    if (isNumbered) return String(idx + 1);
+    if (idx < 26) return isUpper ? alphabet[idx].toUpperCase() : alphabet[idx];
+    const first = Math.floor(idx / 26) - 1;
+    const second = idx % 26;
+    const s = `${alphabet[first]}${alphabet[second]}`;
+    return isUpper ? s.toUpperCase() : s;
+  };
+
+  const newParas = [...data.paragraphs];
+  const oldBlanks = [...data.blanks];
+  const claimedBlankIds = new Set<string>();
+  const newBlanks: ListeningBlank[] = [];
+  let blankCounter = 0;
+
+  for (let pIdx = 0; pIdx < newParas.length; pIdx++) {
+    const para = newParas[pIdx];
+    // Match any blank marker: (__NEW__) ________ or (a) ________ or (1) ________
+    const regex = /\(([A-Za-z0-9_]+)\)\s*(_{2,})/g;
+    const matches: { fullMatch: string; oldLabel: string; underline: string; index: number }[] = [];
+    let m: RegExpExecArray | null;
+    while ((m = regex.exec(para.text)) !== null) {
+      matches.push({
+        fullMatch: m[0],
+        oldLabel: m[1],
+        underline: m[2],
+        index: m.index,
+      });
+    }
+
+    if (matches.length === 0) continue;
+
+    let updatedText = '';
+    let lastIndex = 0;
+
+    for (const match of matches) {
+      updatedText += para.text.slice(lastIndex, match.index);
+
+      const newLabel = getLabel(blankCounter);
+      const newNumber = blankCounter + 1;
+
+      // Find matching old blank to preserve correctAnswer, acceptedAnswers, etc.
+      let existingBlank: ListeningBlank | undefined;
+      if (match.oldLabel !== '__NEW__') {
+        existingBlank = oldBlanks.find(
+          (b) => !claimedBlankIds.has(b.id) && b.label.toLowerCase() === match.oldLabel.toLowerCase()
+        );
+      }
+      if (!existingBlank && match.oldLabel !== '__NEW__') {
+        existingBlank = oldBlanks.find(
+          (b) => !claimedBlankIds.has(b.id) && b.paragraphId === para.id
+        );
+      }
+
+      if (existingBlank) {
+        claimedBlankIds.add(existingBlank.id);
+      }
+
+      const blankId = existingBlank?.id || `blank_${Date.now()}_${newLabel}`;
+
+      newBlanks.push({
+        id: blankId,
+        paragraphId: para.id,
+        label: newLabel,
+        number: newNumber,
+        correctAnswer: existingBlank?.correctAnswer || '',
+        acceptedAnswers: existingBlank?.acceptedAnswers || [],
+        teacherNote: existingBlank?.teacherNote,
+      });
+
+      updatedText += `(${newLabel}) ${match.underline}`;
+      lastIndex = match.index + match.fullMatch.length;
+      blankCounter++;
+    }
+
+    updatedText += para.text.slice(lastIndex);
+    newParas[pIdx] = { ...para, text: updatedText };
+  }
+
+  return {
+    ...data,
+    paragraphs: newParas,
+    blanks: newBlanks,
+    pointsTotal: newBlanks.length,
+  };
+};
+
+// ── Insert Blank at cursor position in a specific paragraph and auto-sequence ──
 export const insertBlankInParagraph = (
   data: ListeningGapFillData,
   paragraphIndex: number,
@@ -358,16 +451,17 @@ export const insertBlankInParagraph = (
   const targetPara = paras[paragraphIndex];
   if (!targetPara) return data;
 
-  const nextLabel = getNextBlankLabel(data.blanks);
-  const nextNum = data.blanks.length + 1;
-  const blankId = `blank_${Date.now()}_${nextLabel}`;
-  const blankMarker = `(${nextLabel}) __________`;
+  const blankMarker = `(__NEW__) __________`;
 
   let newText = targetPara.text;
   if (typeof cursorPos === 'number' && cursorPos >= 0 && cursorPos <= newText.length) {
-    newText = newText.slice(0, cursorPos) + ` ${blankMarker} ` + newText.slice(cursorPos);
+    const before = newText.slice(0, cursorPos);
+    const after = newText.slice(cursorPos);
+    const padLeft = before.length > 0 && !/\s$/.test(before) ? ' ' : '';
+    const padRight = after.length > 0 && !/^\s/.test(after) ? ' ' : '';
+    newText = before + padLeft + blankMarker + padRight + after;
   } else {
-    newText = `${newText} ${blankMarker}`;
+    newText = `${newText.trimEnd()} ${blankMarker}`;
   }
 
   paras[paragraphIndex] = {
@@ -375,27 +469,12 @@ export const insertBlankInParagraph = (
     text: newText,
   };
 
-  const newBlank: ListeningBlank = {
-    id: blankId,
-    paragraphId: targetPara.id,
-    label: nextLabel,
-    number: nextNum,
-    correctAnswer: '',
-    acceptedAnswers: [],
-  };
-
-  // Re-number blanks
-  const updatedBlanks = [...data.blanks, newBlank].map((b, i) => ({
-    ...b,
-    number: i + 1,
-  }));
-
-  return {
+  const updatedData = {
     ...data,
     paragraphs: paras,
-    blanks: updatedBlanks,
-    pointsTotal: updatedBlanks.length,
   };
+
+  return resequenceListeningBlanks(updatedData);
 };
 
 // ── Delete a Blank ──
@@ -417,19 +496,11 @@ export const removeBlank = (data: ListeningGapFillData, blankId: string): Listen
     return p;
   });
 
-  const updatedBlanks = data.blanks
-    .filter((b) => b.id !== blankId)
-    .map((b, i) => ({
-      ...b,
-      number: i + 1,
-    }));
-
-  return {
+  return resequenceListeningBlanks({
     ...data,
     paragraphs: paras,
-    blanks: updatedBlanks,
-    pointsTotal: updatedBlanks.length,
-  };
+    blanks: data.blanks.filter((b) => b.id !== blankId),
+  });
 };
 
 // ── Reorder Paragraphs ──

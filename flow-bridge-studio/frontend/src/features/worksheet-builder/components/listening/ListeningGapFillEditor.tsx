@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, Check, Plus, Trash2, Copy, ImagePlus, X, ClipboardPaste, Maximize2, Expand, Minus, ChevronLeft, ChevronRight, ChevronDown, Eye, Play, Pause, Headphones, Upload, FileDown, Printer, MoreHorizontal, Undo2, Redo2, Save, Link2, QrCode, AlertCircle } from 'lucide-react';
+import { PageZoomOverlay } from '../shared/PageZoomOverlay';
+import { ArrowLeft, Check, Plus, Trash2, Copy, ImagePlus, X, ClipboardPaste, Maximize2, Minimize, Minus, ChevronLeft, ChevronRight, ChevronDown, Eye, Play, Pause, Headphones, Upload, FileDown, Printer, MoreHorizontal, Undo2, Redo2, Save, Link2, QrCode, AlertCircle } from 'lucide-react';
 import type { LessonFolder, Exercise, Worksheet } from '../../types';
 import type {
   ListeningGapFillData,
@@ -12,6 +13,7 @@ import type {
 import {
   createListeningGapFill,
   insertBlankInParagraph,
+  resequenceListeningBlanks,
   getNextBlankLabel,
   normalizeAudioLink,
   formatAudioDuration,
@@ -110,6 +112,33 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
   const canUndo = pastRef.current.length > 0;
   const canRedo = futureRef.current.length > 0;
 
+  const textareaRefs = useRef<Record<number, HTMLTextAreaElement | null>>({});
+  const cursorRef = useRef<{ index: number; pos: number }>({ index: 0, pos: 0 });
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        const target = e.target as HTMLElement | null;
+        // Cho phép Undo của editor trừ khi đang trong input text nhỏ khác
+        if (target && target.tagName === 'INPUT' && (target as HTMLInputElement).type !== 'checkbox') return;
+        if (e.shiftKey) {
+          e.preventDefault();
+          handleRedo();
+        } else {
+          e.preventDefault();
+          handleUndo();
+        }
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        const target = e.target as HTMLElement | null;
+        if (target && target.tagName === 'INPUT' && (target as HTMLInputElement).type !== 'checkbox') return;
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   // Id cố định của bài (bài mới được tạo một lần, các lần lưu sau chỉ cập nhật)
   const exerciseIdRef = useRef<string>(editingExercise?.id || `ex_${Date.now()}`);
   const imageSupported = layoutSupportsImages(data.settings.layout);
@@ -148,6 +177,7 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
   const [activeTab, setActiveTab] = useState<'preview' | 'edit_mode'>('edit_mode');
   const [zoom, setZoom] = useState<number>(100);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+  const [pageFull, setPageFull] = useState(false);
   const [showSmartPaste, setShowSmartPaste] = useState<boolean>(false);
   const [showExportMenu, setShowExportMenu] = useState<boolean>(false);
   const [, setSelectedBlankId] = useState<string | null>(null);
@@ -776,8 +806,23 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
   const nextLabel = getNextBlankLabel(data.blanks);
 
   const handleInsertBlank = () => {
-    const updated = insertBlankInParagraph(data, activeParagraphIndex);
+    const pIdx = activeParagraphIndex;
+    const curPos = cursorRef.current.index === pIdx ? cursorRef.current.pos : undefined;
+    const updated = insertBlankInParagraph(data, pIdx, curPos);
     setData(updated);
+
+    // Đưa con trỏ và focus vào ngay sau chỗ trống vừa chèn
+    setTimeout(() => {
+      const el = textareaRefs.current[pIdx];
+      if (el) {
+        el.focus();
+        if (typeof curPos === 'number') {
+          const nextPos = Math.min(el.value.length, curPos + 16);
+          el.setSelectionRange(nextPos, nextPos);
+          cursorRef.current = { index: pIdx, pos: nextPos };
+        }
+      }
+    }, 40);
   };
 
   const handleUpdateParagraphText = (index: number, newText: string) => {
@@ -1342,8 +1387,8 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
               <>
                 {/* Một hàng gọn: tên audio + các nút, cái nào cần mới mở rộng */}
                 <div className="flex items-center gap-3 p-2.5 bg-white border border-slate-200 rounded-xl">
-                  <div className="w-11 h-11 rounded-xl bg-slate-100 text-slate-800 flex items-center justify-center shrink-0">
-                    <Headphones size={20} strokeWidth={1.75} />
+                  <div className="w-9 h-9 rounded-xl bg-slate-100 text-slate-800 flex items-center justify-center shrink-0">
+                    <Headphones size={16} strokeWidth={1.75} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-bold text-slate-900 truncate" title={data.audio.filename}>
@@ -1355,7 +1400,7 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <label className="h-9 px-3 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg cursor-pointer transition-colors" title="Tải file audio từ máy / thư viện">
+                    <label className="h-8 px-3 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg cursor-pointer transition-colors" title="Tải file audio từ máy / thư viện">
                       <Upload size={16} strokeWidth={1.75} /> Upload
                       <input type="file" accept="audio/*" hidden onChange={handleAudioUpload} />
                     </label>
@@ -1364,7 +1409,7 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
                       type="button"
                       onClick={handleTogglePlayAudio}
                       disabled={!data.audio.audioUrl}
-                      className="w-9 h-9 rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      className="w-8 h-8 rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                       title={data.audio.audioUrl ? (isPlayingAudio ? 'Tạm dừng' : 'Phát audio') : 'Chưa có audio để phát'}
                     >
                       {isPlayingAudio ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" className="ml-0.5" />}
@@ -1373,7 +1418,7 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
                     <button
                       type="button"
                       onClick={() => { setLinkOpen((v) => !v); }}
-                      className={`w-9 h-9 flex items-center justify-center rounded-lg border transition-colors ${linkOpen ? 'bg-blue-100 border-blue-200 text-blue-700' : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200'}`}
+                      className={`w-8 h-8 flex items-center justify-center rounded-lg border transition-colors ${linkOpen ? 'bg-blue-100 border-blue-200 text-blue-700' : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200'}`}
                       title="Dán đường dẫn audio"
                       aria-expanded={linkOpen}
                     >
@@ -1383,7 +1428,7 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
                     <button
                       type="button"
                       onClick={() => { setQrOpen((v) => !v); }}
-                      className={`relative w-9 h-9 flex items-center justify-center rounded-lg border transition-colors ${qrOpen ? 'bg-blue-100 border-blue-200 text-blue-700' : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200'}`}
+                      className={`relative w-8 h-8 flex items-center justify-center rounded-lg border transition-colors ${qrOpen ? 'bg-blue-100 border-blue-200 text-blue-700' : 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200'}`}
                       title={data.audio.shareUrl ? 'Mã QR của audio' : 'Mã QR – cần dán đường dẫn audio'}
                       aria-expanded={qrOpen}
                     >
@@ -1394,7 +1439,7 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
                     <button
                       type="button"
                       onClick={handleDeleteAudio}
-                      className="w-9 h-9 flex items-center justify-center text-rose-500 bg-rose-50 hover:bg-rose-100 border border-rose-100 rounded-lg transition-colors"
+                      className="w-8 h-8 flex items-center justify-center text-rose-500 bg-rose-50 hover:bg-rose-100 border border-rose-100 rounded-lg transition-colors"
                       title="Xóa audio và mã QR"
                     >
                       <Trash2 size={16} strokeWidth={1.75} />
@@ -1507,18 +1552,51 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
 
             {openSections.passage && (
               <>
-                {/* Insert Blank (định dạng chữ nằm ở thanh công cụ phía trên) */}
+                {/* Insert Blank + Undo/Redo (như của Word) */}
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[11px] text-slate-400">Chọn một đoạn rồi chèn chỗ trống</span>
-                  {/* INSERT BLANK BUTTON: With dynamic label like Insert Blank (a) */}
-                  <button
-                    type="button"
-                    onClick={handleInsertBlank}
-                    className="px-2.5 py-1 bg-white hover:bg-blue-50 text-blue-700 border border-blue-400 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors"
-                    title={`Chèn chỗ trống (${nextLabel}) vào đoạn đang chọn`}
-                  >
-                    Insert Blank ({nextLabel})
-                  </button>
+                  <span className="text-[11px] text-slate-400">Chọn đoạn, đặt con trỏ rồi chèn chỗ trống</span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="flex items-center rounded-lg border border-slate-200 bg-white p-0.5 shadow-2xs">
+                      <button
+                        type="button"
+                        onClick={handleUndo}
+                        disabled={!canUndo}
+                        className="h-7 w-7 flex items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        title="Quay lại / Hoàn tác (Undo - Ctrl+Z)"
+                        aria-label="Undo"
+                      >
+                        <Undo2 size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleRedo}
+                        disabled={!canRedo}
+                        className="h-7 w-7 flex items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-md disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        title="Tiến tới / Làm lại (Redo - Ctrl+Y)"
+                        aria-label="Redo"
+                      >
+                        <Redo2 size={14} />
+                      </button>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleInsertBlank}
+                      className="px-2.5 h-8 bg-white hover:bg-blue-50 text-blue-700 border border-blue-400 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs"
+                      title={`Chèn chỗ trống (${nextLabel}) vào vị trí con trỏ trong đoạn ${activeParagraphIndex + 1}`}
+                    >
+                      <Plus size={13} strokeWidth={2.5} /> Insert Blank ({nextLabel})
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setData(resequenceListeningBlanks(data))}
+                      className="px-2 h-8 text-[11px] font-semibold text-slate-600 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg flex items-center gap-1 transition-colors"
+                      title="Tự động sắp xếp và đánh lại nhãn (a, b, c...) toàn bài theo đúng thứ tự từ trên xuống dưới"
+                    >
+                      Sắp xếp lại thứ tự
+                    </button>
+                  </div>
                 </div>
 
                 {/* Passage Title Banner */}
@@ -1554,14 +1632,34 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
                               </div>
                             </div>
                             <textarea
+                              ref={(el) => { textareaRefs.current[pIdx] = el; }}
                               rows={4}
                               value={para.text}
-                              onChange={(e) => handleUpdateParagraphText(pIdx, e.target.value)}
+                              onSelect={(e) => {
+                                cursorRef.current = { index: pIdx, pos: e.currentTarget.selectionStart };
+                              }}
+                              onClick={(e) => {
+                                cursorRef.current = { index: pIdx, pos: e.currentTarget.selectionStart };
+                              }}
+                              onKeyUp={(e) => {
+                                cursorRef.current = { index: pIdx, pos: e.currentTarget.selectionStart };
+                              }}
+                              onChange={(e) => {
+                                cursorRef.current = { index: pIdx, pos: e.currentTarget.selectionStart };
+                                handleUpdateParagraphText(pIdx, e.target.value);
+                              }}
                               className="w-full p-2 border border-slate-200 rounded-md text-xs text-slate-900 leading-relaxed focus:outline-none focus:ring-1 focus:ring-blue-500/30 resize-y"
                             />
                           </div>
                         ) : (
-                          <div className="flex gap-2 text-[12.5px] leading-relaxed text-slate-900 cursor-text rounded-md hover:bg-slate-50 px-1 -mx-1">
+                          <div
+                            onClick={() => {
+                              setActiveParagraphIndex(pIdx);
+                              setSelectedExtraId(null);
+                              cursorRef.current = { index: pIdx, pos: para.text.length };
+                            }}
+                            className="flex gap-2 text-[12.5px] leading-relaxed text-slate-900 cursor-text rounded-md hover:bg-slate-50 px-1 -mx-1"
+                          >
                             <span className="font-bold shrink-0 w-4">{num}.</span>
                             <p className="flex-1 min-w-0">
                               {para.text.split(/(\([A-Za-z0-9]+\)\s*_{2,})/g).map((part, i) => {
@@ -1820,8 +1918,8 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
               <span className="w-11 text-center">{zoom}%</span>
               <button type="button" onClick={() => setZoom((z) => Math.min(150, z + 10))} className="w-8 h-8 flex items-center justify-center text-slate-600 hover:bg-slate-50 rounded-lg" title="Phóng to"><Plus size={14} /></button>
             </div>
-            <button type="button" onClick={() => setZoom(100)} className="inline-flex items-center bg-white border border-slate-200 rounded-lg shadow-xs w-8 h-8 flex items-center justify-center text-slate-600 hover:bg-slate-50 rounded-lg" title="Vừa trọn vẹn cả phiếu"><Maximize2 size={14} /></button>
-            <button type="button" onClick={() => setIsFullscreen(true)} className="inline-flex items-center bg-white border border-slate-200 rounded-lg shadow-xs w-8 h-8 flex items-center justify-center text-slate-600 hover:bg-slate-50 rounded-lg" title="Toàn màn hình"><Expand size={14} /></button>
+            <button type="button" onClick={() => setPageFull(true)} className="inline-flex items-center bg-white border border-slate-200 rounded-lg shadow-xs w-8 h-8 flex items-center justify-center text-slate-600 hover:bg-slate-50 rounded-lg" title="Phóng to trang đang soạn"><Maximize2 size={14} /></button>
+            <button type="button" onClick={() => { setZoom(100); setPageFull(false); }} className="inline-flex items-center bg-white border border-slate-200 rounded-lg shadow-xs w-8 h-8 flex items-center justify-center text-slate-600 hover:bg-slate-50 rounded-lg" title="Thu nhỏ về 100%"><Minimize size={14} /></button>
             <button type="button" onClick={() => window.print()} className="inline-flex items-center bg-white border border-slate-200 rounded-lg shadow-xs w-8 h-8 flex items-center justify-center text-slate-600 hover:bg-slate-50 rounded-lg" title="In trang A4"><Printer size={15} /></button>
             </div>
           </div>
@@ -1868,6 +1966,8 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
       </main>
 
       {/* ──────── FULLSCREEN PREVIEW MODAL ──────── */}
+      {pageFull && <PageZoomOverlay worksheet={buildWorksheet(true)} onClose={() => setPageFull(false)} />}
+
       {isFullscreen && (
         <div
           className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 md:p-8"

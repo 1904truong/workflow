@@ -59,3 +59,24 @@ test('validate, đổi thứ tự, trộn lựa chọn, định dạng', () => {
   const s1 = setMcqStyle(undefined, 'questions', { bold: true });
   assert.equal(bumpMcqSize(s1, 'questions', 10.5, 0.5).questions?.sizePt, 11);
 });
+
+test('đề nghe Omar: tiêu đề + dòng giải thích, lựa chọn không có dấu chấm, nhiều lựa chọn trên một dòng', () => {
+  const p = parseMcqText(`LISTEN AND CHOOSE THE CORRECT ANSWER
+You will hear an interview with a young pilot called Omar.
+1. Omar first became interested in flying planes when
+a he first went on an aeroplane.
+b he moved to a house near an airport.
+c he played with his toy aeroplanes.
+2. Where did Omar's family move to after living next to the airport?
+a to a town b to a city c to a village
+3. How did Omar learn to fly?
+a His father taught him.
+b He took flying lessons.
+c He took a university course.`);
+  assert.equal(p.title, 'LISTEN AND CHOOSE THE CORRECT ANSWER');
+  assert.equal(p.instruction, 'You will hear an interview with a young pilot called Omar.');
+  assert.equal(p.questions.length, 3);
+  assert.deepEqual(p.questions[0].options, ['he first went on an aeroplane.', 'he moved to a house near an airport.', 'he played with his toy aeroplanes.']);
+  assert.deepEqual(p.questions[1].options, ['to a town', 'to a city', 'to a village']);
+  assert.equal(p.questions[2].options.length, 3);
+});

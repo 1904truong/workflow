@@ -21,7 +21,7 @@ import {
   Images,
   HelpCircle,
   Save,
-  Expand,
+  Minimize,
   ChevronLeft,
 } from 'lucide-react';
 import type { LessonFolder, Exercise } from '../../types';
@@ -469,7 +469,7 @@ export const MatchingPicturesEditor: React.FC<MatchingPicturesEditorProps> = ({
   const renderA4 = (scale: number, editable: boolean) => (
     <div
       className="bg-white text-[#111] shadow-xl mx-auto"
-      style={{ width: '210mm', minHeight: '297mm', padding: '15mm', zoom: scale }}
+      style={{ width: '210mm', minHeight: '297mm', padding: '15mm', zoom: scale, display: 'flex', flexDirection: 'column' }}
     >
       {brand.enabled && <BrandHeader b={brand} />}
       <MatchingPicturesRenderer
@@ -490,7 +490,7 @@ export const MatchingPicturesEditor: React.FC<MatchingPicturesEditorProps> = ({
         }
       />
       {brand.enabled && (
-        <div className="mt-[8mm]"><BrandFooter b={brand} pageNumber={1} totalPages={1} /></div>
+        <div className="mt-auto pt-[8mm]"><BrandFooter b={brand} pageNumber={1} totalPages={1} /></div>
       )}
     </div>
   );
@@ -1209,8 +1209,8 @@ export const MatchingPicturesEditor: React.FC<MatchingPicturesEditorProps> = ({
                 <span className="w-11 text-center">{zoom}%</span>
                 <button type="button" onClick={() => setZoom((z) => Math.min(150, z + 10))} className="w-8 h-8 flex items-center justify-center text-slate-600 hover:bg-slate-50 rounded-lg" title="Phóng to"><Plus size={14} /></button>
               </div>
-              <button type="button" onClick={() => setZoom(100)} className="inline-flex items-center bg-white border border-slate-200 rounded-lg shadow-xs w-8 h-8 flex items-center justify-center text-slate-600 hover:bg-slate-50 rounded-lg" title="Vừa chiều rộng"><Maximize2 size={14} /></button>
-              <button type="button" onClick={() => setIsFullscreen(true)} className="inline-flex items-center bg-white border border-slate-200 rounded-lg shadow-xs w-8 h-8 flex items-center justify-center text-slate-600 hover:bg-slate-50 rounded-lg" title="Toàn màn hình"><Expand size={14} /></button>
+              <button type="button" onClick={() => setIsFullscreen(true)} className="inline-flex items-center bg-white border border-slate-200 rounded-lg shadow-xs w-8 h-8 flex items-center justify-center text-slate-600 hover:bg-slate-50 rounded-lg" title="Phóng to trang đang soạn"><Maximize2 size={14} /></button>
+              <button type="button" onClick={() => { setZoom(100); setIsFullscreen(false); }} className="inline-flex items-center bg-white border border-slate-200 rounded-lg shadow-xs w-8 h-8 flex items-center justify-center text-slate-600 hover:bg-slate-50 rounded-lg" title="Thu nhỏ về 100%"><Minimize size={14} /></button>
               <button type="button" onClick={handleExportPdf} className="inline-flex items-center bg-white border border-slate-200 rounded-lg shadow-xs w-8 h-8 flex items-center justify-center text-slate-600 hover:bg-slate-50 rounded-lg" title="In trang A4"><Printer size={15} /></button>
             </div>
           </div>

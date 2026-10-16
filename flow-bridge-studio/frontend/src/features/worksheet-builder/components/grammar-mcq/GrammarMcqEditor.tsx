@@ -1,12 +1,13 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  ArrowLeft, Check, Copy, Eye, FileDown, GripVertical, Maximize2, Expand, Minus, Plus, Printer, X, MoreHorizontal,
+  ArrowLeft, Check, Copy, Eye, FileDown, GripVertical, Maximize2, Minimize, Minus, Plus, Printer, X, MoreHorizontal,
   RotateCcw, RotateCw, Save, Trash2, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, HelpCircle,
 } from 'lucide-react';
+import { PageZoomOverlay } from '../shared/PageZoomOverlay';
 import type { Exercise, LessonFolder, Worksheet } from '../../types';
 import {
-  bumpMcqSize, createGrammarMcq, moveMcq, newMcqId, newQuestion, optionLabel, parseMcqText, setMcqStyle,
+  bumpMcqSize, createGrammarMcq, normalizeFragments, parseSentenceLines, parsePronunciationText, toggleUnderline, moveMcq, newMcqId, newQuestion, optionLabel, parseMcqText, setMcqStyle,
   shuffleOptionsOf, validateGrammarMcq, MCQ_LAYOUTS,
   type GrammarMcqData, type McqQuestion, type McqStyleKey,
 } from '../../services/grammar-mcq/grammarMcqCore';
@@ -26,6 +27,10 @@ interface Props {
   onSaveExercise: (exercise: Exercise, nextAction: 'return' | 'add_another' | 'stay') => void;
   onCancel: () => void;
   onDeleteExercise?: (exerciseId: string) => void;
+  /** Dạng Pronunciation: mỗi câu là 4 từ A-D, bôi đen một phần của từ để gạch chân */
+  pronunciation?: boolean;
+  /** Dạng Sentence Rearrangement / Sentence Construction */
+  sentenceMode?: 'rearrange' | 'construct';
 }
 
 const fieldCls =
@@ -67,11 +72,24 @@ const MODAL_INFO: Record<ModalMode, { title: string; hint: string; placeholder: 
   },
 };
 
-export const GrammarMcqEditor: React.FC<Props> = ({ folder, editingExercise, onSaveExercise, onCancel, onDeleteExercise }) => {
+export const GrammarMcqEditor: React.FC<Props> = ({ folder, editingExercise, onSaveExercise, onCancel, onDeleteExercise, pronunciation: pronProp, sentenceMode: smProp }) => {
+  const sw: 'rearrange' | 'construct' | undefined = smProp || editingExercise?.grammarMcq?.sentenceMode || (editingExercise?.type === 'sentence_rearrangement' ? 'rearrange' : editingExercise?.type === 'sentence_construction' ? 'construct' : undefined);
+  const pron = !!pronProp || editingExercise?.grammarMcq?.pronunciation === true || editingExercise?.type === 'pronunciation_multiple_choice';
   const [data, setDataRaw] = useState<GrammarMcqData>(() =>
     editingExercise?.grammarMcq
       ? createGrammarMcq(editingExercise.grammarMcq)
+      : sw ? createGrammarMcq({
+          sentenceMode: sw,
+          exerciseTitle: editingExercise?.title || (sw === 'rearrange' ? 'ARRANGE THE FOLLOWING WORDS TO MAKE CORRECT SENTENCES' : 'COMPLETE THE FOLLOWING SENTENCES WITH THE SUGGESTED WORDS'),
+          answerLineLength: 'long',
+          answerLines: 1,
+          questions: editingExercise?.questions?.length
+            ? editingExercise.questions.map((q) => ({ id: q.id || newMcqId('q'), text: q.text || '', options: [] }))
+            : [{ ...newQuestion(), options: [] }],
+          settings: { optionColumns: 1, showAnswerBoxes: true, showInstruction: false } as never,
+        })
       : createGrammarMcq({
+          ...(pron ? { pronunciation: true, exerciseTitle: 'CHOOSE THE WORD THAT HAS THE UNDERLINED PART PRONOUNCED DIFFERENTLY.', questions: [newQuestion()], settings: { optionColumns: 4, optionLabelStyle: 'uppercase' } as never } : {}),
           ...(editingExercise?.title ? { exerciseTitle: editingExercise.title } : {}),
           ...(editingExercise?.instructions ? { instruction: editingExercise.instructions } : {}),
           // Bài cũ chưa có dữ liệu riêng: lấy câu hỏi và lựa chọn đã có
@@ -132,6 +150,7 @@ export const GrammarMcqEditor: React.FC<Props> = ({ folder, editingExercise, onS
   const [activeTab, setActiveTab] = useState<'preview' | 'edit_mode'>('edit_mode');
   const [zoom, setZoom] = useState(100);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [pageFull, setPageFull] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [selKey, setSelKey] = useState<McqStyleKey>('title');
   const locked = activeTab === 'preview';
@@ -159,8 +178,17 @@ export const GrammarMcqEditor: React.FC<Props> = ({ folder, editingExercise, onS
   const [selectedQid, setSelectedQid] = useState<string | null>(null);
   const selectedQ: McqQuestion | undefined = data.questions.find((q) => q.id === selectedQid) || data.questions[0];
   const patchQuestion = (id: string, fn: (q: McqQuestion) => McqQuestion) => update({ questions: data.questions.map((q) => (q.id === id ? fn(q) : q)) });
+  const lastOpt = useRef<{ qid: string; oid: string; el: HTMLInputElement } | null>(null);
+  const underlineSelection = (qid: string, oid: string, el: HTMLInputElement) => {
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? 0;
+    if (start === end) { window.alert('Hãy bôi đen phần chữ cần gạch chân trong ô từ.'); return; }
+    const q = dataRef.current.questions.find((x) => x.id === qid);
+    const o = q?.options.find((x) => x.id === oid);
+    if (o) editOptionText(qid, oid, toggleUnderline(o.text, start, end));
+  };
   const addQuestion = () => {
-    const q = newQuestion();
+    const q = sw ? { ...newQuestion(), options: [] } : newQuestion();
     update({ questions: [...data.questions, q] });
     setSelectedQid(q.id);
   };
@@ -189,7 +217,19 @@ export const GrammarMcqEditor: React.FC<Props> = ({ folder, editingExercise, onS
   const openModal = (m: ModalMode) => { setModal(m); setPasteText(''); setModalMsg(''); };
   const applyModal = () => {
     if (!modal) return;
-    if (modal === 'smart') {
+    if (modal === 'smart' && sw) {
+      const r = parseSentenceLines(pasteText);
+      if (r.sentences.length === 0) { setModalMsg('Không nhận ra câu nào. Mỗi dòng một câu, các từ cách nhau bằng dấu /.'); return; }
+      const added: McqQuestion[] = r.sentences.map((t) => ({ ...newQuestion(t), options: [] }));
+      update({ questions: [...data.questions.filter((q) => q.text.trim()), ...added], ...(r.title ? { exerciseTitle: r.title } : {}) });
+      setSelectedQid(added[0].id);
+    } else if (modal === 'smart' && pron) {
+      const rows = parsePronunciationText(pasteText);
+      if (rows.length === 0) { setModalMsg('Không nhận ra dòng nào dạng "1. A. chair B. school C. couch D. children".'); return; }
+      const questions: McqQuestion[] = rows.map((r) => ({ ...newQuestion(), options: r.map((t) => ({ id: newMcqId('o'), text: t })) }));
+      update({ questions: [...data.questions.filter((q) => q.options.some((o) => o.text.trim())), ...questions] });
+      setSelectedQid(questions[0].id);
+    } else if (modal === 'smart') {
       const parsed = parseMcqText(pasteText);
       if (!parsed.ok) { setModalMsg(parsed.warnings[0] || 'Không nhận ra câu nào dạng "1. …".'); return; }
       if (data.questions.length > 0 && !window.confirm('Thay toàn bộ câu hỏi hiện có bằng nội dung vừa dán? (Có thể Hoàn tác)')) return;
@@ -200,12 +240,12 @@ export const GrammarMcqEditor: React.FC<Props> = ({ folder, editingExercise, onS
         while (filled.length < 4) filled.push({ id: newMcqId('o'), text: '' });
         return { ...base, options: filled };
       });
-      update({ questions, ...(parsed.title ? { exerciseTitle: parsed.title } : {}) });
+      update({ questions, ...(parsed.title ? { exerciseTitle: parsed.title } : {}), ...(parsed.instruction ? { instruction: parsed.instruction } : {}) });
       setSelectedQid(questions[0]?.id ?? null);
     } else {
       const lines = pasteText.replace(/\r\n?/g, '\n').split('\n').map((l) => l.replace(/^\s*(?:\d{1,3}\s*[.)]|[•*-])\s*/, '').trim()).filter(Boolean);
       if (lines.length === 0) { setModalMsg('Chưa có dòng nào để nhập.'); return; }
-      update({ questions: [...data.questions, ...lines.map((t) => newQuestion(t))] });
+      update({ questions: [...data.questions.filter((q) => !sw || q.text.trim()), ...lines.map((t) => (sw ? { ...newQuestion(normalizeFragments(t)), options: [] } : newQuestion(t)))] });
     }
     setModal(null);
   };
@@ -231,7 +271,7 @@ export const GrammarMcqEditor: React.FC<Props> = ({ folder, editingExercise, onS
   // ── Lưu / xuất
   const buildExercise = (): Exercise => ({
     id: exerciseIdRef.current,
-    type: 'grammar_vocab_multiple_choice',
+    type: sw === 'rearrange' ? 'sentence_rearrangement' : sw === 'construct' ? 'sentence_construction' : pron ? 'pronunciation_multiple_choice' : 'grammar_vocab_multiple_choice',
     layoutType: 'template_a',
     title: data.exerciseTitle,
     instructions: data.instruction,
@@ -319,7 +359,7 @@ export const GrammarMcqEditor: React.FC<Props> = ({ folder, editingExercise, onS
   };
 
   const renderA4 = (scale: number, editable: boolean) => (
-    <div className="bg-white text-[#111] shadow-xl mx-auto" style={{ width: '210mm', minHeight: '297mm', padding: '15mm', zoom: scale }}>
+    <div className="bg-white text-[#111] shadow-xl mx-auto" style={{ width: '210mm', minHeight: '297mm', padding: '15mm', zoom: scale, display: 'flex', flexDirection: 'column' }}>
       {brand.enabled && <BrandHeader b={brand} />}
       <div className="mt-[4mm]">
         <GrammarMcqRenderer
@@ -337,7 +377,7 @@ export const GrammarMcqEditor: React.FC<Props> = ({ folder, editingExercise, onS
           } : undefined}
         />
       </div>
-      {brand.enabled && <div className="mt-[8mm]"><BrandFooter b={brand} pageNumber={1} totalPages={1} /></div>}
+      {brand.enabled && <div className="mt-auto pt-[8mm]"><BrandFooter b={brand} pageNumber={1} totalPages={1} /></div>}
     </div>
   );
 
@@ -421,10 +461,25 @@ export const GrammarMcqEditor: React.FC<Props> = ({ folder, editingExercise, onS
               <label className="text-[11px] font-semibold text-slate-600 block mb-1">Instruction <span className="font-normal text-slate-400">(optional)</span></label>
               <AutoTextarea value={data.instruction} onChange={(e) => update({ instruction: e.target.value })} placeholder="e.g. Read the sentences and choose the best answer." className={`${fieldCls} resize-none min-h-[34px]`} />
             </div>
+            {sw && (
+              <div className="flex flex-wrap items-center gap-3 text-[11px] font-semibold text-slate-600">
+                <label className="flex items-center gap-1.5">Độ dài dòng kẻ
+                  <select value={data.answerLineLength || 'long'} onChange={(e) => update({ answerLineLength: e.target.value as 'long' | 'medium' | 'short' })} className={`${fieldCls} !py-1 !w-auto`}>
+                    <option value="long">Long</option><option value="medium">Medium</option><option value="short">Short</option>
+                  </select>
+                </label>
+                <label className="flex items-center gap-1.5">Số dòng
+                  <select value={data.answerLines || 1} onChange={(e) => update({ answerLines: Number(e.target.value) })} className={`${fieldCls} !py-1 !w-auto`}>
+                    {[1, 2, 3].map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </label>
+              </div>
+            )}
           </section>
 
           <section className="shrink-0 bg-white/60 border border-slate-100 rounded-2xl p-4 shadow-xs space-y-2.5">
             <SectionHead n={2} title={`Question List (${data.questions.length})`} right={<>
+              {pron && <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => { const l = lastOpt.current; if (l) underlineSelection(l.qid, l.oid, l.el); }} className={`${smallBtn} !font-extrabold underline`} title="Bôi đen một phần của từ rồi bấm (hoặc Ctrl+U) để gạch chân; bấm lại để bỏ">U</button>}
               <button type="button" onClick={addQuestion} className="px-2.5 h-7 rounded-lg bg-blue-600 text-white text-[11px] font-bold hover:bg-blue-700 flex items-center gap-1"><Plus size={12} /> Add Question</button>
               <button type="button" onClick={() => openModal('import')} className={smallBtn}>Import</button>
               <button type="button" onClick={() => openModal('smart')} className={smallBtn}>Smart Paste</button>
@@ -441,7 +496,25 @@ export const GrammarMcqEditor: React.FC<Props> = ({ folder, editingExercise, onS
                 >
                   <span draggable onDragStart={(e) => { dragRef.current = i; e.dataTransfer.effectAllowed = 'move'; }} onDragEnd={() => { dragRef.current = null; }} className="pt-2 text-slate-300 hover:text-slate-600 cursor-grab active:cursor-grabbing shrink-0" title="Kéo để đổi vị trí"><GripVertical size={14} /></span>
                   <span className="min-w-6 h-7 mt-0.5 px-1.5 rounded-md bg-slate-100 text-[11px] font-bold text-slate-600 flex items-center justify-center shrink-0">{i + 1}</span>
-                  <AutoTextarea value={q.text} onFocus={() => setSelectedQid(q.id)} onChange={(e) => editQuestionText(q.id, e.target.value)} placeholder="Question… (dùng ________ cho chỗ trống)" className={`${fieldCls} block flex-1 min-w-0 resize-none min-h-[34px]`} />
+                  {pron ? (
+                    <div className="flex-1 min-w-0 grid grid-cols-4 gap-1.5">
+                      {q.options.map((o, oi) => (
+                        <label key={o.id} className="flex items-center gap-1 min-w-0 text-[11px] font-bold text-slate-500">
+                          {optionLabel(oi, 'uppercase')}
+                          <input
+                            value={o.text}
+                            onFocus={(e) => { setSelectedQid(q.id); lastOpt.current = { qid: q.id, oid: o.id, el: e.currentTarget }; }}
+                            onChange={(e) => editOptionText(q.id, o.id, e.target.value)}
+                            onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'u') { e.preventDefault(); underlineSelection(q.id, o.id, e.currentTarget); } }}
+                            placeholder="word"
+                            className={`${fieldCls} w-full min-w-0 !px-2 font-medium`}
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  ) : (
+                  <AutoTextarea value={q.text} onFocus={() => setSelectedQid(q.id)} onChange={(e) => editQuestionText(q.id, e.target.value)} placeholder={sw === 'rearrange' ? 'Các từ xáo trộn, cách nhau bằng /  vd: she / book / a / bought' : sw === 'construct' ? 'Từ gợi ý, cách nhau bằng /  vd: We / expect / the man / not come / back' : 'Question… (dùng ________ cho chỗ trống)'} className={`${fieldCls} block flex-1 min-w-0 resize-none min-h-[34px]`} />
+                  )}
                   <span className="flex items-center shrink-0 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto transition-opacity">
                     <button type="button" className={iconBtn} title="Lên" disabled={i === 0} onClick={() => moveQuestion(i, i - 1)}><ArrowUp size={13} /></button>
                     <button type="button" className={iconBtn} title="Xuống" disabled={i === data.questions.length - 1} onClick={() => moveQuestion(i, i + 1)}><ArrowDown size={13} /></button>
@@ -453,7 +526,7 @@ export const GrammarMcqEditor: React.FC<Props> = ({ folder, editingExercise, onS
             </div>
           </section>
 
-          {selectedQ && (
+          {selectedQ && !pron && !sw && (
             <section className="shrink-0 bg-white/60 border border-slate-100 rounded-2xl p-4 shadow-xs space-y-2.5">
               <SectionHead n={3} title={`Option Editor (Question ${data.questions.findIndex((q) => q.id === selectedQ.id) + 1})`} right={
                 <button type="button" onClick={addOption} className={smallBtn}><Plus size={12} /> Add Option</button>
@@ -494,8 +567,8 @@ export const GrammarMcqEditor: React.FC<Props> = ({ folder, editingExercise, onS
             <div className="flex items-center gap-1.5 text-xs text-slate-700 shrink-0 [&_button]:!w-7 [&_button]:!h-7">
               <div className={`${box} px-0.5`}><button type="button" className={btn} title="Trang trước"><ChevronLeft size={15} /></button><span className="px-2 whitespace-nowrap">Page 1 / 1</span><button type="button" className={btn} title="Trang sau"><ChevronRight size={15} /></button></div>
               <div className={`${box} px-0.5`}><button type="button" onClick={() => setZoom((z) => Math.max(50, z - 10))} className={btn} title="Thu nhỏ"><Minus size={14} /></button><span className="w-11 text-center">{zoom}%</span><button type="button" onClick={() => setZoom((z) => Math.min(150, z + 10))} className={btn} title="Phóng to"><Plus size={14} /></button></div>
-              <button type="button" onClick={() => setZoom(100)} className={`${box} ${btn}`} title="Vừa khung"><Maximize2 size={14} /></button>
-              <button type="button" onClick={() => setIsFullscreen(true)} className={`${box} ${btn}`} title="Toàn màn hình"><Expand size={14} /></button>
+              <button type="button" onClick={() => setPageFull(true)} className={`${box} ${btn}`} title="Phóng to trang đang soạn"><Maximize2 size={14} /></button>
+              <button type="button" onClick={() => { setZoom(100); setPageFull(false); }} className={`${box} ${btn}`} title="Thu nhỏ về 100%"><Minimize size={14} /></button>
               <button type="button" onClick={() => window.print()} className={`${box} ${btn}`} title="In trang A4"><Printer size={15} /></button>
             </div>
           </div>
@@ -519,6 +592,8 @@ export const GrammarMcqEditor: React.FC<Props> = ({ folder, editingExercise, onS
           </div>
         </div>
       )}
+
+      {pageFull && <PageZoomOverlay worksheet={buildWorksheet(true)} onClose={() => setPageFull(false)} />}
 
       {isFullscreen && previewWorksheet && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 md:p-8" onClick={() => setIsFullscreen(false)}>

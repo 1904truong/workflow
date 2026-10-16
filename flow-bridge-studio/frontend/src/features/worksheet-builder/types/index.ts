@@ -11,10 +11,12 @@ export type ExerciseType =
   | 'matching_vocabulary'
   | 'matching_pictures'
   | 'grammar_vocab_multiple_choice'
+  | 'pronunciation_multiple_choice'
   | 'grammar_vocab_cloze'
   | 'gap_filling_word_formation'
   | 'sentence_rearrangement'
-  | 'sentence_construction';
+  | 'sentence_construction'
+  | 'sentence_completion';
 
 export type TemplateLayoutType =
   | 'template_a' // Text Only
@@ -112,12 +114,16 @@ export interface Exercise {
   matchingHeadings?: import('../services/matching-headings/matchingHeadingsCore').MatchingHeadingsData;
   tfng?: import('../services/tfng/tfngCore').TfngData;
   gapFilling?: import('../services/gap-filling/gapFillingCore').GapFillingData;
+  sentenceCompletion?: import('../services/sentence-completion/sentenceCompletionCore').SentenceCompletionData;
   matchingVocabulary?: import('../services/matching-vocabulary/matchingVocabularyCore').MatchingVocabularyData;
   /** Dữ liệu bài Listening True / False (câu T/F, audio + QR, ảnh minh họa). */
   listeningTrueFalse?: import('../services/listening-true-false/listeningTrueFalseCore').ListeningTrueFalseData;
   /** Dữ liệu bài Listening Table Completion (bảng điền, ảnh/bản đồ, audio + QR, câu hỏi). */
   listeningTable?: import('../services/listening-table/listeningTableCore').ListeningTableData;
   /** Dữ liệu bài Grammar & Vocabulary Multiple Choice dạng danh sách câu (6 layout in được). */
+  listeningMcq?: import('../services/listening-mcq/listeningMcqCore').ListeningMcqData;
+  /** Dữ liệu bài Reading Multiple Choice (bài đọc + ảnh bài báo + câu hỏi A/B/C). */
+  readingMcq?: import('../services/reading-mcq/readingMcqCore').ReadingMcqData;
   grammarMcq?: import('../services/grammar-mcq/grammarMcqCore').GrammarMcqData;
   order: number;
 }

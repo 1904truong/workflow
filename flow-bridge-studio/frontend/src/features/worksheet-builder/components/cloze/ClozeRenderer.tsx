@@ -87,7 +87,9 @@ export const ClozeRenderer: React.FC<ClozeRendererProps> = ({
   };
 
   const renderPassage = (withInlineOptions = false, sizeAdjust = 0) => {
-    const imgOn = settings.imagePosition !== 'none' && !!settings.imageUrl;
+    // Có vị trí ảnh mà chưa có ảnh: hiện khung chờ ảnh (xóa ảnh = chọn "Không có ảnh")
+    // Hiện chỉ Layout 1 (Bố cục gốc) có ảnh / khung chờ ảnh; các layout khác sẽ thêm sau nếu cần
+    const imgOn = settings.layout === 'original' && settings.imagePosition !== 'none';
     const baseStyle: React.CSSProperties = {
       fontSize: `${Math.max(9, settings.passageFontSizePt + sizeAdjust)}pt`,
       lineHeight,
@@ -96,24 +98,30 @@ export const ClozeRenderer: React.FC<ClozeRendererProps> = ({
       color: '#111',
     };
     const floatOn = settings.wrapText && settings.imagePosition !== 'top';
+    const imgBoxStyle: React.CSSProperties = {
+      width: settings.imagePosition === 'top' ? `${Math.min(100, settings.imageWidthPercent + 20)}%` : `${settings.imageWidthPercent}%`,
+      float: floatOn ? (settings.imagePosition === 'left' ? 'left' : 'right') : 'none',
+      margin: floatOn
+        ? (settings.imagePosition === 'left' ? '0 4mm 2mm 0' : '0 0 2mm 4mm')
+        : (settings.imagePosition === 'left' ? '0 auto 3mm 0' : settings.imagePosition === 'right' ? '0 0 3mm auto' : '0 auto 3mm'),
+      display: floatOn ? undefined : 'block',
+      borderRadius: '1.5mm',
+    };
     const image = imgOn ? (
-      <img
-        src={settings.imageUrl}
-        alt=""
-        style={{
-          width: settings.imagePosition === 'top' ? `${Math.min(100, settings.imageWidthPercent + 20)}%` : `${settings.imageWidthPercent}%`,
-          float: floatOn ? (settings.imagePosition === 'left' ? 'left' : 'right') : 'none',
-          margin: floatOn
-            ? (settings.imagePosition === 'left' ? '0 4mm 2mm 0' : '0 0 2mm 4mm')
-            : (settings.imagePosition === 'left' ? '0 auto 3mm 0' : settings.imagePosition === 'right' ? '0 0 3mm auto' : '0 auto 3mm'),
-          display: floatOn ? undefined : 'block',
-          height: settings.maintainAspect ? 'auto' : '42mm',
-          borderRadius: '1.5mm',
-          objectFit: 'cover',
-          background: '#fff',
-        }}
-        onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-      />
+      settings.imageUrl ? (
+        <img
+          src={settings.imageUrl}
+          alt=""
+          style={{ ...imgBoxStyle, height: settings.maintainAspect ? 'auto' : '42mm', objectFit: 'cover', background: '#fff' }}
+          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+        />
+      ) : (
+        <div
+          style={{ ...imgBoxStyle, aspectRatio: '4 / 3', border: '0.75pt dashed #9ca3af', background: '#f8fafc', color: '#9ca3af', fontSize: '8pt', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' }}
+        >
+          Ảnh
+        </div>
+      )
     ) : null;
 
     if (editablePassage) {

@@ -26,7 +26,7 @@ export const ExerciseTypePickerModal: React.FC<ExerciseTypePickerModalProps> = (
   ];
 
   const filteredTypes = useMemo(() => {
-    return Object.values(EXERCISE_REGISTRY).filter((meta) => {
+    return Object.values(EXERCISE_REGISTRY).filter((meta) => !meta.hidden).filter((meta) => {
       const matchCategory = selectedCategory === 'all' || meta.category === selectedCategory;
       const matchSearch =
         search.trim() === '' ||

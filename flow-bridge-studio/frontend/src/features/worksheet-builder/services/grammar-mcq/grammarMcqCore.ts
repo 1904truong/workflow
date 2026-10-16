@@ -1,9 +1,9 @@
-// Dữ liệu và hàm thuần cho bài Grammar & Vocabulary Multiple Choice dạng danh sách câu:
+﻿// Dữ liệu và hàm thuần cho bài Grammar & Vocabulary Multiple Choice dạng danh sách câu:
 // mỗi câu có chỗ trống ________ và các lựa chọn a, b, c, d. Giáo trình: KHÔNG có đáp án, học sinh tự khoanh.
 
 import type { TextStyle } from '../matching-pictures/matchingPicturesCore.ts';
 
-export type McqLayoutId = 'original' | 'two_columns' | 'compact' | 'answer_grid' | 'question_blocks' | 'exam_style';
+export type McqLayoutId = 'original' | 'two_columns' | 'compact' | 'answer_grid' | 'question_blocks' | 'exam_style' | 'pictures';
 
 export interface McqLayoutMeta { id: McqLayoutId; label: string; desc: string }
 export const MCQ_LAYOUTS: McqLayoutMeta[] = [
@@ -15,7 +15,8 @@ export const MCQ_LAYOUTS: McqLayoutMeta[] = [
   { id: 'exam_style', label: 'Exam Style', desc: 'Kiểu đề thi: ô trả lời ở đầu câu, lựa chọn A. B. C. D. trên một dòng' },
 ];
 
-export interface McqOption { id: string; text: string }
+/** imageUrl: chỉ dùng ở bài Listening MC dạng ảnh A/B/C (text khi đó là mô tả ảnh, không in) */
+export interface McqOption { id: string; text: string; imageUrl?: string }
 export interface McqQuestion { id: string; text: string; options: McqOption[] }
 
 export type McqStyleKey = 'title' | 'instruction' | 'questions' | 'options';
@@ -45,6 +46,12 @@ export interface GrammarMcqSettings {
 }
 
 export interface GrammarMcqData {
+  /** Bài phát âm: lựa chọn là từ ngắn, phần đặt trong [ ] được gạch chân */
+  pronunciation?: boolean;
+  /** Sentence Rearrangement / Sentence Construction: mỗi câu là các từ cách nhau bằng " / ", kèm dòng kẻ để viết lại, không có lựa chọn */
+  sentenceMode?: 'rearrange' | 'construct';
+  answerLineLength?: 'long' | 'medium' | 'short';
+  answerLines?: number;
   exerciseTitle: string;
   instruction: string;
   exerciseNumber?: number;
@@ -101,6 +108,18 @@ export const resolveOptionColumns = (q: McqQuestion, setting: GrammarMcqSettings
   return n <= 1 ? 1 : 2;
 };
 
+/** Tách chữ và phần gạch chân: "[ch]air" → ch (gạch chân) + air */
+export const splitUnderline = (text: string): { text: string; underline: boolean }[] =>
+  text.split(/(\[[^\]]+\])/).filter((p) => p !== '').map((p) => (/^\[[^\]]+\]$/.test(p) ? { text: p.slice(1, -1), underline: true } : { text: p, underline: false }));
+
+/** Gạch chân phần đang bôi đen [start, end) của chuỗi; bôi lại đúng phần đã gạch thì bỏ gạch */
+export const toggleUnderline = (text: string, start: number, end: number): string => {
+  if (start >= end) return text;
+  const sel = text.slice(start, end);
+  if (text[start - 1] === '[' && text[end] === ']') return text.slice(0, start - 1) + sel + text.slice(end + 1);
+  return text.slice(0, start) + '[' + sel.replace(/[\[\]]/g, '') + ']' + text.slice(end);
+};
+
 /** Tách câu thành chữ và chỗ trống (chuỗi gạch dưới liên tiếp) để hiển thị */
 export const splitBlanks = (text: string): { type: 'text' | 'blank'; text: string }[] =>
   text.split(/(_{2,})/).filter((p) => p !== '').map((p) => ({ type: /^_{2,}$/.test(p) ? 'blank' as const : 'text' as const, text: p }));
@@ -110,6 +129,8 @@ export const splitBlanks = (text: string): { type: 'text' | 'blank'; text: strin
 export interface ParsedMcq {
   ok: boolean;
   title: string;
+  /** Dòng giải thích ngay dưới tiêu đề (vd. "You will hear an interview with a young pilot…") */
+  instruction: string;
   questions: { text: string; options: string[] }[];
   warnings: string[];
 }
@@ -120,6 +141,29 @@ const OPT_START_RE = /^\s*\(?([a-dA-D])[.)]\s+/;
 const splitInlineOptions = (line: string): string[] => {
   const parts = line.split(/(?:^|\s+)(?=\(?[a-dA-D][.)]\s)/).map((p) => p.trim()).filter(Boolean);
   return parts.map((p) => p.replace(/^\(?[a-dA-D][.)]\s+/, '').trim()).filter((p) => p !== '');
+};
+
+const LETTERS = ['a', 'b', 'c', 'd'];
+
+/**
+ * Lựa chọn viết KHÔNG có dấu chấm sau chữ cái (hay gặp khi copy từ PDF): "a he first went on an aeroplane."
+ * Chỉ nhận khi chữ cái đúng là nhãn kế tiếp của câu đang đọc, để không nhầm với mạo từ "a" trong câu.
+ * Cả dòng có thể chứa nhiều lựa chọn: "a to a town b to a city c to a village".
+ */
+const splitBareOptions = (line: string, expected: number): string[] | null => {
+  const first = LETTERS[expected];
+  if (!first || !new RegExp(`^${first}\\s+\\S`, 'i').test(line)) return null;
+  const out: string[] = [];
+  let rest = line.slice(first.length).trim();
+  for (let i = expected + 1; i < LETTERS.length; i++) {
+    const m = new RegExp(`\\s${LETTERS[i]}\\s+\\S`, 'i').exec(` ${rest}`);
+    if (!m) break;
+    // m.index tính trên chuỗi đã thêm 1 dấu cách ở đầu: dấu cách ở rest[m.index - 1], chữ cái nhãn ở rest[m.index]
+    out.push(rest.slice(0, m.index - 1).trim());
+    rest = rest.slice(m.index + 1).trim();
+  }
+  out.push(rest.trim());
+  return out.filter(Boolean);
 };
 
 export const parseMcqText = (raw: string): ParsedMcq => {
@@ -144,6 +188,8 @@ export const parseMcqText = (raw: string): ParsedMcq => {
       continue;
     }
     if (cur) {
+      const bare = splitBareOptions(line, cur.options.length);
+      if (bare && bare.length) { cur.options.push(...bare); continue; }
       // dòng tiếp theo của câu hỏi (chưa có lựa chọn) hoặc của lựa chọn cuối
       if (cur.options.length === 0) cur.text += ` ${line}`;
       else cur.options[cur.options.length - 1] += ` ${line}`;
@@ -155,7 +201,9 @@ export const parseMcqText = (raw: string): ParsedMcq => {
   if (questions.length === 0) warnings.push('Không tìm thấy câu nào dạng "1. …".');
   const noOpts = questions.filter((q) => q.options.length === 0).length;
   if (noOpts > 0 && noOpts < questions.length) warnings.push(`${noOpts} câu chưa có lựa chọn a, b, c, d.`);
-  return { ok: questions.length > 0, title: titleParts.join(' ').trim(), questions, warnings };
+  // Dòng đầu là tiêu đề; các dòng còn lại trước câu 1 là dòng giải thích dưới tiêu đề
+  const [title = '', ...rest] = titleParts;
+  return { ok: questions.length > 0, title: title.trim(), instruction: rest.join(' ').trim(), questions, warnings };
 };
 
 // ───────────── Chỉnh sửa ─────────────
@@ -204,4 +252,36 @@ export const setMcqStyle = (styles: McqTextStyles | undefined, key: McqStyleKey,
 export const bumpMcqSize = (styles: McqTextStyles | undefined, key: McqStyleKey, base: number, delta: number): McqTextStyles => {
   const cur = styles?.[key]?.sizePt ?? base;
   return setMcqStyle(styles, key, { sizePt: Math.min(30, Math.max(7, Math.round((cur + delta) * 2) / 2)) });
+};
+
+/** Bài phát âm: mỗi dòng "1. A. chair B. school C. couch D. children" → 4 lựa chọn (không có chữ câu hỏi) */
+export const parsePronunciationText = (raw: string): string[][] =>
+  raw.replace(/\r\n?/g, '\n').split('\n').map((l) => l.trim()).filter(Boolean)
+    .map((l) => l.replace(/^\d{1,3}\s*[.)]\s*/, ''))
+    .map((l) => l.split(/(?:^|\s+)(?=\(?[a-dA-D][.)]\s)/).map((p) => p.replace(/^\(?[a-dA-D][.)]\s+/, '').trim()).filter(Boolean))
+    .filter((o) => o.length >= 2);
+
+/** Chuẩn hóa từ gợi ý: các từ cách nhau bằng " / " (chấp nhận "/" hoặc "|") */
+export const normalizeFragments = (line: string): string => {
+  const t = line.trim();
+  if (/[/|]/.test(t)) return t.split(/\s*[/|]\s*/).map((p) => p.trim()).filter(Boolean).join(' / ');
+  return t;
+};
+
+/** Smart Paste cho Sentence Writing: dòng viết HOA là tiêu đề, "1." đầu dòng bị bỏ, mỗi dòng còn lại là một câu */
+export const parseSentenceLines = (raw: string): { title: string; sentences: string[] } => {
+  const lines = raw.replace(/\r\n?/g, '\n').split('\n').map((l) => l.trim()).filter(Boolean);
+  let title = '';
+  if (lines[0] && lines[0].length <= 100 && lines[0] === lines[0].toUpperCase() && /[A-Z]/.test(lines[0]) && !/^\d/.test(lines[0]) && !lines[0].includes('/')) {
+    title = lines.shift()!.replace(/^(exercise|bài|ex)\s*\d+\s*[:.\-]\s*/i, '');
+  }
+  const sentences: string[] = [];
+  const numbered = lines.some((l) => /^\d{1,3}\s*[.)]\s*\S/.test(l));
+  for (const l of lines) {
+    const m = /^\d{1,3}\s*[.)]\s*(.*)$/.exec(l);
+    if (m) sentences.push(normalizeFragments(m[1]));
+    else if (numbered && sentences.length) sentences[sentences.length - 1] = normalizeFragments(`${sentences[sentences.length - 1]} ${l}`);
+    else sentences.push(normalizeFragments(l.replace(/^[-•*]\s*/, '')));
+  }
+  return { title, sentences: sentences.filter(Boolean) };
 };

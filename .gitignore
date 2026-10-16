@@ -15,14 +15,19 @@ dist-ssr/
 # Environment variables & Secrets (CRITICAL)
 .env
 .env.*
+.env.local
+.env.*.local
 !.env.example
 *.pem
 *.key
 *.crt
 *.pfx
 *.p12
+*.secret
+*.token
 credentials.json
 serviceAccountKey.json
+client_secret*.json
 
 # Supabase local CLI temp (contains project ref, pooler URLs)
 **/supabase/.temp/

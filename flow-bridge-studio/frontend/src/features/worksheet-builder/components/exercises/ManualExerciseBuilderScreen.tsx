@@ -13,6 +13,9 @@ import { MatchingPicturesEditor } from '../matching-pictures/MatchingPicturesEdi
 import { MatchingHeadingsEditor } from '../matching-headings/MatchingHeadingsEditor';
 import { TfngEditor } from '../tfng/TfngEditor';
 import { GapFillingEditor } from '../gap-filling/GapFillingEditor';
+import { ReadingMcqEditor } from '../reading-mcq/ReadingMcqEditor';
+import { ListeningMcqEditor } from '../listening-mcq/ListeningMcqEditor';
+import { SentenceCompletionEditor } from '../sentence-completion/SentenceCompletionEditor';
 import { MatchingVocabularyEditor } from '../matching-vocabulary/MatchingVocabularyEditor';
 import { ListeningTrueFalseEditor } from '../listening-true-false/ListeningTrueFalseEditor';
 import { ListeningTableEditor } from '../listening-table/ListeningTableEditor';
@@ -250,7 +253,7 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
     }
   };
 
-  const filteredTypes = Object.values(EXERCISE_REGISTRY).filter((meta) => {
+  const filteredTypes = Object.values(EXERCISE_REGISTRY).filter((meta) => !meta.hidden).filter((meta) => {
     const matchesCategory = typeCategory === 'all' || meta.category === typeCategory;
     const matchesSearch =
       typeSearch.trim() === '' ||
@@ -264,7 +267,9 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
     exerciseType === 'grammar_vocab_cloze' ||
     editingExercise?.cloze !== undefined ||
     (exerciseType === 'grammar_vocab_multiple_choice' && !!editingExercise && editingExercise.grammarMcq === undefined && !!editingExercise.passage?.trim());
-  const isGrammarMcq = !isCloze && (exerciseType === 'grammar_vocab_multiple_choice' || editingExercise?.grammarMcq !== undefined);
+  const isPronunciation = exerciseType === 'pronunciation_multiple_choice' || editingExercise?.grammarMcq?.pronunciation === true;
+  const sentenceMode: 'rearrange' | 'construct' | undefined = exerciseType === 'sentence_rearrangement' ? 'rearrange' : exerciseType === 'sentence_construction' ? 'construct' : editingExercise?.grammarMcq?.sentenceMode;
+  const isGrammarMcq = !isCloze && (exerciseType === 'grammar_vocab_multiple_choice' || isPronunciation || !!sentenceMode || editingExercise?.grammarMcq !== undefined);
   const isListeningGapFill = exerciseType === 'listening_gap_fill' || (editingExercise?.listeningGapFill !== undefined);
   const isMatchingPictures = exerciseType === 'matching_pictures' || (editingExercise?.matchingPictures !== undefined);
   const isListeningTable = exerciseType === 'listening_table_completion' || (editingExercise?.listeningTable !== undefined);
@@ -272,11 +277,16 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
   const isMatchingHeadings = exerciseType === 'matching_headings' || (editingExercise?.matchingHeadings !== undefined);
   const isTfng = exerciseType === 'true_false_not_given' || (editingExercise?.tfng !== undefined);
   const isGapFilling = exerciseType === 'gap_filling_word_formation' || (editingExercise?.gapFilling !== undefined);
+  const isListeningMcq = exerciseType === 'listening_multiple_choice' || (editingExercise?.listeningMcq !== undefined);
+  const isReadingMcq = exerciseType === 'reading_multiple_choice' || exerciseType === 'reading_short_answer' || (editingExercise?.readingMcq !== undefined);
+  const isSentenceCompletion = exerciseType === 'sentence_completion' || (editingExercise?.sentenceCompletion !== undefined);
   const isMatchingVocabulary = exerciseType === 'matching_vocabulary' || (editingExercise?.matchingVocabulary !== undefined);
 
   if (step === 'editor' && isGrammarMcq) {
     return (
       <GrammarMcqEditor
+        pronunciation={isPronunciation}
+        sentenceMode={sentenceMode}
         folder={folder}
         editingExercise={editingExercise}
         onSaveExercise={onSaveExercise}
@@ -361,6 +371,43 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
   if (step === 'editor' && isGapFilling) {
     return (
       <GapFillingEditor
+        folder={folder}
+        editingExercise={editingExercise}
+        onSaveExercise={onSaveExercise}
+        onCancel={!editingExercise ? () => setStep('select_type') : onCancel}
+        onDeleteExercise={onDeleteExercise}
+      />
+    );
+  }
+
+  if (step === 'editor' && isListeningMcq) {
+    return (
+      <ListeningMcqEditor
+        folder={folder}
+        editingExercise={editingExercise}
+        onSaveExercise={onSaveExercise}
+        onCancel={!editingExercise ? () => setStep('select_type') : onCancel}
+        onDeleteExercise={onDeleteExercise}
+      />
+    );
+  }
+
+  if (step === 'editor' && isReadingMcq) {
+    return (
+      <ReadingMcqEditor
+        shortAnswer={exerciseType === 'reading_short_answer' || editingExercise?.readingMcq?.shortAnswer === true}
+        folder={folder}
+        editingExercise={editingExercise}
+        onSaveExercise={onSaveExercise}
+        onCancel={!editingExercise ? () => setStep('select_type') : onCancel}
+        onDeleteExercise={onDeleteExercise}
+      />
+    );
+  }
+
+  if (step === 'editor' && isSentenceCompletion) {
+    return (
+      <SentenceCompletionEditor
         folder={folder}
         editingExercise={editingExercise}
         onSaveExercise={onSaveExercise}

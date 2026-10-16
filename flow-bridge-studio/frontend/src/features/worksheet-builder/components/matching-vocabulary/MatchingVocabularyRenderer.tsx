@@ -62,7 +62,10 @@ export const MatchingVocabularyRenderer: React.FC<Props> = ({ data, exerciseInde
   const sel = (k: VocabStyleKey) => editable?.selectedKey === k;
   const pick = (k: VocabStyleKey) => (editable?.onSelectKey ? () => editable.onSelectKey!(k) : undefined);
   const rows = Math.max(words.length, definitions.length);
-  const box = settings.answerBoxSizeMm;
+  const plain = settings.layout === 'plain_list';
+  const box = plain ? 0 : settings.answerBoxSizeMm;
+  const showBoxes = !plain && settings.showAnswerBoxes;
+  const showDivider = !plain && settings.showDivider;
 
   return (
     <div style={{ fontFamily: `${settings.fontFamily || 'Arial'}, sans-serif`, fontSize: `${settings.fontSizePt}pt`, lineHeight: settings.lineHeight, color: '#111' }}>
@@ -76,7 +79,7 @@ export const MatchingVocabularyRenderer: React.FC<Props> = ({ data, exerciseInde
           >
             {data.exerciseNumber || exerciseIndex}
           </span>
-          <h2 style={{ margin: 0, color: '#1d4ed8', fontFamily: HEAD_FONT, fontWeight: 800, fontSize: `${settings.headingFontSizePt}pt`, textTransform: 'uppercase', ...css('title') }}>
+          <h2 style={{ margin: 0, color: plain ? NAVY : '#1d4ed8', fontFamily: HEAD_FONT, fontWeight: 800, fontSize: `${settings.headingFontSizePt}pt`, textTransform: 'uppercase', ...css('title') }}>
             <EditableText value={data.exerciseTitle} onCommit={editable?.onTitle} selected={sel('title')} onSelect={pick('title')} />
           </h2>
         </div>
@@ -89,7 +92,7 @@ export const MatchingVocabularyRenderer: React.FC<Props> = ({ data, exerciseInde
 
       <div
         className="grid"
-        style={{ gridTemplateColumns: settings.showDivider ? '1fr 0.4mm 1fr' : '1fr 1fr', columnGap: '6mm', rowGap: `${settings.rowGapMm}mm` }}
+        style={{ gridTemplateColumns: plain ? '1fr 1.6fr' : showDivider ? '1fr 0.4mm 1fr' : '1fr 1fr', columnGap: plain ? '10mm' : '6mm', rowGap: `${plain ? Math.min(settings.rowGapMm, 3) : settings.rowGapMm}mm` }}
       >
         {Array.from({ length: rows }).map((_, i) => {
           const w = words[i];
@@ -103,13 +106,13 @@ export const MatchingVocabularyRenderer: React.FC<Props> = ({ data, exerciseInde
                     <span className="flex-1" style={css('words')}>
                       <EditableText value={w.text} onCommit={editable?.onWord ? (v) => editable.onWord!(w.id, v) : undefined} css={css('words')} selected={sel('words')} onSelect={pick('words')} />
                     </span>
-                    {settings.showAnswerBoxes && (
+                    {showBoxes && (
                       <span className="shrink-0" style={{ width: `${box}mm`, height: `${box * 0.9}mm`, border: '0.75pt solid #444', borderRadius: '1.2mm' }} />
                     )}
                   </>
                 )}
               </div>
-              {settings.showDivider && <div style={{ background: '#cbd5e1' }} />}
+              {showDivider && <div style={{ background: '#cbd5e1' }} />}
               <div className="flex items-center gap-[3mm]" style={{ breakInside: 'avoid', minHeight: `${box}mm` }}>
                 {d && (
                   <>

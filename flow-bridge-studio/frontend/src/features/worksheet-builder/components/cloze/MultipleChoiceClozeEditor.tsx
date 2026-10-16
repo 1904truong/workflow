@@ -2,18 +2,24 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { createPortal } from 'react-dom';
 import {
   ArrowLeft, Check, Plus, Trash2, Copy, ImagePlus, X, ClipboardPaste, GripVertical,
-  Maximize2, Minus, Eye, Sliders, ChevronDown, ChevronUp, Upload, Image as ImageIcon, AlignLeft, AlignCenter, AlignRight, AlignJustify,
-  Bold, Italic, Underline, List, ListOrdered, MoreHorizontal, FileDown, Undo2, Redo2, AlertTriangle,
+  Maximize2, Minimize, Minus, Eye, Save, Printer, ChevronLeft, ChevronRight,
+  MoreHorizontal, FileDown, Undo2, Redo2, AlertTriangle, Sparkles,
 } from 'lucide-react';
 import type { LessonFolder, Exercise, Worksheet } from '../../types';
 import type { ClozeData, ClozeLayoutId, ClozeQuestion } from '../../services/cloze/clozeCore';
 import {
   createCloze, createSampleCloze, insertBlank, removeQuestion, duplicateQuestion, reorderQuestions,
-  parseClozeSmartPaste, CLOZE_LAYOUTS, orphanQuestionIds, syncBlanks, addOption, removeOption,
+  parseClozeSmartPaste, orphanQuestionIds, syncBlanks, addOption, removeOption,
   shuffleOptionOrder, toggleWrap, toggleListPrefix, DEFAULT_CLOZE_SETTINGS,
 } from '../../services/cloze/clozeCore';
 import type { ClozeParseResult } from '../../services/cloze/clozeCore';
 import { ClozeRenderer } from './ClozeRenderer';
+import { askExtension, generateImageViaExtension } from '../../services/ai/extensionBridge';
+import { buildFinalPrompt } from '../../services/ai/imagePlanCompare';
+import { PHOTO_STYLE, friendlyExtensionError } from '../../services/matching/autoMatching';
+import { ClozeToolbar, type ClozeMoreKey } from './ClozeToolbar';
+import { useAppHeaderSlot } from '../shared/hooks/useAppHeaderSlot';
+import { useSplitPane } from '../shared/hooks/useSplitPane';
 import { BrandHeader } from '../preview/BrandHeader';
 import { BrandFooter } from '../preview/BrandFooter';
 import { resolveBranding, fileToSmallDataUrl } from '../../types/branding';
@@ -124,53 +130,6 @@ const LayoutThumbnail: React.FC<{ layout: ClozeLayoutId; className?: string }> =
   }
 };
 
-// ── Mini SVG Preview Diagram for Image Positions ──
-const ImagePositionDiagram: React.FC<{ pos: 'right' | 'left' | 'top' | 'none'; selected?: boolean }> = ({ pos, selected }) => {
-  const accent = selected ? 'bg-blue-600' : 'bg-slate-400';
-  const border = selected ? 'border-blue-400' : 'border-slate-200';
-
-  switch (pos) {
-    case 'right':
-      return (
-        <div className={`w-8 h-6 border ${border} rounded bg-white p-0.5 flex gap-1 items-center justify-between mx-auto mb-1`}>
-          <div className="flex-1 space-y-0.5">
-            <div className="h-0.5 bg-slate-300 w-full rounded-xs" />
-            <div className="h-0.5 bg-slate-300 w-full rounded-xs" />
-            <div className="h-0.5 bg-slate-300 w-2/3 rounded-xs" />
-          </div>
-          <div className={`w-2.5 h-4 ${accent} rounded-xs shrink-0`} />
-        </div>
-      );
-    case 'left':
-      return (
-        <div className={`w-8 h-6 border ${border} rounded bg-white p-0.5 flex gap-1 items-center justify-between mx-auto mb-1`}>
-          <div className={`w-2.5 h-4 ${accent} rounded-xs shrink-0`} />
-          <div className="flex-1 space-y-0.5">
-            <div className="h-0.5 bg-slate-300 w-full rounded-xs" />
-            <div className="h-0.5 bg-slate-300 w-full rounded-xs" />
-            <div className="h-0.5 bg-slate-300 w-2/3 rounded-xs" />
-          </div>
-        </div>
-      );
-    case 'top':
-      return (
-        <div className={`w-8 h-6 border ${border} rounded bg-white p-0.5 flex flex-col justify-between mx-auto mb-1`}>
-          <div className={`w-full h-2 ${accent} rounded-xs`} />
-          <div className="space-y-0.5">
-            <div className="h-0.5 bg-slate-300 w-full rounded-xs" />
-            <div className="h-0.5 bg-slate-300 w-2/3 rounded-xs" />
-          </div>
-        </div>
-      );
-    case 'none':
-      return (
-        <div className={`w-8 h-6 border border-dashed ${border} rounded bg-white flex items-center justify-center mx-auto mb-1`}>
-          <div className="w-3.5 h-0.5 bg-slate-300 -rotate-45" />
-        </div>
-      );
-  }
-};
-
 const inputCls = 'w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500';
 const labelCls = 'block text-[11px] font-semibold text-slate-600 mb-1';
 
@@ -185,34 +144,6 @@ const Switch: React.FC<{ checked: boolean; onChange: (v: boolean) => void; label
   >
     <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-4' : ''}`} />
   </button>
-);
-
-function Seg<T extends string | number>({ value, options, onChange }: { value: T; options: { id: T; label: string }[]; onChange: (v: T) => void }) {
-  return (
-    <div className="flex gap-1.5">
-      {options.map((o) => (
-        <button
-          key={String(o.id)}
-          type="button"
-          onClick={() => onChange(o.id)}
-          className={`flex-1 py-1.5 rounded-lg border text-[11px] font-semibold ${value === o.id ? 'bg-blue-50 border-blue-500 text-blue-700' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-const StepHead: React.FC<{ n: number; title: string; open?: boolean; onToggle?: () => void }> = ({ n, title, open, onToggle }) => (
-  <div className="flex items-center justify-between">
-    <h4 className="text-[13px] font-bold text-slate-900"><span className="text-blue-600 mr-1">{n}.</span>{title}</h4>
-    {onToggle && (
-      <button type="button" onClick={onToggle} className="p-0.5 text-slate-400 hover:text-slate-700" aria-expanded={open} aria-label={open ? 'Thu gọn' : 'Mở rộng'}>
-        {open ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-      </button>
-    )}
-  </div>
 );
 
 const legacyToCloze = (ex: Exercise): ClozeData =>
@@ -290,14 +221,13 @@ export const MultipleChoiceClozeEditor: React.FC<Props> = ({
   }, [undo, redo]);
 
   // ── UI state ──
-  const [activeTab, setActiveTab] = useState<'preview' | 'edit'>('preview');
+  const [activeTab, setActiveTab] = useState<'preview' | 'edit'>('edit');
   const [zoom, setZoom] = useState(100);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showSmartPaste, setShowSmartPaste] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const [parsed, setParsed] = useState<ClozeParseResult | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [openSec, setOpenSec] = useState({ layout: true, image: true, answer: true, type: true, adv: true });
   const [fitting, setFitting] = useState(false);
   const [fitMsg, setFitMsg] = useState<string | null>(null);
   const measureRef = useRef<HTMLDivElement>(null);
@@ -307,8 +237,26 @@ export const MultipleChoiceClozeEditor: React.FC<Props> = ({
   const imageInputRef = useRef<HTMLInputElement>(null);
   const questionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const menuRef = useRef<HTMLDivElement>(null);
-  const [slot, setSlot] = useState<HTMLElement | null>(null);
-  useLayoutEffect(() => { setSlot(document.getElementById('app-header-actions')); }, []);
+  const slot = useAppHeaderSlot();
+  const { mainRef, leftPct, isDragging, handlers: splitHandlers } = useSplitPane('cloze-editor-left-pct');
+  const leftColRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (leftColRef.current) (leftColRef.current as HTMLDivElement & { inert: boolean }).inert = activeTab === 'preview';
+  }, [activeTab]);
+  const paneRef = useRef<HTMLDivElement>(null);
+  const [paneSize, setPaneSize] = useState({ w: 0, h: 0 });
+  useLayoutEffect(() => {
+    const el = paneRef.current;
+    if (!el) return;
+    const measure = () => setPaneSize({ w: el.clientWidth, h: el.clientHeight });
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    measure();
+    return () => ro.disconnect();
+  }, []);
+  const fitScale = paneSize.w > 0 && paneSize.h > 0
+    ? Math.min(1.3, Math.max(0.3, Math.min((paneSize.w - 40) / 794, (paneSize.h - 40) / 1123)))
+    : 0.7;
 
   const brand = resolveBranding(folder.printSettings.branding);
   const savedIdx = folder.exercises.findIndex((e) => e.id === exerciseId);
@@ -357,6 +305,38 @@ export const MultipleChoiceClozeEditor: React.FC<Props> = ({
       commit({ ...data, settings: { ...data.settings, imageUrl: url, imagePosition: data.settings.imagePosition === 'none' ? 'right' : data.settings.imagePosition } });
     } catch {
       window.alert('Không đọc được ảnh này.');
+    }
+  };
+
+  // ── Ảnh tạo bằng AI (extension Flow Bridge) ──
+  const [imgPrompt, setImgPrompt] = useState('');
+  const [imgGen, setImgGen] = useState<{ busy: boolean; msg: string }>({ busy: false, msg: '' });
+  const buildImagePrompt = (): string => {
+    const d = dataRef.current;
+    const title = d.passageTitle.trim();
+    const first = d.passage.replace(/\(\d+\)\s*_{2,}/g, '').replace(/[*+]{1,2}/g, '').replace(/\s+/g, ' ').trim().slice(0, 260);
+    return `Photo illustrating a reading passage${title ? ` titled "${title}"` : ''}. ${first ? `Scene based on: ${first}` : ''}`.trim();
+  };
+  const generateImage = async () => {
+    const prompt = (imgPrompt.trim() || buildImagePrompt()).trim();
+    setImgPrompt(prompt);
+    setImgGen({ busy: true, msg: 'Đang tạo ảnh…' });
+    let probeNote = '';
+    try {
+      const res = await askExtension<{ status?: string; message?: string }>('GET_FLOW_STATUS', {}, 5000);
+      const st = res.payload?.status;
+      if (!(st === 'CONNECTED' || st === 'FLOW_TAB_NOT_FOUND' || st === 'PROJECT_NOT_OPEN')) probeNote = friendlyExtensionError(res.payload?.message || res.error?.message || 'Extension chưa sẵn sàng tạo ảnh.');
+    } catch {
+      probeNote = 'Không kết nối được extension Flow Bridge. Hãy bật extension rồi tải lại trang (F5).';
+    }
+    if (probeNote) { setImgGen({ busy: false, msg: probeNote }); return; }
+    try {
+      const res = await generateImageViaExtension({ prompt: buildFinalPrompt(prompt, PHOTO_STYLE), aspectRatio: '4:3' });
+      const d = dataRef.current;
+      commit({ ...d, settings: { ...d.settings, imageUrl: res.imageUrl, imagePosition: d.settings.imagePosition === 'none' ? 'right' : d.settings.imagePosition } });
+      setImgGen({ busy: false, msg: 'Đã tạo và gắn ảnh vào bài.' });
+    } catch (err) {
+      setImgGen({ busy: false, msg: friendlyExtensionError(err instanceof Error ? err.message : 'Không tạo được ảnh') });
     }
   };
 
@@ -500,7 +480,7 @@ export const MultipleChoiceClozeEditor: React.FC<Props> = ({
   };
 
   const renderA4 = (scale: number, editable?: boolean) => (
-    <div className="bg-white text-[#111] shadow-xl mx-auto" style={{ width: '210mm', minHeight: '297mm', padding: '15mm', zoom: scale }}>
+    <div className="bg-white text-[#111] shadow-xl mx-auto" style={{ width: '210mm', minHeight: '297mm', padding: '15mm', zoom: scale, display: 'flex', flexDirection: 'column' }}>
       {brand.enabled && <BrandHeader b={brand} />}
       <ClozeRenderer
         data={data}
@@ -509,181 +489,244 @@ export const MultipleChoiceClozeEditor: React.FC<Props> = ({
         editablePassage={editable ? { onChange: (t) => commit({ ...data, passage: t }, 'passage') } : undefined}
       />
       {brand.enabled && (
-        <div className="mt-[8mm]"><BrandFooter b={brand} pageNumber={1} totalPages={1} /></div>
+        <div className="mt-auto pt-[8mm]"><BrandFooter b={brand} pageNumber={1} totalPages={1} /></div>
       )}
     </div>
   );
 
-  const tbBtn = 'p-1.5 rounded-md hover:bg-slate-200 text-slate-700 disabled:opacity-30 disabled:hover:bg-transparent';
+  const box = 'inline-flex items-center bg-white border border-slate-200 rounded-lg shadow-xs';
+  const btn = 'w-8 h-8 flex items-center justify-center text-slate-600 hover:bg-slate-50 rounded-lg';
+  const locked = activeTab === 'preview';
 
-  const actions = (
-    <>
-      <button type="button" onClick={handleBack} className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 px-2.5 py-1.5 rounded-lg hover:bg-slate-100">
-        <ArrowLeft size={15} /> Back
-      </button>
-      <div className="flex items-center gap-2">
-        <div className={`flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full border ${dirty ? 'text-amber-700 bg-amber-50 border-amber-200' : 'text-emerald-600 bg-emerald-50 border-emerald-100'}`}>
-          {dirty ? <AlertTriangle size={12} /> : <Check size={13} strokeWidth={2.5} />}
-          {dirty ? 'Chưa lưu' : 'Đã lưu'}
+  const renderMoreSection = (key: ClozeMoreKey): React.ReactNode => {
+    const s = data.settings;
+    const row = 'flex items-center justify-between gap-3 text-[11.5px] text-slate-700';
+    if (key === 'typography') {
+      return (
+        <div className="space-y-2.5">
+          <label className={row}>Cỡ chữ đoạn văn
+            <select value={s.passageFontSizePt} onChange={(e) => setSettings({ passageFontSizePt: Number(e.target.value) })} className={`${inputCls} !w-24 !py-1`}>
+              {[...new Set([9, 9.5, 10, 10.5, 11, 12, 13, 14, s.passageFontSizePt])].sort((a, b) => a - b).map((n) => <option key={n} value={n}>{n} pt</option>)}
+            </select>
+          </label>
+          <label className={row}>Cỡ chữ lựa chọn
+            <select value={s.answerFontSizePt} onChange={(e) => setSettings({ answerFontSizePt: Number(e.target.value) })} className={`${inputCls} !w-24 !py-1`}>
+              {[...new Set([9, 9.5, 10, 10.5, 11, 12, 13, 14, s.answerFontSizePt])].sort((a, b) => a - b).map((n) => <option key={n} value={n}>{n} pt</option>)}
+            </select>
+          </label>
+          <label className={row}>Cỡ tiêu đề đoạn văn
+            <select value={data.passageTitleTag} onChange={(e) => commit({ ...data, passageTitleTag: e.target.value as ClozeData['passageTitleTag'] })} className={`${inputCls} !w-24 !py-1`}>
+              <option value="H1">H1</option><option value="H2">H2</option><option value="H3">H3</option>
+            </select>
+          </label>
         </div>
-
-        <div className="relative" ref={menuRef}>
-          <button type="button" onClick={() => setMenuOpen((v) => !v)} className="p-2 text-slate-600 hover:text-slate-900 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl" aria-label="Thêm tùy chọn">
-            <MoreHorizontal size={16} />
-          </button>
-          {menuOpen && (
-            <div className="absolute right-0 top-full mt-1.5 w-60 bg-white border border-slate-200 rounded-2xl shadow-xl py-1.5 z-50 text-xs font-semibold text-slate-700">
-              <button type="button" onClick={handleExportDocx} className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2"><FileDown size={14} className="text-blue-600" /> Xuất Word (.doc)</button>
-              <button type="button" onClick={() => handleSave('stay')} className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2"><Check size={14} className="text-emerald-600" /> Lưu và ở lại</button>
-              <button type="button" onClick={() => handleSave('add_another')} className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2"><Plus size={14} className="text-blue-600" /> Lưu và thêm bài khác</button>
-              <button type="button" onClick={handleSaveCopy} className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2"><Copy size={14} className="text-slate-500" /> Lưu thành bản sao mới</button>
-              {editingExercise && onDeleteExercise && (
-                <>
-                  <div className="h-px bg-slate-100 my-1" />
-                  <button type="button" onClick={handleDelete} className="w-full text-left px-3.5 py-2 text-rose-600 hover:bg-rose-50 flex items-center gap-2"><Trash2 size={14} /> Xóa bài này</button>
-                </>
-              )}
-              <div className="px-3.5 pt-1.5 pb-1 text-[10.5px] font-normal text-slate-400">In / xuất PDF: lưu bài rồi mở Preview &amp; Export.</div>
-            </div>
-          )}
+      );
+    }
+    if (key === 'image') {
+      return (
+        <div className="space-y-2.5">
+          <label className={row}><span>Maintain aspect ratio</span><Switch checked={s.maintainAspect} onChange={(v) => setSettings({ maintainAspect: v })} label="Maintain aspect ratio" /></label>
+          <label className={row}><span>Wrap text around image</span><Switch checked={s.wrapText} onChange={(v) => setSettings({ wrapText: v })} label="Wrap text around image" /></label>
+          <label className={row}>Độ rộng ảnh
+            <span className="flex items-center gap-2"><input type="range" min={15} max={50} step={5} value={s.imageWidthPercent} onChange={(e) => setSettings({ imageWidthPercent: Number(e.target.value) })} className="accent-blue-600" /><span className="font-mono w-10 text-right">{s.imageWidthPercent}%</span></span>
+          </label>
         </div>
-
-        <button type="button" onClick={() => setIsFullscreen(true)} className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl flex items-center gap-1.5">
-          <Eye size={14} /> Preview
-        </button>
-        <button type="button" onClick={() => handleSave('return')} className="px-4 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl flex items-center gap-1.5 shadow-sm">
-          <Check size={14} strokeWidth={2.5} /> Save
-        </button>
+      );
+    }
+    return (
+      <div className="space-y-2 text-[11.5px] text-slate-700">
+        {([
+          ['showExerciseTitle', 'Show exercise title'],
+          ['showPassageTitle', 'Show passage title'],
+          ['keepTogether', 'Keep questions together'],
+          ['pageBreakBefore', 'Page break before exercise'],
+          ['showPoints', 'Show points'],
+        ] as const).map(([k, label]) => (
+          <label key={k} className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={s[k]} onChange={(e) => setSettings({ [k]: e.target.checked } as Partial<ClozeData['settings']>)} className="rounded text-blue-600 focus:ring-0" />
+            {label}
+          </label>
+        ))}
+        {s.showPoints && (
+          <label className={row}>Tổng điểm
+            <input type="number" min={0} value={data.points ?? ''} placeholder="vd. 10" onChange={(e) => commit({ ...data, points: e.target.value === '' ? undefined : Number(e.target.value) }, 'points')} className={`${inputCls} !w-20 !py-1`} />
+          </label>
+        )}
+        {fitMsg && <p className="text-[11px] text-slate-500">{fitMsg}</p>}
       </div>
-    </>
+    );
+  };
+
+  const secHead = (n: number, title: string, right?: React.ReactNode) => (
+    <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-blue-50/70 border border-blue-100 min-w-0">
+      <span className="w-5 h-5 rounded-md bg-blue-600 text-white font-bold text-[11px] flex items-center justify-center shrink-0">{n}</span>
+      <h3 className="text-[13px] font-bold text-slate-900 truncate">{title}</h3>
+      {right && <div className="ml-auto flex items-center gap-1.5 shrink-0">{right}</div>}
+    </div>
   );
+  const smallBtn = 'px-2.5 h-7 rounded-lg border border-blue-200 bg-white text-[11px] font-semibold text-blue-700 hover:bg-blue-50 flex items-center gap-1';
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-100/70 select-text">
-      {slot ? createPortal(<>{actions}</>, slot) : <header className="h-14 bg-white border-b border-slate-200 px-4 flex items-center justify-end gap-2">{actions}</header>}
-
-      <main className="flex-1 p-4 md:p-6 grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
-        {/* ═══════ CỘT TRÁI: NỘI DUNG ═══════ */}
-        <div className="xl:col-span-4 min-w-0 flex flex-col gap-4 xl:sticky xl:top-4 xl:h-[calc(100vh-5.5rem)] xl:overflow-y-auto xl:pr-1">
-          <section className="shrink-0 bg-white border border-slate-200 rounded-3xl p-4 shadow-xs space-y-3">
-            <div className="flex items-center justify-between -mx-1 px-3 py-2 rounded-2xl bg-blue-50/70 border border-blue-100">
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-lg bg-blue-600 text-white font-bold text-xs flex items-center justify-center">1</span>
-                <h3 className="text-sm font-bold text-slate-900">Bài tập: Multiple Choice Cloze Test</h3>
-              </div>
-              <div className="flex items-center gap-1">
-                <button type="button" onClick={handleSaveCopy} className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg" title="Lưu thành bản sao mới"><Copy size={15} /></button>
-                {editingExercise && onDeleteExercise && (
-                  <button type="button" onClick={handleDelete} className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg" title="Xóa bài này"><Trash2 size={15} /></button>
-                )}
+    <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-100 select-text">
+      {slot && createPortal(
+        <div className="flex items-center justify-between gap-3 w-full">
+          <div className="flex items-center gap-4 mr-3">
+            <button type="button" onClick={handleBack} className="flex items-center gap-2 text-[13px] font-semibold text-slate-800 px-3.5 py-2 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 transition-colors">
+              <ArrowLeft size={16} /> Back to Lesson
+            </button>
+            <div className="leading-tight">
+              <div className="text-[17px] font-bold text-[#16295f]">Edit Worksheet</div>
+              <div className="text-[11.5px] text-slate-500">
+                {folder.name || 'Unit 2 - London'} <span className="text-slate-300 mx-0.5">|</span> Worksheet: {folder.printSettings?.branding?.worksheetNo || 'WS-Cloze-4-1-1'}
               </div>
             </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border ${dirty ? 'text-amber-700 bg-amber-50 border-amber-200' : 'text-emerald-700 bg-emerald-50 border-emerald-100'}`}>
+              {dirty ? <AlertTriangle size={13} /> : <Check size={13} strokeWidth={2.5} />} {dirty ? 'Chưa lưu' : 'Saved'}
+            </div>
+            <div className="relative" ref={menuRef}>
+              <button type="button" onClick={() => setMenuOpen((v) => !v)} className="w-9 h-9 text-slate-600 hover:text-slate-900 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg flex items-center justify-center" title="Tùy chọn xuất file">
+                <MoreHorizontal size={16} />
+              </button>
+              {menuOpen && (
+                <div className="absolute right-0 top-full mt-1.5 w-60 bg-white border border-slate-200 rounded-2xl shadow-xl py-1.5 z-50 text-xs font-semibold text-slate-700">
+                  <button type="button" onClick={handleExportDocx} className="w-full text-left px-3.5 py-2 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2"><FileDown size={14} className="text-blue-600" /> Xuất Word (.doc)</button>
+                  <button type="button" onClick={() => { setMenuOpen(false); window.print(); }} className="w-full text-left px-3.5 py-2 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2"><Printer size={14} /> In / Xuất PDF (Chuẩn A4)</button>
+                  <div className="h-px bg-slate-100 my-1" />
+                  <button type="button" onClick={() => handleSave('stay')} className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2"><Check size={14} className="text-emerald-600" /> Lưu và ở lại</button>
+                  <button type="button" onClick={() => handleSave('add_another')} className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2"><Plus size={14} className="text-blue-600" /> Lưu và thêm bài khác</button>
+                  <button type="button" onClick={handleSaveCopy} className="w-full text-left px-3.5 py-2 hover:bg-slate-50 flex items-center gap-2"><Copy size={14} className="text-slate-500" /> Lưu thành bản sao mới</button>
+                  {editingExercise && onDeleteExercise && (
+                    <>
+                      <div className="h-px bg-slate-100 my-1" />
+                      <button type="button" onClick={handleDelete} className="w-full text-left px-3.5 py-2 text-rose-600 hover:bg-rose-50 flex items-center gap-2"><Trash2 size={14} /> Xóa bài này</button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-1">
+              <button type="button" onClick={undo} disabled={!past.length} title="Hoàn tác" className="w-9 h-9 flex items-center justify-center text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg disabled:opacity-35 disabled:cursor-not-allowed"><Undo2 size={16} /></button>
+              <button type="button" onClick={redo} disabled={!future.length} title="Làm lại" className="w-9 h-9 flex items-center justify-center text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg disabled:opacity-35 disabled:cursor-not-allowed"><Redo2 size={16} /></button>
+            </div>
+            <button type="button" onClick={() => setIsFullscreen(true)} className="px-5 h-9 text-[13px] font-semibold text-[#16295f] bg-white border border-slate-200 hover:bg-slate-50 rounded-lg flex items-center gap-2"><Eye size={16} /> Preview</button>
+            <button type="button" onClick={() => handleSave('return')} className="px-7 h-9 text-[13px] font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg flex items-center gap-2 shadow-sm transition-all"><Save size={16} /> Save</button>
+          </div>
+        </div>,
+        slot,
+      )}
 
+      <ClozeToolbar
+        data={data}
+        onSettings={setSettings}
+        onWrap={(marker) => applyEdit((t, s, e) => toggleWrap(t, s, e, marker))}
+        onList={(kind) => applyEdit((t, s, e) => toggleListPrefix(t, s, e, kind))}
+        onPassageSize={(d) => setSettings({ passageFontSizePt: Math.min(16, Math.max(8, Math.round((data.settings.passageFontSizePt + d) * 2) / 2)) })}
+        onInsertBlank={handleInsertBlank}
+        onAddQuestion={() => commit(insertBlank(data))}
+        onSmartPaste={() => setShowSmartPaste(true)}
+        onShuffle={() => toggleShuffle(true)}
+        onAutoFit={startFit}
+        fitting={fitting}
+        onImageFile={(e) => { void onPickImage(e); }}
+        onRemoveImage={() => setSettings({ imageUrl: undefined, imagePosition: 'none' })}
+        onGenerateImage={() => { void generateImage(); }}
+        generatingImage={imgGen.busy}
+        onResetFormatting={resetFormatting}
+        onInsertExercise={() => handleSave('return')}
+        onDuplicate={handleSaveCopy}
+        onDelete={onDeleteExercise && editingExercise ? handleDelete : undefined}
+        layoutThumb={(id) => <LayoutThumbnail layout={id} className="w-full h-14" />}
+        renderMoreSection={renderMoreSection}
+        locked={locked}
+      />
+
+      <main ref={mainRef} className="flex-1 min-h-0 p-4 md:p-6 flex flex-col xl:flex-row gap-4 xl:gap-0 items-stretch overflow-y-auto xl:overflow-hidden">
+        {/* ═══ CỘT TRÁI: NỘI DUNG ═══ */}
+        <div
+          ref={leftColRef}
+          className={`min-w-0 w-full xl:w-[var(--left-w)] xl:shrink-0 flex flex-col gap-3 xl:h-full xl:overflow-y-auto rounded-2xl border border-slate-200 bg-white/30 p-3 transition-opacity ${locked ? 'opacity-60 select-none' : ''}`}
+          style={{ ['--left-w' as string]: `${leftPct}%` }}
+        >
+          <section className="shrink-0 bg-white/60 border border-slate-100 rounded-2xl p-4 shadow-xs space-y-3">
+            {secHead(1, 'Exercise Content', <span className="px-2.5 py-0.5 rounded-full bg-white border border-blue-200 text-[11px] font-bold text-blue-700">Exercise {exerciseNumber}</span>)}
             <div>
               <label className={labelCls}>Tiêu đề bài tập</label>
               <input type="text" value={data.exerciseTitle} onChange={(e) => commit({ ...data, exerciseTitle: e.target.value }, 'etitle')} className={`${inputCls} font-semibold`} />
             </div>
-
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-[11px] font-semibold text-slate-600">Tiêu đề đoạn văn (nếu có)</label>
-                <select value={data.passageTitleTag} onChange={(e) => commit({ ...data, passageTitleTag: e.target.value as ClozeData['passageTitleTag'] })} className="px-2 py-0.5 text-[11px] font-bold bg-slate-100 border border-slate-200 rounded text-slate-700" title="Cỡ tiêu đề đoạn văn">
-                  <option value="H1">H1</option><option value="H2">H2</option><option value="H3">H3</option>
-                </select>
-              </div>
+              <label className={labelCls}>Tiêu đề đoạn văn (nếu có)</label>
               <input type="text" value={data.passageTitle} onChange={(e) => commit({ ...data, passageTitle: e.target.value }, 'ptitle')} placeholder="Ví dụ: WALL STREET" className={`${inputCls} font-semibold`} />
-            </div>
-
-            <div>
-              <label className={labelCls}>Nội dung đoạn văn</label>
-              <div className="flex flex-wrap items-center gap-0.5 p-1 bg-slate-50 border border-slate-200 border-b-0 rounded-t-xl">
-                <button type="button" className={tbBtn} title="In đậm (**chữ**)" onClick={() => applyEdit((t, s, e) => toggleWrap(t, s, e, '**'))}><Bold size={14} /></button>
-                <button type="button" className={tbBtn} title="In nghiêng (*chữ*)" onClick={() => applyEdit((t, s, e) => toggleWrap(t, s, e, '*'))}><Italic size={14} /></button>
-                <button type="button" className={tbBtn} title="Gạch chân (++chữ++)" onClick={() => applyEdit((t, s, e) => toggleWrap(t, s, e, '++'))}><Underline size={14} /></button>
-                <span className="w-px h-4 bg-slate-200 mx-0.5" />
-                <button type="button" className={tbBtn} title="Gạch đầu dòng" onClick={() => applyEdit((t, s, e) => toggleListPrefix(t, s, e, 'bullet'))}><List size={14} /></button>
-                <button type="button" className={tbBtn} title="Đánh số dòng" onClick={() => applyEdit((t, s, e) => toggleListPrefix(t, s, e, 'numbered'))}><ListOrdered size={14} /></button>
-                <span className="w-px h-4 bg-slate-200 mx-0.5" />
-                {([['left', AlignLeft, 'Căn trái'], ['center', AlignCenter, 'Căn giữa'], ['right', AlignRight, 'Căn phải'], ['justify', AlignJustify, 'Căn đều']] as const).map(([id, Icon, label]) => (
-                  <button key={id} type="button" title={label} onClick={() => setSettings({ passageAlign: id })} className={`${tbBtn} ${data.settings.passageAlign === id ? 'bg-blue-100 text-blue-700' : ''}`}><Icon size={14} /></button>
-                ))}
-                <span className="w-px h-4 bg-slate-200 mx-0.5" />
-                <button type="button" className={tbBtn} title="Thêm / đổi ảnh minh họa" onClick={() => imageInputRef.current?.click()}><ImagePlus size={14} /></button>
-                <button type="button" className={tbBtn} title="Hoàn tác (Ctrl+Z)" disabled={!past.length} onClick={undo}><Undo2 size={14} /></button>
-                <button type="button" className={tbBtn} title="Làm lại (Ctrl+Y)" disabled={!future.length} onClick={redo}><Redo2 size={14} /></button>
-                <button type="button" onClick={handleInsertBlank} className="ml-auto px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-bold flex items-center gap-1" title="Chèn chỗ trống tại con trỏ; các chỗ trống tự đánh số lại theo thứ tự">
-                  <Plus size={12} strokeWidth={3} /> Chèn chỗ trống
-                </button>
-              </div>
-              <div className="flex gap-3">
-                <textarea
-                  ref={textareaRef}
-                  rows={8}
-                  value={data.passage}
-                  onChange={(e) => commit({ ...data, passage: e.target.value }, 'passage')}
-                  placeholder={"Nhập hoặc dán đoạn văn. Bấm 'Chèn chỗ trống' để tạo (1) ________, (2) ________..."}
-                  className="flex-1 min-w-0 p-3 bg-white border border-slate-200 rounded-b-xl text-xs text-slate-900 leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-y"
-                />
-                <div className="w-28 shrink-0 space-y-2">
-                  <input ref={imageInputRef} type="file" accept="image/*" hidden onChange={onPickImage} />
-                  {data.settings.imageUrl && data.settings.imagePosition !== 'none' ? (
-                    <>
-                      <img src={data.settings.imageUrl} alt="" className="w-full h-20 object-cover rounded-lg border border-slate-200 bg-white" />
-                      <button type="button" onClick={() => imageInputRef.current?.click()} className="w-full py-1 text-[11px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg">Change Image</button>
-                      <button type="button" onClick={() => setSettings({ imageUrl: undefined, imagePosition: 'none' })} className="w-full py-1 text-[11px] font-bold text-rose-600 border border-rose-200 hover:bg-rose-50 rounded-lg">Remove</button>
-                      <div>
-                        <span className="text-[10px] font-semibold text-slate-500">Vị trí ảnh</span>
-                        <select value={data.settings.imagePosition} onChange={(e) => setSettings({ imagePosition: e.target.value as ClozeData['settings']['imagePosition'] })} className="w-full px-1.5 py-1 text-[11px] bg-slate-50 border border-slate-200 rounded-lg">
-                          <option value="right">Bên phải</option><option value="left">Bên trái</option><option value="top">Phía trên</option>
-                        </select>
-                      </div>
-                      <div>
-                        <span className="text-[10px] font-semibold text-slate-500">Chiều rộng ảnh</span>
-                        <select value={data.settings.imageWidthPercent} onChange={(e) => setSettings({ imageWidthPercent: Number(e.target.value) })} className="w-full px-1.5 py-1 text-[11px] bg-slate-50 border border-slate-200 rounded-lg">
-                          {[15, 20, 25, 30, 35, 40, 45, 50].map((p) => <option key={p} value={p}>{p}%</option>)}
-                        </select>
-                      </div>
-                    </>
-                  ) : (
-                    <button type="button" onClick={() => imageInputRef.current?.click()} className="w-full h-20 border-2 border-dashed border-slate-300 rounded-lg text-[11px] font-semibold text-slate-500 hover:border-blue-400 hover:text-blue-600 flex flex-col items-center justify-center gap-1">
-                      <ImagePlus size={16} /> Thêm ảnh
-                    </button>
-                  )}
-                </div>
-              </div>
-              <p className="mt-1.5 text-[10.5px] text-slate-400">Chọn chữ rồi bấm B / I / U để định dạng. Dấu được lưu dạng **đậm**, *nghiêng*, ++gạch chân++.</p>
-              {orphans.length > 0 && (
-                <div className="mt-2 flex items-start gap-2 p-2 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900">
-                  <AlertTriangle size={13} className="mt-0.5 shrink-0" />
-                  <span className="flex-1">{orphans.length} câu hỏi chưa có chỗ trống trong đoạn văn.</span>
-                  <button type="button" onClick={attachOrphans} className="font-bold underline">Gắn vào cuối đoạn</button>
-                </div>
-              )}
             </div>
           </section>
 
-          <section className="flex flex-col gap-3 min-h-[320px] xl:flex-1 xl:min-h-0 bg-white border border-slate-200 rounded-3xl p-4 shadow-xs">
-            <div className="shrink-0 flex items-center justify-between pb-3 border-b border-slate-100">
-              <h3 className="text-sm font-bold text-slate-900">Câu hỏi và lựa chọn ({data.questions.length})</h3>
-              <div className="flex items-center gap-3">
-                <label className="flex items-center gap-2 text-xs text-slate-600">
-                  Tự động đánh số
-                  <Switch checked={data.settings.autoNumberQuestions} onChange={(v) => setSettings({ autoNumberQuestions: v })} label="Tự động đánh số" />
-                </label>
-                <button type="button" onClick={() => setShowSmartPaste(true)} className="px-2.5 py-1 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg flex items-center gap-1">
-                  <ClipboardPaste size={13} /> Smart Paste
-                </button>
+          <section className="shrink-0 bg-white/60 border border-slate-100 rounded-2xl p-4 shadow-xs space-y-2.5">
+            {secHead(2, 'Passage Editor', (
+              <>
+                <button type="button" onClick={handleInsertBlank} className={smallBtn}><Plus size={12} /> Add Blank</button>
+                <button type="button" onClick={() => setShowSmartPaste(true)} className={smallBtn}><ClipboardPaste size={12} /> Smart Paste</button>
+              </>
+            ))}
+            <div className="flex gap-3">
+              <textarea
+                ref={textareaRef}
+                rows={9}
+                value={data.passage}
+                onChange={(e) => commit({ ...data, passage: e.target.value }, 'passage')}
+                placeholder={"Nhập hoặc dán đoạn văn. Bấm 'Add Blank' để tạo (1) ________, (2) ________..."}
+                className="flex-1 min-w-0 p-3 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-y"
+              />
+              <div className="w-28 shrink-0 space-y-2">
+                <input ref={imageInputRef} type="file" accept="image/*" hidden onChange={onPickImage} />
+                {data.settings.imageUrl && data.settings.imagePosition !== 'none' ? (
+                  <>
+                    <img src={data.settings.imageUrl} alt="" className="w-full h-20 object-cover rounded-lg border border-slate-200 bg-white" />
+                    <button type="button" onClick={() => imageInputRef.current?.click()} className="w-full py-1 text-[11px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg">Change Image</button>
+                    <button type="button" onClick={() => setSettings({ imageUrl: undefined, imagePosition: 'none' })} className="w-full py-1 text-[11px] font-bold text-rose-600 border border-rose-200 hover:bg-rose-50 rounded-lg">Remove</button>
+                  </>
+                ) : (
+                  <button type="button" onClick={() => imageInputRef.current?.click()} className="w-full h-20 border-2 border-dashed border-slate-300 rounded-lg text-[11px] font-semibold text-slate-500 hover:border-blue-400 hover:text-blue-600 flex flex-col items-center justify-center gap-1">
+                    <ImagePlus size={16} /> Thêm ảnh
+                  </button>
+                )}
+                <button type="button" onClick={() => { void generateImage(); }} disabled={imgGen.busy} className="w-full py-1 text-[11px] font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-40 rounded-lg flex items-center justify-center gap-1"><Sparkles size={11} /> {data.settings.imageUrl ? 'Tạo lại AI' : 'Tạo ảnh AI'}</button>
               </div>
             </div>
+            <textarea
+              rows={2}
+              value={imgPrompt}
+              onChange={(e) => setImgPrompt(e.target.value)}
+              placeholder="Prompt tạo ảnh AI (để trống: tự sinh từ tiêu đề và nội dung đoạn văn)"
+              className="w-full p-2 border border-slate-200 rounded-lg text-[11px] focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+            />
+            {imgGen.msg && <p className={`text-[11.5px] rounded-md px-2 py-1 border ${imgGen.busy ? 'text-blue-700 bg-blue-50 border-blue-100' : 'text-amber-700 bg-amber-50 border-amber-100'}`}>{imgGen.msg}</p>}
+            <p className="text-[10.5px] text-slate-400">Chọn chữ rồi bấm B / I / U trên thanh công cụ để định dạng. Dấu được lưu dạng **đậm**, *nghiêng*, ++gạch chân++.</p>
+            {orphans.length > 0 && (
+              <div className="flex items-start gap-2 p-2 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900">
+                <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                <span className="flex-1">{orphans.length} câu hỏi chưa có chỗ trống trong đoạn văn.</span>
+                <button type="button" onClick={attachOrphans} className="font-bold underline">Gắn vào cuối đoạn</button>
+              </div>
+            )}
+          </section>
 
+          <section className="shrink-0 bg-white/60 border border-slate-100 rounded-2xl p-4 shadow-xs space-y-2.5">
+            {secHead(3, `Questions & Options (${data.questions.length})`, (
+              <>
+                <label className="flex items-center gap-1.5 text-[11px] text-slate-600">Tự đánh số
+                  <Switch checked={data.settings.autoNumberQuestions} onChange={(v) => setSettings({ autoNumberQuestions: v })} label="Tự động đánh số" />
+                </label>
+                <button type="button" onClick={() => commit(insertBlank(data))} className={smallBtn}><Plus size={12} /> Add Question</button>
+              </>
+            ))}
             {data.questions.length === 0 && (
-              <div className="shrink-0 text-center py-6 text-xs text-slate-400 space-y-2">
-                <p>Chưa có câu hỏi. Chèn chỗ trống vào đoạn văn, bấm “Thêm câu hỏi”, hoặc dùng Smart Paste.</p>
+              <div className="text-center py-4 text-xs text-slate-400 space-y-2">
+                <p>Chưa có câu hỏi. Chèn chỗ trống vào đoạn văn, bấm “Add Question”, hoặc dùng Smart Paste.</p>
                 <button type="button" onClick={loadSample} className="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 font-semibold hover:bg-slate-50">Nạp bài mẫu Wall Street</button>
               </div>
             )}
-
-            <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1 max-h-[460px] xl:max-h-none">
+            <div className="space-y-2">
               {data.questions.map((q, qIdx) => (
                 <div
                   key={q.id}
@@ -733,188 +776,49 @@ export const MultipleChoiceClozeEditor: React.FC<Props> = ({
                 </div>
               ))}
             </div>
-
-            <button type="button" onClick={() => commit(insertBlank(data))} className="shrink-0 w-full py-2.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-2xl text-xs font-bold flex items-center justify-center gap-1.5">
-              <Plus size={15} strokeWidth={2.5} /> Thêm câu hỏi
-            </button>
           </section>
         </div>
 
-        {/* ═══════ CỘT GIỮA: XEM TRƯỚC A4 ═══════ */}
-        <div className="xl:col-span-5 space-y-3 min-w-0 xl:sticky xl:top-4 self-start">
-          <div className="bg-white border border-slate-200 rounded-2xl p-1.5 flex items-center justify-between">
+        {/* ── Thanh kéo chia 2 cột ── */}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Kéo để đổi độ rộng hai cột"
+          title="Kéo để đổi độ rộng · nhấp đúp để đặt lại"
+          {...splitHandlers}
+          className="hidden xl:flex shrink-0 self-stretch w-5 mx-0.5 items-center justify-center cursor-col-resize group touch-none select-none"
+        >
+          <div className={`w-1 h-full min-h-24 rounded-full transition-colors ${isDragging ? 'bg-blue-500' : 'bg-slate-200 group-hover:bg-blue-400'}`} />
+        </div>
+
+        {/* ═══ CỘT PHẢI: XEM TRƯỚC A4 ═══ */}
+        <div className="flex-1 min-w-0 flex flex-col gap-3 xl:h-full rounded-2xl border border-slate-200 bg-white/30 p-3">
+          <div className="bg-white/60 border border-slate-200 rounded-xl p-1.5 flex flex-wrap items-center justify-between gap-2 shadow-xs">
             <div className="flex items-center gap-1">
               {([['preview', 'Preview'], ['edit', 'Edit Mode']] as const).map(([id, label]) => (
-                <button key={id} type="button" onClick={() => setActiveTab(id)} className={`px-3 py-1.5 rounded-xl text-xs font-semibold ${activeTab === id ? 'bg-blue-50 text-blue-700 font-bold' : 'text-slate-600 hover:bg-slate-50'}`}>{label}</button>
+                <button key={id} type="button" onClick={() => setActiveTab(id)} className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors ${activeTab === id ? 'bg-blue-50 text-blue-700 font-bold' : 'text-slate-600 hover:bg-slate-50'}`}>{label}</button>
               ))}
+              {activeTab === 'edit' && <span className="hidden 2xl:inline ml-1 text-[11px] text-violet-700 bg-violet-50 border border-violet-100 rounded-md px-2 py-1">Sửa trực tiếp chữ đoạn văn trên trang A4 – giữ nguyên các chỗ trống (1) ________</span>}
             </div>
-            <div className="flex items-center gap-1">
-              <button type="button" onClick={undo} disabled={!past.length} className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 disabled:opacity-30" title="Undo"><Undo2 size={15} /></button>
-              <button type="button" onClick={redo} disabled={!future.length} className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 disabled:opacity-30" title="Redo"><Redo2 size={15} /></button>
-              <button type="button" onClick={() => setIsFullscreen(true)} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-100" title="Phóng to"><Maximize2 size={15} /></button>
+            <div className="flex items-center gap-1.5 text-xs text-slate-700 shrink-0 [&_button]:!w-7 [&_button]:!h-7">
+              <div className={`${box} px-0.5`}>
+                <button type="button" className={btn} title="Trang trước"><ChevronLeft size={15} /></button>
+                <span className="px-2 whitespace-nowrap">Page 1 / 1</span>
+                <button type="button" className={btn} title="Trang sau"><ChevronRight size={15} /></button>
+              </div>
+              <div className={`${box} px-0.5`}>
+                <button type="button" onClick={() => setZoom((z) => Math.max(50, z - 10))} className={btn} title="Thu nhỏ"><Minus size={14} /></button>
+                <span className="w-11 text-center">{zoom}%</span>
+                <button type="button" onClick={() => setZoom((z) => Math.min(150, z + 10))} className={btn} title="Phóng to"><Plus size={14} /></button>
+              </div>
+              <button type="button" onClick={() => setIsFullscreen(true)} className={`${box} ${btn}`} title="Phóng to trang đang soạn"><Maximize2 size={14} /></button>
+              <button type="button" onClick={() => { setZoom(100); setIsFullscreen(false); }} className={`${box} ${btn}`} title="Thu nhỏ về 100%"><Minimize size={14} /></button>
+              <button type="button" onClick={() => window.print()} className={`${box} ${btn}`} title="In trang A4"><Printer size={15} /></button>
             </div>
           </div>
-          {activeTab === 'edit' && (
-            <p className="text-[11px] text-violet-700 bg-violet-50 border border-violet-200 rounded-xl px-3 py-1.5">Edit Mode: sửa trực tiếp chữ của đoạn văn trên trang A4 (bấm ra ngoài để lưu). Giữ nguyên các chỗ trống dạng (1) ________.</p>
-          )}
-          <div className="overflow-auto bg-slate-200/60 p-3 rounded-3xl shadow-inner h-[calc(100vh-14rem)]">
-            {renderA4((zoom / 100) * 0.7, activeTab === 'edit')}
+          <div ref={paneRef} className="flex-1 min-h-0 overflow-auto bg-slate-200/60 p-3 rounded-2xl shadow-inner">
+            {renderA4(fitScale * (zoom / 100), activeTab === 'edit')}
           </div>
-          <div className="flex items-center justify-center gap-2 text-xs text-slate-600">
-            <button type="button" onClick={() => setZoom((z) => Math.max(50, z - 10))} className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-50" aria-label="Thu nhỏ"><Minus size={13} /></button>
-            <span className="font-mono w-12 text-center">{zoom}%</span>
-            <button type="button" onClick={() => setZoom((z) => Math.min(150, z + 10))} className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center hover:bg-slate-50" aria-label="Phóng to"><Plus size={13} /></button>
-            <button type="button" onClick={() => setZoom(100)} className="text-[11px] text-slate-400 hover:text-slate-700 px-1">Reset</button>
-          </div>
-        </div>
-
-        {/* ═══════ CỘT PHẢI: LAYOUT & FORMATTING ═══════ */}
-        <div className="xl:col-span-3 min-w-0 xl:sticky xl:top-4 xl:max-h-[calc(100vh-5.5rem)] overflow-y-auto bg-white border border-slate-200 rounded-3xl shadow-xs p-4 space-y-4">
-          <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2"><Sliders size={16} className="text-blue-600" /> Layout &amp; Formatting</h3>
-
-          {/* 1. Kiểu bố cục */}
-          <section className="space-y-2">
-            <StepHead n={1} title="Choose Worksheet Layout" open={openSec.layout} onToggle={() => setOpenSec((o) => ({ ...o, layout: !o.layout }))} />
-            {openSec.layout && <div className="grid grid-cols-3 gap-2">
-              {CLOZE_LAYOUTS.map((l, i) => {
-                const on = data.settings.layout === l.id;
-                return (
-                  <button key={l.id} type="button" title={l.desc} onClick={() => setSettings({ layout: l.id })} aria-pressed={on} className={`relative rounded-xl border p-1.5 text-center ${on ? 'border-blue-500 ring-2 ring-blue-500/15 bg-blue-50/40' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-                    {on && <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center"><Check size={10} strokeWidth={3} /></span>}
-                    <div className="flex justify-center mb-1"><LayoutThumbnail layout={l.id} className="w-full h-11" /></div>
-                    <div className="text-[10px] font-semibold text-slate-700 leading-tight">{i + 1}. {l.label.replace(/^Kiểu \d+: /, '')}</div>
-                  </button>
-                );
-              })}
-            </div>}
-          </section>
-
-          {/* 2. Ảnh */}
-          <section className="space-y-2.5 pt-3 border-t border-slate-100">
-            <StepHead n={2} title="Image Settings" open={openSec.image} onToggle={() => setOpenSec((o) => ({ ...o, image: !o.image }))} />
-            {openSec.image && (<>
-            <div className="flex items-center gap-2.5">
-              <div className="w-20 h-14 rounded-lg border border-slate-200 bg-slate-50 overflow-hidden flex items-center justify-center shrink-0">
-                {data.settings.imageUrl ? <img src={data.settings.imageUrl} alt="" className="w-full h-full object-cover" /> : <ImageIcon size={18} className="text-slate-300" />}
-              </div>
-              <button type="button" onClick={() => imageInputRef.current?.click()} className="flex-1 py-2 text-[11px] font-bold text-blue-700 border border-blue-300 hover:bg-blue-50 rounded-lg flex items-center justify-center gap-1"><Upload size={12} /> Upload / Replace</button>
-              <button type="button" onClick={() => setSettings({ imageUrl: undefined, imagePosition: 'none' })} disabled={!data.settings.imageUrl} className="flex-1 py-2 text-[11px] font-bold text-rose-600 border border-rose-200 hover:bg-rose-50 disabled:opacity-40 rounded-lg flex items-center justify-center gap-1"><Trash2 size={12} /> Remove</button>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-medium text-slate-700 w-12 shrink-0">Position</span>
-              <div className="flex-1 grid grid-cols-4 gap-1.5">
-                {([['right', 'Bên phải'], ['left', 'Bên trái'], ['top', 'Phía trên'], ['none', 'Không có']] as const).map(([id, label]) => {
-                  const on = data.settings.imagePosition === id;
-                  return (
-                    <button key={id} type="button" title={label} onClick={() => setSettings({ imagePosition: id })} className={`py-1.5 rounded-lg border flex items-center justify-center ${on ? 'bg-blue-50 border-blue-500' : 'bg-white border-slate-200 hover:bg-slate-50'}`}>
-                      <ImagePositionDiagram pos={id} selected={on} />
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-medium text-slate-700 w-12 shrink-0">Width</span>
-              <input type="range" min={15} max={50} step={5} value={data.settings.imageWidthPercent} onChange={(e) => setSettings({ imageWidthPercent: Number(e.target.value) })} className="flex-1 accent-blue-600" />
-              <span className="font-mono text-[11px] font-bold text-slate-700 w-9 text-right">{data.settings.imageWidthPercent}%</span>
-            </div>
-            <div className="flex items-center justify-between gap-2 text-[11px] text-slate-700">
-              <label className="flex items-center gap-2"><Switch checked={data.settings.maintainAspect} onChange={(v) => setSettings({ maintainAspect: v })} label="Maintain aspect ratio" /> Maintain aspect ratio</label>
-              <label className="flex items-center gap-2"><Switch checked={data.settings.wrapText} onChange={(v) => setSettings({ wrapText: v })} label="Wrap text around image" /> Wrap text around image</label>
-            </div>
-            </>)}
-          </section>
-
-          {/* 3. Lựa chọn */}
-          <section className="space-y-2.5 pt-3 border-t border-slate-100">
-            <StepHead n={3} title="Answer Layout" open={openSec.answer} onToggle={() => setOpenSec((o) => ({ ...o, answer: !o.answer }))} />
-            {openSec.answer && (
-              <>
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-medium text-slate-700 w-16 shrink-0">Columns</span>
-                  <div className="flex-1"><Seg value={data.settings.answerColumns} onChange={(v) => setSettings({ answerColumns: v as 1 | 2 | 3 | 4 })} options={[{ id: 1, label: '1' }, { id: 2, label: '2' }, { id: 3, label: '3' }, { id: 4, label: '4' }]} /></div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-medium text-slate-700 w-16 shrink-0">Label style</span>
-                  <div className="flex-1"><Seg value={data.settings.optionLabelStyle} onChange={(v) => setSettings({ optionLabelStyle: v })} options={[{ id: 'lowercase', label: 'a. b. c.' }, { id: 'uppercase', label: 'A. B. C.' }, { id: 'numeric', label: '1. 2. 3.' }]} /></div>
-                </div>
-                <div className="flex items-center justify-between text-[11px] text-slate-700">Show question numbers <Switch checked={data.settings.autoNumberQuestions} onChange={(v) => setSettings({ autoNumberQuestions: v })} label="Show question numbers" /></div>
-                <div className="flex items-center justify-between text-[11px] text-slate-700">Shuffle options <Switch checked={data.settings.shuffleOptions} onChange={toggleShuffle} label="Shuffle options" /></div>
-              </>
-            )}
-          </section>
-
-          {/* 4. Chữ */}
-          <section className="space-y-2.5 pt-3 border-t border-slate-100">
-            <StepHead n={4} title="Typography" open={openSec.type} onToggle={() => setOpenSec((o) => ({ ...o, type: !o.type }))} />
-            {openSec.type && (
-              <div className="space-y-2">
-                <div className="grid grid-cols-4 gap-1.5">
-                  <div>
-                    <span className="text-[10px] font-medium text-slate-500 block mb-0.5">Font family</span>
-                    <select value={data.settings.fontFamily} onChange={(e) => setSettings({ fontFamily: e.target.value })} className={`${inputCls} !px-1.5`}>
-                      {['Arial', 'Times New Roman', 'Quicksand', 'Roboto', 'Inter'].map((f) => <option key={f} value={f}>{f}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-medium text-slate-500 block mb-0.5">Passage font size</span>
-                    <select value={data.settings.passageFontSizePt} onChange={(e) => setSettings({ passageFontSizePt: Number(e.target.value) })} className={`${inputCls} !px-1.5`}>
-                      {[...new Set([9, 9.5, 10, 10.5, 11, 12, 13, 14, data.settings.passageFontSizePt])].sort((a, b) => a - b).map((n) => <option key={n} value={n}>{n} pt</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-medium text-slate-500 block mb-0.5">Answer font size</span>
-                    <select value={data.settings.answerFontSizePt} onChange={(e) => setSettings({ answerFontSizePt: Number(e.target.value) })} className={`${inputCls} !px-1.5`}>
-                      {[...new Set([9, 9.5, 10, 10.5, 11, 12, 13, 14, data.settings.answerFontSizePt])].sort((a, b) => a - b).map((n) => <option key={n} value={n}>{n} pt</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-medium text-slate-500 block mb-0.5">Line height</span>
-                    <select value={data.settings.lineHeight} onChange={(e) => setSettings({ lineHeight: Number(e.target.value) })} className={`${inputCls} !px-1.5`}>
-                      {[...new Set([1.2, 1.3, 1.4, 1.5, 1.6, 1.75, 2, data.settings.lineHeight])].sort((a, b) => a - b).map((n) => <option key={n} value={n}>{n}</option>)}
-                    </select>
-                  </div>
-                </div>
-                <div className="w-1/2">
-                  <span className="text-[10px] font-medium text-slate-500 block mb-0.5">Paragraph spacing</span>
-                  <select value={data.settings.paragraphSpacing} onChange={(e) => setSettings({ paragraphSpacing: e.target.value as ClozeData['settings']['paragraphSpacing'] })} className={inputCls}>
-                    <option value="compact">Compact</option><option value="normal">Normal</option><option value="spacious">Spacious</option>
-                  </select>
-                </div>
-              </div>
-            )}
-          </section>
-
-          {/* 5. Nâng cao */}
-          <section className="space-y-2.5 pt-3 border-t border-slate-100">
-            <StepHead n={5} title="Advanced Settings" open={openSec.adv} onToggle={() => setOpenSec((o) => ({ ...o, adv: !o.adv }))} />
-            {openSec.adv && (<>
-            <div className="grid grid-cols-2 gap-x-3 gap-y-2 text-[11px] text-slate-700">
-              {([
-                ['showExerciseTitle', 'Show exercise title'],
-                ['keepTogether', 'Keep questions together'],
-                ['showPassageTitle', 'Show passage title'],
-                ['pageBreakBefore', 'Page break before exercise'],
-                ['autoNumberQuestions', 'Auto number questions'],
-                ['showPoints', 'Show points'],
-              ] as const).map(([key, label]) => (
-                <label key={key} className="flex items-center gap-1.5 cursor-pointer">
-                  <input type="checkbox" checked={data.settings[key]} onChange={(e) => setSettings({ [key]: e.target.checked } as Partial<ClozeData['settings']>)} />
-                  {label}
-                </label>
-              ))}
-            </div>
-            {data.settings.showPoints && (
-              <div className="flex items-center gap-2 text-[11px] text-slate-700">
-                Tổng điểm
-                <input type="number" min={0} value={data.points ?? ''} placeholder="vd. 10" onChange={(e) => commit({ ...data, points: e.target.value === '' ? undefined : Number(e.target.value) }, 'points')} className={`${inputCls} !w-20 !py-1`} />
-              </div>
-            )}
-            <button type="button" onClick={resetFormatting} className="w-full py-2 text-xs font-semibold text-blue-700 border border-blue-300 hover:bg-blue-50 rounded-xl">Reset formatting</button>
-            <button type="button" onClick={startFit} disabled={fitting || !data.questions.length} className="w-full py-2 text-xs font-semibold text-blue-700 border border-blue-300 hover:bg-blue-50 disabled:opacity-50 rounded-xl">{fitting ? 'Đang thu nhỏ…' : 'Auto fit to A4'}</button>
-            {fitMsg && <p className="text-[11px] text-slate-500">{fitMsg}</p>}
-            </>)}
-          </section>
         </div>
       </main>
 

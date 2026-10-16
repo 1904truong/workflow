@@ -203,10 +203,23 @@ export function exportWorksheetToDocx(worksheet: Worksheet, mode: 'student' | 't
               </div>
             ` : ''}
           </div>
+        ` : ex.readingMcq ? `
+          <div style="margin-top: 8pt; margin-bottom: 8pt;">
+            ${ex.readingMcq.passageTitle ? `<p style="text-align: center; margin: 0 0 2pt 0;"><strong>${escapeXml(ex.readingMcq.passageTitle)}</strong></p>` : ''}
+            ${ex.readingMcq.passageAuthor ? `<p style="text-align: center; margin: 0 0 6pt 0;"><em>${escapeXml(ex.readingMcq.passageAuthor)}</em></p>` : ''}
+            ${ex.readingMcq.passage.split(/\n+/).filter((l) => l.trim()).map((l) => `<p style="margin: 0 0 6pt 0; text-indent: 24pt;">${escapeXml(l.trim())}</p>`).join('')}
+            ${ex.readingMcq.questions.map((q, i) => `<p style="margin: 6pt 0 2pt 0;"><strong>${i + 1}.</strong> ${escapeXml(q.text)}</p>
+              ${q.options.map((o, oi) => `<p style="margin: 0 0 1pt 14pt;"><strong>${String.fromCharCode(65 + oi)}.</strong> ${escapeXml(o.text)}</p>`).join('')}`).join('')}
+          </div>
+        ` : ex.listeningMcq ? `
+          <div style="margin-top: 8pt; margin-bottom: 8pt;">
+            ${ex.listeningMcq.questions.map((q, i) => `<p style="margin: 0 0 2pt 0;"><strong>${i + 1}.</strong> ${escapeXml(q.text)}</p>
+              <p style="margin: 0 0 8pt 14pt;">${q.options.map((o, oi) => `<strong>${String.fromCharCode(97 + oi)}.</strong> ${escapeXml(o.text)}`).join('&#160;&#160;&#160;&#160;')}</p>`).join('')}
+          </div>
         ` : ex.grammarMcq ? `
           <div style="margin-top: 8pt; margin-bottom: 8pt;">
             ${ex.grammarMcq.questions.map((q, i) => `<p style="margin: 0 0 2pt 0;"><strong>${i + 1}.</strong> ${escapeXml(q.text)}</p>
-              <p style="margin: 0 0 8pt 14pt;">${q.options.map((o, oi) => `<strong>${String.fromCharCode(97 + oi)}.</strong> ${escapeXml(o.text)}`).join('&#160;&#160;&#160;&#160;')}</p>`).join('')}
+              <p style="margin: 0 0 8pt 14pt;">${q.options.map((o, oi) => `<strong>${String.fromCharCode(97 + oi)}.</strong> ${escapeXml(o.text).replace(/\[([^\]]+)\]/g, '<u>$1</u>')}`).join('&#160;&#160;&#160;&#160;')}</p>`).join('')}
           </div>
         ` : ex.listeningTable ? `
           <div style="margin-top: 8pt; margin-bottom: 8pt;">
@@ -238,6 +251,17 @@ export function exportWorksheetToDocx(worksheet: Worksheet, mode: 'student' | 't
                   <td style="width: 70%; padding: 3pt 4pt;">${idea ? `<strong>${String.fromCharCode(97 + (i % 26))}.</strong> ${escapeXml(idea.text)}` : ''}</td>
                 </tr>`;
               }).join('')}
+            </table>
+          </div>
+        ` : ex.sentenceCompletion ? `
+          <div style="margin-top: 8pt; margin-bottom: 8pt;">
+            ${ex.sentenceCompletion.settings.showWordBank && ex.sentenceCompletion.words.length ? `<p style="text-align: center; border: 1pt solid #111; padding: 4pt;"><strong>${ex.sentenceCompletion.words.map((w) => escapeXml(w.text)).join(' &#160;&#160;&#160; ')}</strong></p>` : ''}
+            <table style="width: 100%; border-collapse: collapse;">
+              ${ex.sentenceCompletion.sentences.map((st, i) => `<tr>
+                <td style="width: 6%; padding: 4pt;"><strong>${i + 1}.</strong></td>
+                <td style="width: ${st.hint ? '64%' : '94%'}; padding: 4pt;">${escapeXml(st.text.replace(/_{3,}/g, '____________'))}</td>
+                ${st.hint ? `<td style="width: 30%; padding: 4pt;"><em><strong>(${escapeXml(st.hint)})</strong></em></td>` : ''}
+              </tr>`).join('')}
             </table>
           </div>
         ` : ex.gapFilling ? `

@@ -9,6 +9,8 @@ export interface ExerciseTypeMeta {
   defaultSlotsCount: number;
   slotPreset?: keyof typeof PRINT_TOKENS.imageSlots;
   description: string;
+  /** Ẩn khỏi các menu tạo bài mới (bài đã lưu thuộc loại này vẫn mở được) */
+  hidden?: boolean;
 }
 
 export const EXERCISE_REGISTRY: Record<ExerciseType, ExerciseTypeMeta> = {
@@ -108,19 +110,27 @@ export const EXERCISE_REGISTRY: Record<ExerciseType, ExerciseTypeMeta> = {
   },
   grammar_vocab_multiple_choice: {
     type: 'grammar_vocab_multiple_choice',
-    label: 'Grammar & Vocabulary Multiple Choice',
+    label: 'Multiple Choice (câu rời)',
     category: 'Grammar & Vocab',
     defaultTemplate: 'template_a',
     defaultSlotsCount: 0,
-    description: 'Standard 4-option (A, B, C, D) grammar and vocabulary test questions.',
+    description: 'Danh sách câu rời, mỗi câu có chỗ trống và các lựa chọn a, b, c, d. Không có đoạn văn.',
+  },
+  pronunciation_multiple_choice: {
+    type: 'pronunciation_multiple_choice',
+    label: 'Pronunciation Multiple Choice',
+    category: 'Grammar & Vocab',
+    defaultTemplate: 'template_a',
+    defaultSlotsCount: 0,
+    description: 'Chọn từ có phần gạch chân phát âm khác: 4 từ A, B, C, D trên một hàng, bôi đen một phần của từ để gạch chân.',
   },
   grammar_vocab_cloze: {
     type: 'grammar_vocab_cloze',
-    label: 'Multiple Choice Cloze Test',
+    label: 'Cloze Test (đoạn văn + chỗ trống)',
     category: 'Grammar & Vocab',
     defaultTemplate: 'template_a',
     defaultSlotsCount: 0,
-    description: 'Reading passage with numbered blanks, each with A, B, C, D options.',
+    description: 'Một đoạn văn có chỗ trống đánh số (1), (2)…, lựa chọn a, b, c, d nằm bên dưới; có thể thêm ảnh.',
   },
   gap_filling_word_formation: {
     type: 'gap_filling_word_formation',
@@ -137,6 +147,14 @@ export const EXERCISE_REGISTRY: Record<ExerciseType, ExerciseTypeMeta> = {
     defaultTemplate: 'template_a',
     defaultSlotsCount: 0,
     description: 'Unscramble mixed-order words to construct grammatically correct English sentences.',
+  },
+  sentence_completion: {
+    type: 'sentence_completion',
+    label: 'Sentence Completion – Grammar Practice',
+    category: 'Grammar & Vocab',
+    defaultTemplate: 'template_a',
+    defaultSlotsCount: 0,
+    description: 'Câu ngắn có chỗ trống với từ / cấu trúc ngữ pháp trọng tâm: khung từ, từ trong ngoặc, viết lại với gợi ý, hoặc hai cột at / on / in. Có mã QR khi bài có nghe.',
   },
   sentence_construction: {
     type: 'sentence_construction',

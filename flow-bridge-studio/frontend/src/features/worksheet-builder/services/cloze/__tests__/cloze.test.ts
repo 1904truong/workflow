@@ -196,3 +196,15 @@ test('bulk edit: xuất rồi nạp lại không đổi; dòng dư tạo thêm c
   assert.equal(fewer.questions.length, 7);
   assert.deepEqual(fewer.questions[0].options.map((o) => o.text), ['only', 'two']);
 });
+
+test('Smart Paste nhận dòng lựa chọn không có dấu chấm sau số: "1 a. chic b. vintage c. trim"', () => {
+  const r = parseClozeSmartPaste(`READ THE TEXT. CHOOSE THE CORRECT ANSWERS.
+PARIS
+Paris is a dream destination. Parisians are famous for their (1) __________, modern style. We (2) __________ this free event at 3 p.m.
+1 a. chic b. vintage c. trim
+2 a. are holding b. held c. hold`);
+  assert.equal(r.questionCount, 2);
+  assert.equal(r.data.questions[0].options.map((o) => o.text).join('|'), 'chic|vintage|trim');
+  assert.equal(r.data.passageTitle, 'PARIS');
+  assert.equal(r.blankCount, 2);
+});

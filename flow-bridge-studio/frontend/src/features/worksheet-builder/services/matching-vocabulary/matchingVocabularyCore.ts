@@ -4,7 +4,7 @@
 import { parseMatchingText } from '../matching/matchingCore.ts';
 import type { TextStyle } from '../matching-pictures/matchingPicturesCore.ts';
 
-export type VocabLayoutId = 'two_columns';
+export type VocabLayoutId = 'two_columns' | 'plain_list';
 
 import type { AiImagePlan } from '../ai/imagePlanSchema.ts';
 
@@ -19,6 +19,7 @@ export interface VocabLayoutMeta {
 
 export const VOCAB_LAYOUTS: VocabLayoutMeta[] = [
   { id: 'two_columns', label: '1. Original (2 cột)', desc: 'Từ ở cột trái có ô trả lời, định nghĩa a, b, c… ở cột phải' },
+  { id: 'plain_list', label: '2. Plain List (không ô trả lời)', desc: 'Danh sách gọn như giáo trình: 1. 2. 3. bên trái, a. b. c. bên phải, không ô vuông và không đường kẻ giữa' },
 ];
 
 export interface VocabItem {

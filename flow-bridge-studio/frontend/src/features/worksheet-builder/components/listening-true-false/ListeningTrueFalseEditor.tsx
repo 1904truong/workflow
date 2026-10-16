@@ -1,9 +1,10 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  ArrowLeft, Check, Copy, Eye, FileDown, GripVertical, Maximize2, Expand, Minus, Plus, Printer, X, MoreHorizontal,
+  ArrowLeft, Check, Copy, Eye, FileDown, GripVertical, Maximize2, Minimize, Minus, Plus, Printer, X, MoreHorizontal,
   RotateCcw, RotateCw, Save, Trash2, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, HelpCircle, Sparkles, ImagePlus,
 } from 'lucide-react';
+import { PageZoomOverlay } from '../shared/PageZoomOverlay';
 import type { Exercise, LessonFolder, Worksheet } from '../../types';
 import {
   bumpTfSize, buildTfImagePrompt, createListeningTrueFalse, highlightTfWords, imagePromptFromPlan, moveTfItem, newTfId,
@@ -118,6 +119,7 @@ export const ListeningTrueFalseEditor: React.FC<Props> = ({ folder, editingExerc
   const [activeTab, setActiveTab] = useState<'preview' | 'edit_mode'>('edit_mode');
   const [zoom, setZoom] = useState(100);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [pageFull, setPageFull] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [selKey, setSelKey] = useState<TfStyleKey>('title');
   const locked = activeTab === 'preview';
@@ -362,7 +364,7 @@ export const ListeningTrueFalseEditor: React.FC<Props> = ({ folder, editingExerc
   };
 
   const renderA4 = (scale: number, editable: boolean) => (
-    <div className="bg-white text-[#111] shadow-xl mx-auto" style={{ width: '210mm', minHeight: '297mm', padding: '15mm', zoom: scale }}>
+    <div className="bg-white text-[#111] shadow-xl mx-auto" style={{ width: '210mm', minHeight: '297mm', padding: '15mm', zoom: scale, display: 'flex', flexDirection: 'column' }}>
       {brand.enabled && <BrandHeader b={brand} />}
       <div className="mt-[4mm]">
         <ListeningTrueFalseRenderer
@@ -377,7 +379,7 @@ export const ListeningTrueFalseEditor: React.FC<Props> = ({ folder, editingExerc
           } : undefined}
         />
       </div>
-      {brand.enabled && <div className="mt-[8mm]"><BrandFooter b={brand} pageNumber={1} totalPages={1} /></div>}
+      {brand.enabled && <div className="mt-auto pt-[8mm]"><BrandFooter b={brand} pageNumber={1} totalPages={1} /></div>}
     </div>
   );
 
@@ -559,8 +561,8 @@ export const ListeningTrueFalseEditor: React.FC<Props> = ({ folder, editingExerc
             <div className="flex items-center gap-1.5 text-xs text-slate-700 shrink-0 [&_button]:!w-7 [&_button]:!h-7">
               <div className={`${box} px-0.5`}><button type="button" className={btn} title="Trang trước"><ChevronLeft size={15} /></button><span className="px-2 whitespace-nowrap">Page 1 / 1</span><button type="button" className={btn} title="Trang sau"><ChevronRight size={15} /></button></div>
               <div className={`${box} px-0.5`}><button type="button" onClick={() => setZoom((z) => Math.max(50, z - 10))} className={btn} title="Thu nhỏ"><Minus size={14} /></button><span className="w-11 text-center">{zoom}%</span><button type="button" onClick={() => setZoom((z) => Math.min(150, z + 10))} className={btn} title="Phóng to"><Plus size={14} /></button></div>
-              <button type="button" onClick={() => setZoom(100)} className={`${box} ${btn}`} title="Vừa khung"><Maximize2 size={14} /></button>
-              <button type="button" onClick={() => setIsFullscreen(true)} className={`${box} ${btn}`} title="Toàn màn hình"><Expand size={14} /></button>
+              <button type="button" onClick={() => setPageFull(true)} className={`${box} ${btn}`} title="Phóng to trang đang soạn"><Maximize2 size={14} /></button>
+              <button type="button" onClick={() => { setZoom(100); setPageFull(false); }} className={`${box} ${btn}`} title="Thu nhỏ về 100%"><Minimize size={14} /></button>
               <button type="button" onClick={() => window.print()} className={`${box} ${btn}`} title="In trang A4"><Printer size={15} /></button>
             </div>
           </div>
@@ -584,6 +586,8 @@ export const ListeningTrueFalseEditor: React.FC<Props> = ({ folder, editingExerc
           </div>
         </div>
       )}
+
+      {pageFull && <PageZoomOverlay worksheet={buildWorksheet(true)} onClose={() => setPageFull(false)} />}
 
       {isFullscreen && previewWorksheet && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 md:p-8" onClick={() => setIsFullscreen(false)}>

@@ -1,6 +1,6 @@
 import React from 'react';
 import type { GrammarMcqData, McqQuestion, McqStyleKey } from '../../services/grammar-mcq/grammarMcqCore';
-import { optionLabel, resolveOptionColumns, splitBlanks } from '../../services/grammar-mcq/grammarMcqCore';
+import { splitUnderline, optionLabel, resolveOptionColumns, splitBlanks } from '../../services/grammar-mcq/grammarMcqCore';
 import { textStyleToCss } from '../../services/matching-pictures/matchingPicturesCore';
 
 const NAVY = '#16295f';
@@ -33,7 +33,7 @@ const EditableText: React.FC<{
   selected?: boolean;
   onSelect?: () => void;
 }> = ({ value, onCommit, css, selected, onSelect }) => {
-  if (!onCommit) return <span style={css}>{value}</span>;
+  if (!onCommit) return <span style={css}>{splitUnderline(value).map((p, i) => (p.underline ? <u key={i} style={{ textUnderlineOffset: '1.5px' }}>{p.text}</u> : <span key={i}>{p.text}</span>))}</span>;
   return (
     <span
       contentEditable
@@ -122,6 +122,40 @@ export const GrammarMcqRenderer: React.FC<Props> = ({ data, exerciseIndex = 1, h
   );
 
   const body = () => {
+    if (data.sentenceMode) {
+      const w = { long: '100%', medium: '70%', short: '45%' }[data.answerLineLength || 'long'];
+      return (
+        <div>
+          {questions.map((q, i) => wrapper(q, (
+            <>
+              <div className="flex items-start gap-[1.5mm]">
+                {numberTag(i)}
+                <span className="flex-1">{renderText(q)}</span>
+              </div>
+              {settings.showAnswerBoxes && Array.from({ length: Math.max(1, data.answerLines || 1) }).map((_, li) => (
+                <div key={li} style={{ marginLeft: settings.showNumbering ? '7mm' : 0, width: settings.showNumbering ? `calc(${w} - 7mm)` : w, borderBottom: '0.75pt solid #444', height: '7mm' }} />
+              ))}
+            </>
+          ), { marginBottom: `${Math.max(gap, 3)}mm` }))}
+        </div>
+      );
+    }
+    if (data.pronunciation) {
+      // Một câu một hàng: số thứ tự + các từ A / B / C / D chia đều (từ có phần gạch chân)
+      return (
+        <div>
+          {questions.map((q, i) => wrapper(q, (
+            <div className="flex items-baseline gap-[1.5mm]">
+              {numberTag(i)}
+              <div className="grid flex-1" style={{ gridTemplateColumns: `repeat(${Math.max(1, q.options.length)}, minmax(0, 1fr))`, columnGap: '4mm' }}>
+                {q.options.map((_, oi) => renderOption(q, oi))}
+              </div>
+              {answerBox}
+            </div>
+          ), { marginBottom: `${Math.max(gap, 4)}mm` }))}
+        </div>
+      );
+    }
     switch (layout) {
       case 'two_columns':
         return (

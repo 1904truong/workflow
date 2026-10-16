@@ -1,6 +1,6 @@
 import React from 'react';
 import type { GapFillingData, GapStyleKey } from '../../services/gap-filling/gapFillingCore';
-import { passageParagraphs, splitPassage } from '../../services/gap-filling/gapFillingCore';
+import { passageParagraphs, passageSentences, splitPassage } from '../../services/gap-filling/gapFillingCore';
 import { textStyleToCss } from '../../services/matching-pictures/matchingPicturesCore';
 import { getAudioQrCodeUrl } from '../../services/listening/listeningGapFillCore';
 
@@ -76,7 +76,8 @@ export const GapFillingRenderer: React.FC<Props> = ({ data, exerciseIndex = 1, h
     )
   ) : null;
 
-  const paragraphs = passageParagraphs(data.passage);
+  const numbered = settings.layout === 'numbered_list';
+  const paragraphs = numbered ? passageSentences(data.passage) : passageParagraphs(data.passage);
   const blankW = `${settings.blankWidthMm}mm`;
 
   return (
@@ -107,7 +108,9 @@ export const GapFillingRenderer: React.FC<Props> = ({ data, exerciseIndex = 1, h
 
       {settings.showWordBank && words.length > 0 && (
         <div
-          style={{ margin: '0 auto 6mm', width: 'fit-content', maxWidth: '100%', border: '1pt solid #111', borderRadius: '2.5mm', padding: '2mm 7mm', display: 'flex', flexWrap: 'wrap', justifyContent: 'center', columnGap: '9mm', rowGap: '1mm', fontWeight: 700, ...css('wordBank') }}
+          style={numbered
+            ? { margin: '0 auto 6mm', width: '78%', border: '1pt solid #111', borderRadius: '3mm', padding: '2.5mm 6mm', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', columnGap: '6mm', rowGap: '2mm', textAlign: 'center', fontWeight: 700, ...css('wordBank') }
+            : { margin: '0 auto 6mm', width: 'fit-content', maxWidth: '100%', border: '1pt solid #111', borderRadius: '2.5mm', padding: '2mm 7mm', display: 'flex', flexWrap: 'wrap', justifyContent: 'center', columnGap: '9mm', rowGap: '1mm', fontWeight: 700, ...css('wordBank') }}
         >
           {words.map((w) => (
             <span key={w.id}>
@@ -117,19 +120,27 @@ export const GapFillingRenderer: React.FC<Props> = ({ data, exerciseIndex = 1, h
         </div>
       )}
 
-      <div style={{ lineHeight: settings.lineHeight, ...css('passage') }}>
+      <div style={{ lineHeight: numbered ? 1.9 : settings.lineHeight, ...css('passage') }}>
         {paragraphs.map((p, pi) => (
-          <p key={pi} style={{ margin: '0 0 2mm', textAlign: 'justify', textIndent: '8mm' }} onClick={pick('passage')}>
-            {splitPassage(p).map((part, i) =>
-              part.kind === 'text' ? (
-                <span key={i}>{part.text}</span>
-              ) : (
-                <span key={i} style={{ whiteSpace: 'nowrap' }}>
-                  {part.label && <strong style={{ fontWeight: 800 }}>({part.label}) </strong>}
-                  <span style={{ display: 'inline-block', width: blankW, borderBottom: '1pt dashed #1e293b', verticalAlign: 'baseline', height: '1em' }} />
-                </span>
-              ),
-            )}
+          <p
+            key={pi}
+            className={numbered ? 'flex items-baseline gap-[3mm]' : undefined}
+            style={numbered ? { margin: '0 0 2.2mm', breakInside: 'avoid' } : { margin: '0 0 2mm', textAlign: 'justify', textIndent: '8mm' }}
+            onClick={pick('passage')}
+          >
+            {numbered && <strong style={{ minWidth: '6mm', fontWeight: 800 }}>{pi + 1}.</strong>}
+            <span className={numbered ? 'flex-1' : undefined}>
+              {splitPassage(p).map((part, i) =>
+                part.kind === 'text' ? (
+                  <span key={i}>{part.text}</span>
+                ) : (
+                  <span key={i} style={{ whiteSpace: 'nowrap' }}>
+                    {part.label && <strong style={{ fontWeight: 800 }}>({part.label}) </strong>}
+                    <span style={{ display: 'inline-block', width: blankW, borderBottom: '1pt dashed #1e293b', verticalAlign: 'baseline', height: '1em' }} />
+                  </span>
+                ),
+              )}
+            </span>
           </p>
         ))}
       </div>

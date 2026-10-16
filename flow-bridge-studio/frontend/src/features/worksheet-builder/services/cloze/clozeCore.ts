@@ -344,7 +344,8 @@ export interface ClozeParseResult {
   blankCount: number;
 }
 
-const NUM_Q_RE = /^\s*(\d{1,3})\s*[.)]\s*(.*)$/;
+// Dấu chấm sau số là tùy chọn: "1. a. at b. in" và "1 a. at b. in" (hay gặp khi copy từ PDF) đều được nhận
+const NUM_Q_RE = /^\s*(\d{1,3})\s*[.)]?\s*(.*)$/;
 const OPT_ONLY_RE = /^\s*\(?([a-dA-D])[.)]\s*(.+)$/;
 const FIRST_OPT_AFTER_NUM = /^\s*\(?[aA][.)]\s*\S/;
 

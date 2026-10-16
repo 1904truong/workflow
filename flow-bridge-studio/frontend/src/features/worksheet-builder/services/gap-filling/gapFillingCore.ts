@@ -5,7 +5,7 @@
 import type { ListeningAudio } from '../listening/listeningGapFillCore.ts';
 import type { TextStyle } from '../matching-pictures/matchingPicturesCore.ts';
 
-export type GapLayoutId = 'box_paragraph';
+export type GapLayoutId = 'box_paragraph' | 'numbered_list';
 
 export interface GapLayoutMeta {
   id: GapLayoutId;
@@ -15,6 +15,7 @@ export interface GapLayoutMeta {
 
 export const GAP_LAYOUTS: GapLayoutMeta[] = [
   { id: 'box_paragraph', label: '1. Khung từ + đoạn văn', desc: 'Khung từ có viền bo tròn ở trên, đoạn văn giãn dòng rộng bên dưới, mã QR góc phải tiêu đề' },
+  { id: 'numbered_list', label: '2. Khung từ + câu đánh số', desc: 'Khung từ xếp lưới ba cột, bên dưới là các câu 1., 2., … mỗi câu một chỗ trống, tự tách đoạn theo từng dòng' },
 ];
 
 export interface GapWord {
@@ -115,6 +116,14 @@ export const splitPassage = (text: string): PassagePart[] => {
   return parts;
 };
 
+/** Các câu đánh số của layout "câu đánh số": mỗi dòng một câu, bỏ số "1." đầu dòng */
+export const passageSentences = (passage: string): string[] =>
+  passage.replace(/\r\n?/g, '\n').split('\n').map((l) => l.trim().replace(/^\d{1,3}\s*[.)]\s*/, '')).filter(Boolean);
+
+/** Văn bản có từ 2 dòng bắt đầu bằng "1." / "2)" … được coi là danh sách câu đánh số */
+export const looksNumberedList = (passage: string): boolean =>
+  passage.split('\n').filter((l) => /^\s*\d{1,3}\s*[.)]\s*\S/.test(l)).length >= 2;
+
 export const passageParagraphs = (passage: string): string[] =>
   passage.replace(/\r\n?/g, '\n').split(/\n\s*\n/).map((p) => p.replace(/\s*\n\s*/g, ' ').trim()).filter(Boolean);
 
@@ -152,40 +161,62 @@ export interface ParsedGapFilling {
   title: string;
   words: string[];
   passage: string;
+  /** Layout gợi ý theo cấu trúc văn bản dán vào */
+  layout: GapLayoutId;
   warnings: string[];
 }
 
 /** Tách danh sách từ trong một dòng: Tab / "|" / "/" / dấu phẩy / từ 2 dấu cách trở lên */
 export const splitWordList = (line: string): string[] =>
-  line.replace(/^\s*(?:word\s*bank|words?|box)\s*[:\-–]\s*/i, '').split(/\t|\s*\|\s*|\s{2,}|\s*[,;/]\s*/).map((w) => w.trim()).filter(Boolean);
+  line.replace(/^\s*(?:word\s*bank|words?|box)\s*[:\-–]\s*/i, '').split(/\t|\s*\|\s*|\s{2,}|\s*[,;/]\s*/)
+    // bỏ dấu "x2" (số lần dùng) dính ở cuối từ khi copy từ phiếu in
+    .map((w) => w.trim().replace(/\s*[x×]\s*\d+$/i, '').trim()).filter(Boolean);
 
-const isTitleLine = (l: string) => l.length > 0 && l.length <= 120 && !/[.!?]$/.test(l) && l === l.toUpperCase() && /[A-Z]{3}/.test(l);
+const hasBlank = (l: string) => new RegExp(BLANK_RE.source).test(l);
+const isUpperLine = (l: string) => l.length > 0 && l.length <= 120 && l === l.toUpperCase() && /[A-Z]{3}/.test(l);
+const isNumberedLine = (l: string) => /^\d{1,3}\s*[.)]\s*\S/.test(l);
+
+/** Dòng có thể thuộc khung từ: ngắn, không chỗ trống, không đánh số, có từ 2 từ/cụm trở lên, không giống câu hoàn chỉnh */
+const isBankLine = (l: string) => {
+  if (!l || l.length > 140 || hasBlank(l) || isNumberedLine(l) || /[.!?]$/.test(l)) return false;
+  return splitWordList(l).length >= 2;
+};
 
 /**
- * Smart Paste: [tiêu đề viết hoa] [dòng khung từ] đoạn văn có "(a) ______".
- * Dòng khung từ: bắt đầu bằng "Word bank:", hoặc là dòng ngắn không có chỗ trống, không kết thúc bằng dấu chấm, có từ 3 từ/cụm trở lên.
+ * Smart Paste: [tiêu đề viết hoa, có thể xuống 2 dòng] [khung từ, có thể nhiều dòng] đoạn văn / các câu có chỗ trống.
+ * Khung từ: bắt đầu bằng "Word bank:", hoặc là các dòng ngắn liền nhau, không có chỗ trống và không đánh số.
  */
 export const parseGapFillingText = (raw: string): ParsedGapFilling => {
   const lines = raw.replace(/\r\n?/g, '\n').split('\n').map((l) => l.trim());
   const warnings: string[] = [];
   let i = 0;
   while (i < lines.length && !lines[i]) i++;
-  let title = '';
-  if (i < lines.length && isTitleLine(lines[i])) { title = lines[i]; i++; }
+
+  // Tiêu đề: các dòng viết hoa liền nhau (cho phép dấu chấm cuối, vì tiêu đề thường xuống dòng)
+  const titleParts: string[] = [];
+  while (i < lines.length && lines[i] && isUpperLine(lines[i]) && !isNumberedLine(lines[i]) && !hasBlank(lines[i])) {
+    titleParts.push(lines[i]);
+    i++;
+  }
+  const title = titleParts.join(' ').trim();
   while (i < lines.length && !lines[i]) i++;
-  let words: string[] = [];
+
+  // Khung từ: một hoặc nhiều dòng liền nhau
+  const words: string[] = [];
   if (i < lines.length) {
-    const l = lines[i];
-    const explicit = /^\s*(?:word\s*bank|words?|box)\s*[:\-–]/i.test(l);
-    const list = splitWordList(l);
-    const looksLikeBank = !BLANK_RE.test(l) && l.length <= 140 && !/[.!?]$/.test(l) && list.length >= 3;
-    BLANK_RE.lastIndex = 0;
-    if (explicit || looksLikeBank) { words = list; i++; }
+    if (/^\s*(?:word\s*bank|words?|box)\s*[:\-–]/i.test(lines[i])) {
+      while (i < lines.length && lines[i] && !isNumberedLine(lines[i]) && !hasBlank(lines[i])) { words.push(...splitWordList(lines[i])); i++; }
+    } else {
+      let j = i;
+      const bank: string[] = [];
+      while (j < lines.length && isBankLine(lines[j])) { bank.push(...splitWordList(lines[j])); j++; }
+      if (bank.length >= 3) { words.push(...bank); i = j; }
+    }
   }
   const passage = lines.slice(i).join('\n').replace(/\n{3,}/g, '\n\n').trim();
   if (countBlanks(passage) === 0) warnings.push('Không thấy chỗ trống nào dạng "(a) ______".');
   if (words.length === 0) warnings.push('Không thấy dòng khung từ – nhập thêm trong mục Word Bank.');
-  return { ok: passage.length > 0, title, words, passage, warnings };
+  return { ok: passage.length > 0, title, words, passage, layout: looksNumberedList(passage) ? 'numbered_list' : 'box_paragraph', warnings };
 };
 
 /** Import khung từ: mỗi dòng một từ/cụm, hoặc cả danh sách trên một dòng */

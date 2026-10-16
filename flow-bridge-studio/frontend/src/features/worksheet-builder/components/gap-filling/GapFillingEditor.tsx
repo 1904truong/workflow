@@ -1,9 +1,10 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  ArrowLeft, Check, Copy, Eye, FileDown, GripVertical, Maximize2, Expand, Minus, Plus, Printer, X,
+  ArrowLeft, Check, Copy, Eye, FileDown, GripVertical, Maximize2, Minimize, Minus, Plus, Printer, X,
   MoreHorizontal, RotateCcw, RotateCw, Save, Trash2, ChevronLeft, ChevronRight, ChevronDown, HelpCircle, SquareDashed, FileUp,
 } from 'lucide-react';
+import { PageZoomOverlay } from '../shared/PageZoomOverlay';
 import type { Exercise, LessonFolder, Worksheet } from '../../types';
 import {
   bumpGapSize, countBlanks, createGapFilling, insertBlankAt, moveGapItem, newGapId, parseGapFillingText, parseWordLines,
@@ -129,6 +130,7 @@ export const GapFillingEditor: React.FC<Props> = ({ folder, editingExercise, onS
   const [activeTab, setActiveTab] = useState<'preview' | 'edit_mode'>('edit_mode');
   const [zoom, setZoom] = useState(100);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [pageFull, setPageFull] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [selKey, setSelKey] = useState<GapStyleKey>('title');
   const leftColRef = useRef<HTMLDivElement>(null);
@@ -205,9 +207,26 @@ export const GapFillingEditor: React.FC<Props> = ({ folder, editingExercise, onS
         passage: parsed.passage,
         ...(parsed.words.length ? { words: parsed.words.map((text): GapWord => ({ id: newGapId(), text })) } : {}),
         ...(parsed.title ? { exerciseTitle: parsed.title } : {}),
+        settings: { ...dataRef.current.settings, layout: parsed.layout },
       });
     }
     setModal(null);
+  };
+
+  // Dán thẳng cả đề vào ô đoạn văn: nếu nhận ra tiêu đề / khung từ thì tự tách như Smart Paste
+  const handlePassagePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const text = e.clipboardData.getData('text');
+    if (!text || text.split('\n').length < 3) return;
+    const parsed = parseGapFillingText(text);
+    if (!parsed.ok || (!parsed.title && parsed.words.length === 0)) return;
+    e.preventDefault();
+    if (dataRef.current.passage.trim() && !window.confirm('Văn bản vừa dán có cả tiêu đề / khung từ. Tách vào đúng các mục và thay nội dung hiện có? (Có thể Hoàn tác)')) return;
+    update({
+      passage: parsed.passage,
+      ...(parsed.words.length ? { words: parsed.words.map((t): GapWord => ({ id: newGapId(), text: t })) } : {}),
+      ...(parsed.title ? { exerciseTitle: parsed.title } : {}),
+      settings: { ...dataRef.current.settings, layout: parsed.layout },
+    });
   };
 
   // ── Định dạng chữ theo thành phần
@@ -317,7 +336,7 @@ export const GapFillingEditor: React.FC<Props> = ({ folder, editingExercise, onS
   };
 
   const renderA4 = (scale: number, editable: boolean) => (
-    <div className="bg-white text-[#111] shadow-xl mx-auto" style={{ width: '210mm', minHeight: '297mm', padding: '15mm', zoom: scale }}>
+    <div className="bg-white text-[#111] shadow-xl mx-auto" style={{ width: '210mm', minHeight: '297mm', padding: '15mm', zoom: scale, display: 'flex', flexDirection: 'column' }}>
       {brand.enabled && <BrandHeader b={brand} />}
       <div className="mt-[4mm]">
         <GapFillingRenderer
@@ -332,7 +351,7 @@ export const GapFillingEditor: React.FC<Props> = ({ folder, editingExercise, onS
           } : undefined}
         />
       </div>
-      {brand.enabled && <div className="mt-[8mm]"><BrandFooter b={brand} pageNumber={1} totalPages={1} /></div>}
+      {brand.enabled && <div className="mt-auto pt-[8mm]"><BrandFooter b={brand} pageNumber={1} totalPages={1} /></div>}
     </div>
   );
 
@@ -473,11 +492,12 @@ export const GapFillingEditor: React.FC<Props> = ({ folder, editingExercise, onS
               <button type="button" onClick={() => openModal('smart')} className={smallBtn}>Smart Paste</button>
             </>} open={open[3]} onToggle={() => toggle(3)} />
             {open[3] && (<>
-              <p className="text-[11px] text-slate-500">Đặt con trỏ vào vị trí cần chèn rồi bấm <b>Add Blank</b>, hoặc gõ trực tiếp <code className="px-1 rounded bg-slate-100">(a) ________</code>. Các đoạn cách nhau một dòng trống.</p>
+              <p className="text-[11px] text-slate-500">Đặt con trỏ vào vị trí cần chèn rồi bấm <b>Add Blank</b>, hoặc gõ trực tiếp <code className="px-1 rounded bg-slate-100">(a) ________</code>. Các đoạn cách nhau một dòng trống. Muốn dạng câu đánh số (layout 2) thì viết mỗi câu một dòng bắt đầu bằng <code className="px-1 rounded bg-slate-100">1.</code>, <code className="px-1 rounded bg-slate-100">2.</code> …</p>
               <textarea
                 ref={passageRef}
                 value={data.passage}
                 onChange={(e) => update({ passage: e.target.value })}
+                onPaste={handlePassagePaste}
                 onSelect={(e) => { caretRef.current = e.currentTarget.selectionStart; }}
                 onBlur={(e) => { caretRef.current = e.currentTarget.selectionStart; }}
                 rows={10}
@@ -527,8 +547,8 @@ export const GapFillingEditor: React.FC<Props> = ({ folder, editingExercise, onS
                 <span className="w-11 text-center">{zoom}%</span>
                 <button type="button" onClick={() => setZoom((z) => Math.min(150, z + 10))} className={btn} title="Phóng to"><Plus size={14} /></button>
               </div>
-              <button type="button" onClick={() => setZoom(100)} className={`${box} ${btn}`} title="Vừa khung"><Maximize2 size={14} /></button>
-              <button type="button" onClick={() => setIsFullscreen(true)} className={`${box} ${btn}`} title="Toàn màn hình"><Expand size={14} /></button>
+              <button type="button" onClick={() => setPageFull(true)} className={`${box} ${btn}`} title="Phóng to trang đang soạn"><Maximize2 size={14} /></button>
+              <button type="button" onClick={() => { setZoom(100); setPageFull(false); }} className={`${box} ${btn}`} title="Thu nhỏ về 100%"><Minimize size={14} /></button>
               <button type="button" onClick={() => window.print()} className={`${box} ${btn}`} title="In trang A4"><Printer size={15} /></button>
             </div>
           </div>
@@ -558,6 +578,8 @@ export const GapFillingEditor: React.FC<Props> = ({ folder, editingExercise, onS
       )}
 
       {/* ──────── PREVIEW TOÀN BỘ WORKSHEET ──────── */}
+      {pageFull && <PageZoomOverlay worksheet={buildWorksheet(true)} onClose={() => setPageFull(false)} />}
+
       {isFullscreen && previewWorksheet && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 md:p-8" onClick={() => setIsFullscreen(false)}>
           <div className="bg-white rounded-3xl w-full max-w-5xl h-[92vh] flex flex-col shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
