@@ -11,6 +11,8 @@ import {
   type ParseResult 
 } from '../../services/smartPasteParser';
 import { EXERCISE_REGISTRY } from '../../templates/registry';
+import { TypeChooser } from './TypeChooser';
+import { enrichExercise } from '../../services/smartPasteEnrich';
 import { PRINT_TOKENS } from '../../tokens/printTokens';
 import { AiImagePlanPanel, type AiPlanEditorState } from './AiImagePlanPanel';
 import { analyzeWorksheetWithAI } from '../../services/ai/aiAnalyzer';
@@ -31,7 +33,7 @@ export const SmartPasteScreen: React.FC<SmartPasteScreenProps> = ({
   onCancel,
   onConfirmImport,
 }) => {
-  const [step, setStep] = useState<'input' | 'review'>('input');
+  const [step, setStep] = useState<'input' | 'choose' | 'review'>('input');
   const [pasteText, setPasteText] = useState<string>('');
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -98,7 +100,8 @@ export const SmartPasteScreen: React.FC<SmartPasteScreenProps> = ({
         setParseResult(result);
         setDetectedExercises(result.worksheet.exercises);
         setActiveExerciseIndex(0);
-        setStep('review');
+        // Một bài: cho chọn dạng giống nhất trong menu Add Exercise rồi chuyển tới trình soạn. Nhiều bài: xem lại từng bài như cũ.
+        setStep(result.worksheet.exercises.length <= 1 ? 'choose' : 'review');
       } catch (err: any) {
         setErrorMsg(err?.message || 'Failed to analyze worksheet content. Please check formatting.');
       } finally {
@@ -256,10 +259,10 @@ export const SmartPasteScreen: React.FC<SmartPasteScreenProps> = ({
       <div className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between shrink-0 shadow-2xs">
         <div className="flex items-center gap-2">
           <button
-            onClick={step === 'review' ? () => setStep('input') : onCancel}
+            onClick={step !== 'input' ? () => setStep('input') : onCancel}
             className="text-xs font-semibold text-slate-500 hover:text-slate-900 flex items-center gap-1 transition-colors mr-2"
           >
-            <ArrowLeft size={13} /> {step === 'review' ? 'Back to Paste Input' : `Back to ${folder.name}`}
+            <ArrowLeft size={13} /> {step !== 'input' ? 'Back to Paste Input' : `Back to ${folder.name}`}
           </button>
           <span className="text-slate-300">|</span>
           <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
@@ -268,7 +271,21 @@ export const SmartPasteScreen: React.FC<SmartPasteScreenProps> = ({
           </span>
         </div>
 
-        {step === 'review' && (
+        {step === 'choose' && (
+        <TypeChooser
+          text={pasteText}
+          detectedCount={detectedExercises.length}
+          onReviewAll={() => setStep('review')}
+          onPick={(type) => {
+            const base = detectedExercises[0];
+            if (!base) return;
+            const ex = enrichExercise({ ...base, type }, pasteText);
+            onConfirmImport([{ ...ex, type, order: folder.exercises.length + 1 }]);
+          }}
+        />
+      )}
+
+      {step === 'review' && (
           <button
             onClick={handleConfirmAndAdd}
             className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm shadow-emerald-600/20 flex items-center gap-1.5 transition-all active:scale-95"

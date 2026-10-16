@@ -121,6 +121,14 @@ export const ListeningLayoutThumbnail: React.FC<{ layout: ListeningLayoutId; cla
           <div className="h-px bg-slate-400 w-3/4 mt-0.5 border-b border-dashed" />
         </div>
       );
+    case 'sentence_list':
+      return (
+        <div className={`${className} bg-slate-50 border border-slate-300 rounded p-1 space-y-0.5 shrink-0 shadow-2xs`}>
+          <div className="h-0.5 bg-slate-500 rounded w-3/4" />
+          <div className="h-px bg-slate-400 w-full" />
+          {[0, 1, 2, 3].map((i) => <div key={i} className="flex items-center gap-0.5"><span className="h-0.5 bg-slate-300 rounded flex-1" /><span className="h-px w-3 bg-slate-600" /></div>)}
+        </div>
+      );
     case 'outline':
       return (
         <div className={`${className} bg-slate-50 border border-slate-300 rounded p-1 flex gap-0.5 shrink-0 shadow-2xs`}>

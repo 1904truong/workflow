@@ -15,7 +15,7 @@ import type {
   ListeningGapFillSettings,
   ListeningParagraphFormat,
 } from '../../services/listening/listeningGapFillCore';
-import { LISTENING_LAYOUTS, DIALOGUE_PRESET, PASSAGE_QR_PRESET, PASSAGE_IMAGE_PRESET, OUTLINE_PRESET } from '../../services/listening/listeningGapFillCore';
+import { LISTENING_LAYOUTS, DIALOGUE_PRESET, PASSAGE_QR_PRESET, PASSAGE_IMAGE_PRESET, OUTLINE_PRESET, SENTENCE_LIST_PRESET } from '../../services/listening/listeningGapFillCore';
 import { ListeningLayoutThumbnail } from './ListeningLayoutThumbnail';
 import { EditorToolbar, type ToolbarGroup } from '../shared/toolbar/EditorToolbar';
 
@@ -133,7 +133,7 @@ export const ListeningToolbar: React.FC<Props> = ({
       id: 'layout', label: 'Page & Layout',
       items: [
         {
-          type: 'layout', id: 'layout', value: settings.layout, onChange: (id) => onSettings(id === 'dialogue' ? DIALOGUE_PRESET : id === 'passage_qr' ? PASSAGE_QR_PRESET : id === 'passage_image' ? PASSAGE_IMAGE_PRESET : id === 'outline' ? OUTLINE_PRESET : { layout: id as ListeningGapFillSettings['layout'] }),
+          type: 'layout', id: 'layout', value: settings.layout, onChange: (id) => onSettings(id === 'dialogue' ? DIALOGUE_PRESET : id === 'passage_qr' ? PASSAGE_QR_PRESET : id === 'passage_image' ? PASSAGE_IMAGE_PRESET : id === 'outline' ? OUTLINE_PRESET : id === 'sentence_list' ? SENTENCE_LIST_PRESET : { layout: id as ListeningGapFillSettings['layout'] }),
           options: LISTENING_LAYOUTS.map((l) => ({ id: l.id, label: l.label, desc: l.desc, thumb: <ListeningLayoutThumbnail layout={l.id} className="w-full h-14" /> })),
         },
         { type: 'button', id: 'columns', icon: Columns2, label: settings.layout === 'two_columns' ? 'Columns – đang chia 2 cột, bấm để về 1 cột' : 'Columns – chia worksheet thành 2 cột', active: settings.layout === 'two_columns', onClick: () => onSettings({ layout: settings.layout === 'two_columns' ? 'original' : 'two_columns' }) },

@@ -10,6 +10,7 @@ export type ListeningLayoutId =
   | 'dialogue'       // Layout 7: Hội thoại (SUE: ... TEO: ...), không đánh số đoạn
   | 'passage_qr'     // Layout 8: Bài đọc đánh số, QR nhỏ chạy chữ vòng quanh, ảnh nhân vật ở đầu bài
   | 'passage_image' // Layout 9: Bài đọc không đánh số, ảnh lớn bên phải (QR đè góc ảnh), câu hỏi trả lời ngắn bên dưới
+  | 'sentence_list' // Layout 11: Câu rời đánh số (1), (2)… mỗi câu một dòng, dòng giới thiệu in nghiêng, QR góc phải
   | 'outline';      // Layout 10: Dàn ý gạch đầu dòng (• / +), QR góc phải tiêu đề, ảnh bên phải
 
 export type BlankStyle = 'underline' | 'box' | 'dotted';
@@ -131,6 +132,8 @@ export interface ListeningGapFillData {
   /** Ảnh nhỏ ở góc phải hàng tiêu đề (nhân vật minh họa) */
   headerImage?: { url?: string };
   exerciseTitle: string;
+  /** Dòng giới thiệu in nghiêng đậm dưới tiêu đề (vd. "You will hear a student called Julie…") */
+  intro?: string;
   passageTitle: string;
   exerciseNumber: number;
   pointsTotal?: number;
@@ -192,6 +195,19 @@ export const OUTLINE_PRESET: Partial<ListeningGapFillSettings> = {
   blankNumbering: 'numbers',
 };
 
+/** Cài đặt khớp phiếu mẫu "câu rời đánh số + dòng giới thiệu + QR" */
+export const SENTENCE_LIST_PRESET: Partial<ListeningGapFillSettings> = {
+  layout: 'sentence_list',
+  passageFontSizePt: 10.5,
+  lineHeight: 1.6,
+  paragraphSpacing: 'normal',
+  blankWidthMm: 24,
+  showAudioIcon: false,
+  imagePosition: 'none',
+  blankStyle: 'underline',
+  blankNumbering: 'numbers',
+};
+
 export const LISTENING_LAYOUTS: { id: ListeningLayoutId; label: string; desc: string }[] = [
   { id: 'original', label: '1. Original (1 cột)', desc: 'Bố cục gốc một cột, phổ biến nhất' },
   { id: 'numbered', label: '2. Đánh số (1–13)', desc: 'Đánh số thứ tự 1-13 thay cho chữ cái' },
@@ -202,6 +218,7 @@ export const LISTENING_LAYOUTS: { id: ListeningLayoutId; label: string; desc: st
   { id: 'dialogue', label: '7. Hội thoại', desc: 'Mỗi lượt nói bắt đầu bằng tên người nói in đậm (SUE:, TEO:), không đánh số' },
   { id: 'passage_image', label: '9. Bài đọc + ảnh lớn', desc: 'Bài đọc không đánh số, ảnh lớn bên phải với QR đè góc ảnh, câu hỏi trả lời ngắn bên dưới' },
   { id: 'outline', label: '10. Dàn ý gạch đầu dòng', desc: 'Dòng • và dòng con + , chỗ trống đánh số (1), (2)…, QR góc phải tiêu đề, ảnh bên phải' },
+  { id: 'sentence_list', label: '11. Câu rời đánh số + QR', desc: 'Mỗi câu một dòng với chỗ trống (1), (2)…, dòng giới thiệu in nghiêng dưới tiêu đề, tiêu đề đoạn căn giữa, QR góc phải' },
   { id: 'passage_qr', label: '8. Bài đọc + QR', desc: 'Đoạn đánh số kín chữ, mã QR nhỏ ở đầu bài chữ chạy vòng quanh, ảnh nhân vật ở góc tiêu đề' },
 ];
 

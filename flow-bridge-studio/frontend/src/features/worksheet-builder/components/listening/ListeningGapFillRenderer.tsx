@@ -9,6 +9,7 @@ import {
   PASSAGE_IMAGE_PRESET,
   DIALOGUE_PRESET,
   OUTLINE_PRESET,
+  SENTENCE_LIST_PRESET,
   PASSAGE_QR_PRESET,
   SPEAKER_RE,
   formatBlankLabel,
@@ -75,7 +76,7 @@ export const ListeningGapFillRenderer: React.FC<ListeningGapFillRendererProps> =
   const rawSettings = data.settings;
   const hasParagraphImages = rawSettings.imagePosition !== 'none' && data.paragraphs.some((pp) => !!pp.imageAssetUrl);
   const layoutEff = rawSettings.layout === 'original' && !hasParagraphImages ? 'passage_qr' : rawSettings.layout;
-  const preset = layoutEff === 'dialogue' ? DIALOGUE_PRESET : layoutEff === 'passage_qr' ? PASSAGE_QR_PRESET : layoutEff === 'passage_image' ? PASSAGE_IMAGE_PRESET : layoutEff === 'outline' ? OUTLINE_PRESET : null;
+  const preset = layoutEff === 'dialogue' ? DIALOGUE_PRESET : layoutEff === 'passage_qr' ? PASSAGE_QR_PRESET : layoutEff === 'passage_image' ? PASSAGE_IMAGE_PRESET : layoutEff === 'outline' ? OUTLINE_PRESET : layoutEff === 'sentence_list' ? SENTENCE_LIST_PRESET : null;
   const defaultTypography = rawSettings.passageFontSizePt === 12 && rawSettings.lineHeight === 1.7;
   const settings = preset && defaultTypography
     ? { ...rawSettings, ...preset, layout: layoutEff, blankWidthMm: Math.min(rawSettings.blankWidthMm, preset.blankWidthMm as number), showAudioIcon: false }
@@ -120,7 +121,7 @@ export const ListeningGapFillRenderer: React.FC<ListeningGapFillRendererProps> =
     }
 
     const numberingStyle =
-      settings.layout === 'numbered' ? 'numbers' : settings.blankNumbering;
+      settings.layout === 'numbered' || settings.layout === 'sentence_list' ? 'numbers' : settings.blankNumbering;
     const labelText = formatBlankLabel(blank, numberingStyle);
 
     const blankWidth = `${sampleStyle ? Math.min(settings.blankWidthMm || 18, 20) : settings.blankWidthMm || 30}mm`;
@@ -722,6 +723,20 @@ export const ListeningGapFillRenderer: React.FC<ListeningGapFillRendererProps> =
     );
   };
 
+  // ── 11. Câu rời đánh số: mỗi đoạn là một câu, không có số đoạn, chỗ trống (1), (2)…
+  const renderSentenceListLayout = () => (
+    <div style={{ fontSize: `${settings.passageFontSizePt}pt`, lineHeight, paddingLeft: '1mm' }}>
+      {data.paragraphs.map((para, idx) => (
+        <div key={para.id || idx} style={{ marginBottom: paragraphSpacingMargin }}>
+          {renderParagraphContent(para, idx)}
+        </div>
+      ))}
+    </div>
+  );
+
+  /** Tiêu đề có nhấn màu: phần đặt trong {{ }} in nghiêng, màu đỏ */
+  const richTitle = (t: string) => t.split(/(\{\{[^}]+\}\})/).filter(Boolean).map((p, i) => (/^\{\{[^}]+\}\}$/.test(p) ? <em key={i} style={{ color: '#c8102e', fontWeight: 800 }}>{p.slice(2, -2)}</em> : <span key={i}>{p}</span>));
+
   return (
     <div style={fontStyle} className="listening-gap-fill-content text-[#111] flow-root">
       {/* Hội thoại: QR nổi bên phải, các lượt nói chạy ngay dưới tiêu đề và vòng quanh QR */}
@@ -771,7 +786,7 @@ export const ListeningGapFillRenderer: React.FC<ListeningGapFillRendererProps> =
                   lineHeight: 1.2,
                 }}
               >
-                <EditableSpan value={data.exerciseTitle} onCommit={editable?.onTitle} />
+                {editable?.onTitle ? <EditableSpan value={data.exerciseTitle} onCommit={editable.onTitle} /> : richTitle(data.exerciseTitle)}
               </h2>
             )}
           </div>
@@ -784,6 +799,10 @@ export const ListeningGapFillRenderer: React.FC<ListeningGapFillRendererProps> =
             </div>
           )}
         </div>
+      )}
+
+      {data.intro && !hideExerciseHeading && (
+        <p style={{ margin: '0 0 3mm', fontStyle: 'italic', fontWeight: 700, fontSize: '10pt' }}>{data.intro}</p>
       )}
 
       {/* ───── Passage Title: THINGS TO SEE AND DO IN LONDON ───── */}
@@ -813,6 +832,7 @@ export const ListeningGapFillRenderer: React.FC<ListeningGapFillRendererProps> =
       {settings.layout === 'illustrated' && renderIllustratedLayout()}
       {settings.layout === 'dialogue' && renderDialogueLayout()}
       {settings.layout === 'passage_qr' && renderPassageQrLayout()}
+      {settings.layout === 'sentence_list' && renderSentenceListLayout()}
       {settings.layout === 'passage_image' && renderPassageImageLayout()}
       {outline && renderOutlineLayout()}
       {(settings.layout === 'original' || !settings.layout) && renderOriginalLayout()}

@@ -39,6 +39,8 @@ export type ScreenState =
 export default function App() {
   const [folders, setFolders] = useState<LessonFolder[]>([]);
   const [activeScreen, setActiveScreen] = useState<ScreenState>({ type: 'folders' });
+  // Sau Smart Paste: các bài vừa tách lần lượt mở trong đúng trình soạn của từng dạng
+  const [editQueue, setEditQueue] = useState<string[]>([]);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
   const autosaveTimerRef = useRef<any>(null);
 
@@ -390,7 +392,12 @@ export default function App() {
 
     const merged = [...target.exercises, ...newExercises];
     handleUpdateFolderExercises(folderId, merged);
-    setActiveScreen({ type: 'folder_detail', folderId });
+    if (newExercises.length === 0) {
+      setActiveScreen({ type: 'folder_detail', folderId });
+      return;
+    }
+    setEditQueue(newExercises.slice(1).map((e) => e.id));
+    setActiveScreen({ type: 'add_exercise', folderId, editingExercise: newExercises[0] });
   };
 
   // Manual Exercise save
@@ -414,7 +421,15 @@ export default function App() {
     handleUpdateFolderExercises(folderId, updatedExercises);
 
     if (nextAction === 'return') {
-      setActiveScreen({ type: 'folder_detail', folderId });
+      const [nextId, ...rest] = editQueue;
+      const nextEx = nextId ? updatedExercises.find((e) => e.id === nextId) : undefined;
+      if (nextEx) {
+        setEditQueue(rest);
+        setActiveScreen({ type: 'add_exercise', folderId, editingExercise: nextEx });
+      } else {
+        setEditQueue([]);
+        setActiveScreen({ type: 'folder_detail', folderId });
+      }
     }
   };
 
@@ -633,6 +648,7 @@ export default function App() {
 
             return (
               <ManualExerciseBuilderScreen
+                key={activeScreen.editingExercise?.id ?? 'new'}
                 folder={currentFolder}
                 editingExercise={activeScreen.editingExercise}
                 initialType={activeScreen.initialType}
@@ -640,9 +656,10 @@ export default function App() {
                   handleSaveExercise(currentFolder.id, ex, nextAction)
                 }
                 onDeleteExercise={(exId) => handleDeleteExercise(currentFolder.id, exId)}
-                onCancel={() =>
-                  setActiveScreen({ type: 'folder_detail', folderId: currentFolder.id })
-                }
+                onCancel={() => {
+                  setEditQueue([]);
+                  setActiveScreen({ type: 'folder_detail', folderId: currentFolder.id });
+                }}
               />
             );
           })()}

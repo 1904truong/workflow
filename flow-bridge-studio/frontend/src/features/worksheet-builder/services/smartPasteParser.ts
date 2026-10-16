@@ -2,6 +2,7 @@ import type {
   Worksheet, Exercise, QuestionItem, ChoiceOption, 
   ExerciseType, TemplateLayoutType, ImageSlot, TableData 
 } from '../types/index.ts';
+import { classifyByHeading, enrichExercise } from './smartPasteEnrich.ts';
 import { PRINT_TOKENS } from '../tokens/printTokens.ts';
 
 export interface ParseResult {
@@ -156,7 +157,7 @@ export function parseWorksheetText(rawText: string): ParseResult {
         unparsedBlocks
       );
       if (parsedExercise) {
-        exercises.push(parsedExercise);
+        exercises.push(enrichExercise(parsedExercise, chunk));
         currentOrder++;
       }
     } catch (err: any) {
@@ -388,14 +389,14 @@ function parseSingleExerciseChunk(
     lineIdx++;
   } else if (lineIdx < lines.length && !/^\d+[\.\)]/.test(lines[lineIdx]) && !/^Passage/i.test(lines[lineIdx])) {
     // If the next line isn't a question or passage, it's likely an instruction
-    if (/read|choose|listen|match|fill|complete|write|rearrange/i.test(lines[lineIdx])) {
+    if (/read|choose|listen|match|fill|complete|write|arrange|underlined|circle|answer|suggest|put |order|unscramble|true|false|use |find|tick|identify|nối|chọn|điền|sắp xếp/i.test(lines[lineIdx])) {
       instructions = lines[lineIdx];
       lineIdx++;
     }
   }
 
   // 2. Identify Exercise Type
-  const detectedType = classifyExerciseType(title + ' ' + instructions + ' ' + chunk);
+  const detectedType = classifyByHeading(title + ' ' + instructions) ?? classifyExerciseType(title + ' ' + instructions + ' ' + chunk);
 
   // 3. Remaining lines after title and instructions
   const remainingLines = lines.slice(lineIdx);

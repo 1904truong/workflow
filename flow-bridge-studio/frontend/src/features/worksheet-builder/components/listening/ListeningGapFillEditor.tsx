@@ -22,6 +22,7 @@ import {
   parseListeningSmartPaste,
   DIALOGUE_PRESET,
   OUTLINE_PRESET,
+  SENTENCE_LIST_PRESET,
   PASSAGE_IMAGE_PRESET,
 } from '../../services/listening/listeningGapFillCore';
 import { askExtension, generateImageViaExtension } from '../../services/ai/extensionBridge';
@@ -1067,7 +1068,7 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
       audio: prev.audio,
       settings: {
         ...prev.settings,
-        ...(parsed.settings.layout === 'dialogue' ? DIALOGUE_PRESET : parsed.settings.layout === 'passage_image' ? PASSAGE_IMAGE_PRESET : parsed.settings.layout === 'outline' ? OUTLINE_PRESET : {}),
+        ...(parsed.settings.layout === 'dialogue' ? DIALOGUE_PRESET : parsed.settings.layout === 'passage_image' ? PASSAGE_IMAGE_PRESET : parsed.settings.layout === 'outline' ? OUTLINE_PRESET : parsed.settings.layout === 'sentence_list' ? SENTENCE_LIST_PRESET : {}),
       },
     }));
     setShowSmartPaste(false);
@@ -1337,6 +1338,20 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
                     value={data.exerciseTitle}
                     onChange={(e) => update({ exerciseTitle: e.target.value })}
                     className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  />
+                </div>
+
+                {/* Dòng giới thiệu in nghiêng dưới tiêu đề */}
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    Intro line <span className="font-normal text-slate-400">(optional, in nghiêng dưới tiêu đề; trong tiêu đề dùng {'{{chữ}}'} để nhấn đỏ)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={data.intro || ''}
+                    onChange={(e) => update({ intro: e.target.value })}
+                    placeholder="You will hear a student called Julie talking to her class about her trip to Venice."
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                   />
                 </div>
 

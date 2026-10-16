@@ -568,10 +568,10 @@ export const TfngEditor: React.FC<Props> = ({ folder, editingExercise, onSaveExe
 
       {modal && (
         <div className="fixed inset-0 z-[80] bg-slate-900/40 flex items-center justify-center p-4" onClick={() => setModal(null)}>
-          <div className="w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-200 p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 p-5 flex flex-col gap-3" style={{ width: 'min(36rem, 95vw)', minWidth: '20rem', maxWidth: '95vw', maxHeight: '92vh', resize: 'both', overflow: 'auto' }} onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between"><h3 className="text-sm font-bold text-slate-900">{MODAL_INFO[modal].title}</h3><button type="button" onClick={() => setModal(null)} className="p-1 text-slate-400 hover:text-slate-700"><X size={16} /></button></div>
             <p className="text-xs text-slate-500">{MODAL_INFO[modal].hint}</p>
-            <textarea rows={10} value={pasteText} onChange={(e) => { setPasteText(e.target.value); setModalMsg(''); }} placeholder={PLACEHOLDER} className={`${fieldCls} font-mono`} />
+            <textarea rows={10} style={{ flex: '1 1 auto', minHeight: '14rem', resize: 'none' }} value={pasteText} onChange={(e) => { setPasteText(e.target.value); setModalMsg(''); }} placeholder={PLACEHOLDER} className={`${fieldCls} font-mono`} />
             {modalMsg && <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">{modalMsg}</p>}
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setModal(null)} className="h-9 px-3 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg">Hủy</button>
