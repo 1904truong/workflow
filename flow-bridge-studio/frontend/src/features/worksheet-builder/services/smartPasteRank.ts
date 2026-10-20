@@ -56,7 +56,8 @@ export const extractFeatures = (raw: string): Features => {
     optionQuestions,
     shortQuestions,
     slashLines: lines.filter((l) => (l.match(/\s?\/\s/g) || []).length >= 2).length,
-    audio: /listen|audio|you will hear|recording|nghe/.test(lower),
+    // Chỉ tính phần tiêu đề / hướng dẫn và cụm đặc trưng, không tính lựa chọn (vd. "a. listen")
+    audio: /listen|nghe/.test(head.filter((l) => l.length <= 160).slice(0, 3).join(' ').toLowerCase()) || /you will hear|audio|recording|track \d/.test(lower),
     tfWords: /\btrue\b[\s\S]*\bfalse\b/.test(lower),
     notGiven: /not given|\bng\b/.test(lower),
     wordBox: /word bank|in the box|from the box|words? in brackets/.test(lower),
@@ -73,6 +74,7 @@ const SCORERS: Partial<Record<ExerciseType, Scorer>> = {
     let s = 0;
     if (f.blanks >= 3 && f.passageWords >= 50) { s += 62; r.push(`Đoạn văn dài có ${f.blanks} chỗ trống đánh số`); }
     if (f.optionQuestions >= f.blanks * 0.6 && f.optionQuestions >= 3) { s += 34; r.push('Mỗi chỗ trống có lựa chọn a, b, c'); }
+    else if (f.optionQuestions >= 2 && f.blanks >= 3) { s += 20; r.push('Có lựa chọn a, b, c cho các chỗ trống'); }
     return { score: s, reasons: r };
   },
   gap_filling_word_formation: (f) => {
@@ -118,7 +120,7 @@ const SCORERS: Partial<Record<ExerciseType, Scorer>> = {
 
 export const rankExerciseTypes = (raw: string): TypeSuggestion[] => {
   const f = extractFeatures(raw);
-  const headingText = raw.split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 4).join(' ');
+  const headingText = raw.split('\n').map((l) => l.trim()).filter((l) => l && l.length <= 160).slice(0, 3).join(' ');
   const byHeading = classifyByHeading(headingText);
   const out: TypeSuggestion[] = Object.values(EXERCISE_REGISTRY)
     .filter((m) => !m.hidden || m.type === 'sentence_construction')
@@ -126,7 +128,9 @@ export const rankExerciseTypes = (raw: string): TypeSuggestion[] => {
       const base = SCORERS[m.type]?.(f) ?? { score: 0, reasons: [] };
       let score = Math.max(0, base.score);
       const reasons = [...base.reasons];
-      if (byHeading === m.type) { score = Math.min(99, score + 40 + (score === 0 ? 20 : 0)); reasons.unshift('Tiêu đề / hướng dẫn khớp dạng này'); }
+      // Có nhiều chỗ trống đánh số trong đoạn văn: "read the text, choose…" là hướng dẫn của Cloze, không phải Reading MC
+      const headingApplies = !(m.type === 'reading_multiple_choice' && f.blanks >= 3);
+      if (byHeading === m.type && headingApplies) { score = Math.min(99, score + 40 + (score === 0 ? 20 : 0)); reasons.unshift('Tiêu đề / hướng dẫn khớp dạng này'); }
       // Nghe: dạng không phải bài nghe bị trừ khi bài có audio, và ngược lại
       if (m.category === 'Listening' && !f.audio) score = Math.min(score, 10);
       return { type: m.type, label: m.label, category: m.category, score: Math.min(99, Math.round(score)), reasons: score > 0 ? reasons : [] };

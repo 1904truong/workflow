@@ -65,7 +65,7 @@ export const MatchingVocabularyRenderer: React.FC<Props> = ({ data, exerciseInde
   const plain = settings.layout === 'plain_list';
   const box = plain ? 0 : settings.answerBoxSizeMm;
   const showBoxes = !plain && settings.showAnswerBoxes;
-  const showDivider = !plain && settings.showDivider;
+  const showDivider = !plain && settings.layout !== 'boxes_no_divider' && settings.showDivider;
 
   return (
     <div style={{ fontFamily: `${settings.fontFamily || 'Arial'}, sans-serif`, fontSize: `${settings.fontSizePt}pt`, lineHeight: settings.lineHeight, color: '#111' }}>

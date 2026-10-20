@@ -85,7 +85,7 @@ export const DEFAULT_CLOZE_SETTINGS: ClozeSettings = {
   imageUrl: undefined, // không tự chèn ảnh; giáo viên tự tải lên
   answerColumns: 3,
   optionLabelStyle: 'lowercase',
-  fontFamily: 'Arial',
+  fontFamily: 'Quicksand',
   passageFontSizePt: 12,
   answerFontSizePt: 12,
   lineHeight: 1.5,

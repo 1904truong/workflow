@@ -7,6 +7,7 @@ export const AI_EXERCISE_TYPES = [
   'listening_gap_fill',
   'listening_multiple_choice',
   'listening_true_false',
+  'listening_matching',
   'listening_table_completion',
   'reading_multiple_choice',
   'true_false_not_given',

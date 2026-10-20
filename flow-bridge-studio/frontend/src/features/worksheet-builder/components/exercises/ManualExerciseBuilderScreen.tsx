@@ -7,6 +7,7 @@ import type { LessonFolder, Exercise, QuestionItem, ExerciseType, TemplateLayout
 import { EXERCISE_REGISTRY, TEMPLATE_METADATA } from '../../templates/registry';
 import { PRINT_TOKENS } from '../../tokens/printTokens';
 import { MatchingEditor } from '../matching/MatchingEditor';
+import { ExerciseTypeBar } from './ExerciseTypeBar';
 import { MultipleChoiceClozeEditor } from '../cloze/MultipleChoiceClozeEditor';
 import { ListeningGapFillEditor } from '../listening/ListeningGapFillEditor';
 import { MatchingPicturesEditor } from '../matching-pictures/MatchingPicturesEditor';
@@ -18,6 +19,7 @@ import { ListeningMcqEditor } from '../listening-mcq/ListeningMcqEditor';
 import { SentenceCompletionEditor } from '../sentence-completion/SentenceCompletionEditor';
 import { MatchingVocabularyEditor } from '../matching-vocabulary/MatchingVocabularyEditor';
 import { ListeningTrueFalseEditor } from '../listening-true-false/ListeningTrueFalseEditor';
+import { ListeningMatchingEditor } from '../listening-matching/ListeningMatchingEditor';
 import { ListeningTableEditor } from '../listening-table/ListeningTableEditor';
 import { GrammarMcqEditor } from '../grammar-mcq/GrammarMcqEditor';
 import type { MatchingData } from '../../services/matching/matchingCore';
@@ -95,8 +97,8 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
   const [typeCategory, setTypeCategory] = useState<string>('all');
 
   const categories = [
-    { id: 'all', label: 'All (15)' },
-    { id: 'Listening', label: 'Listening (4)', icon: Headphones },
+    { id: 'all', label: 'All (16)' },
+    { id: 'Listening', label: 'Listening (5)', icon: Headphones },
     { id: 'Reading', label: 'Reading (5)', icon: BookOpen },
     { id: 'Grammar & Vocab', label: 'Grammar & Vocab (4)', icon: Sparkles },
     { id: 'Writing', label: 'Writing (2)', icon: PenTool },
@@ -273,6 +275,7 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
   const isListeningGapFill = exerciseType === 'listening_gap_fill' || (editingExercise?.listeningGapFill !== undefined);
   const isMatchingPictures = exerciseType === 'matching_pictures' || (editingExercise?.matchingPictures !== undefined);
   const isListeningTable = exerciseType === 'listening_table_completion' || (editingExercise?.listeningTable !== undefined);
+  const isListeningMatching = exerciseType === 'listening_matching' || (editingExercise?.listeningMatching !== undefined);
   const isListeningTrueFalse = exerciseType === 'listening_true_false' || (editingExercise?.listeningTrueFalse !== undefined);
   const isMatchingHeadings = exerciseType === 'matching_headings' || (editingExercise?.matchingHeadings !== undefined);
   const isTfng = exerciseType === 'true_false_not_given' || (editingExercise?.tfng !== undefined);
@@ -282,8 +285,21 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
   const isSentenceCompletion = exerciseType === 'sentence_completion' || (editingExercise?.sentenceCompletion !== undefined);
   const isMatchingVocabulary = exerciseType === 'matching_vocabulary' || (editingExercise?.matchingVocabulary !== undefined);
 
+  // Dòng "Dạng bài" trên cùng mọi trình soạn: đổi dạng được khi bài chưa làm, khóa khi bài đã lưu
+  const handleChangeType = (type: ExerciseType) => {
+    if (type === exerciseType) return;
+    if (!window.confirm('Đổi dạng bài sẽ bỏ nội dung đang soạn của bài này. Tiếp tục?')) return;
+    handleSelectType(type);
+  };
+  const withTypeBar = (editor: React.ReactNode) => (
+    <div key={exerciseType} className="flex-1 flex flex-col h-full min-h-0 overflow-hidden">
+      <ExerciseTypeBar currentType={exerciseType} locked={!!editingExercise} onChange={handleChangeType} />
+      {editor}
+    </div>
+  );
+
   if (step === 'editor' && isGrammarMcq) {
-    return (
+    return withTypeBar(
       <GrammarMcqEditor
         pronunciation={isPronunciation}
         sentenceMode={sentenceMode}
@@ -297,7 +313,7 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
   }
 
   if (step === 'editor' && isCloze) {
-    return (
+    return withTypeBar(
       <MultipleChoiceClozeEditor
         folder={folder}
         editingExercise={editingExercise}
@@ -309,7 +325,7 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
   }
 
   if (step === 'editor' && isListeningGapFill) {
-    return (
+    return withTypeBar(
       <ListeningGapFillEditor
         folder={folder}
         editingExercise={editingExercise}
@@ -321,7 +337,7 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
   }
 
   if (step === 'editor' && isListeningTable) {
-    return (
+    return withTypeBar(
       <ListeningTableEditor
         folder={folder}
         editingExercise={editingExercise}
@@ -332,8 +348,20 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
     );
   }
 
+  if (step === 'editor' && isListeningMatching) {
+    return withTypeBar(
+      <ListeningMatchingEditor
+        folder={folder}
+        editingExercise={editingExercise}
+        onSaveExercise={onSaveExercise}
+        onCancel={!editingExercise ? () => setStep('select_type') : onCancel}
+        onDeleteExercise={onDeleteExercise}
+      />
+    );
+  }
+
   if (step === 'editor' && isListeningTrueFalse) {
-    return (
+    return withTypeBar(
       <ListeningTrueFalseEditor
         folder={folder}
         editingExercise={editingExercise}
@@ -345,7 +373,7 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
   }
 
   if (step === 'editor' && isMatchingHeadings) {
-    return (
+    return withTypeBar(
       <MatchingHeadingsEditor
         folder={folder}
         editingExercise={editingExercise}
@@ -357,7 +385,7 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
   }
 
   if (step === 'editor' && isTfng) {
-    return (
+    return withTypeBar(
       <TfngEditor
         folder={folder}
         editingExercise={editingExercise}
@@ -369,7 +397,7 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
   }
 
   if (step === 'editor' && isGapFilling) {
-    return (
+    return withTypeBar(
       <GapFillingEditor
         folder={folder}
         editingExercise={editingExercise}
@@ -381,7 +409,7 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
   }
 
   if (step === 'editor' && isListeningMcq) {
-    return (
+    return withTypeBar(
       <ListeningMcqEditor
         folder={folder}
         editingExercise={editingExercise}
@@ -393,7 +421,7 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
   }
 
   if (step === 'editor' && isReadingMcq) {
-    return (
+    return withTypeBar(
       <ReadingMcqEditor
         shortAnswer={exerciseType === 'reading_short_answer' || editingExercise?.readingMcq?.shortAnswer === true}
         folder={folder}
@@ -406,7 +434,7 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
   }
 
   if (step === 'editor' && isSentenceCompletion) {
-    return (
+    return withTypeBar(
       <SentenceCompletionEditor
         folder={folder}
         editingExercise={editingExercise}
@@ -418,7 +446,7 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
   }
 
   if (step === 'editor' && isMatchingVocabulary) {
-    return (
+    return withTypeBar(
       <MatchingVocabularyEditor
         folder={folder}
         editingExercise={editingExercise}
@@ -430,7 +458,7 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
   }
 
   if (step === 'editor' && isMatchingPictures) {
-    return (
+    return withTypeBar(
       <MatchingPicturesEditor
         folder={folder}
         editingExercise={editingExercise}

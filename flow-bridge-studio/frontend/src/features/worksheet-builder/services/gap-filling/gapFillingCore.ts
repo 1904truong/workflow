@@ -68,7 +68,7 @@ export const DEFAULT_GAP_SETTINGS: GapFillingSettings = {
   showExerciseTitle: true,
   showInstruction: false,
   showWordBank: true,
-  showQrCode: true,
+  showQrCode: false,
   pageBreakBefore: false,
 };
 

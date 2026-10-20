@@ -7,7 +7,7 @@ import type { ListeningAudio } from '../listening/listeningGapFillCore.ts';
 import type { TextStyle } from '../matching-pictures/matchingPicturesCore.ts';
 import { parseGapFillingText, passageSentences } from '../gap-filling/gapFillingCore.ts';
 
-export type SentenceLayoutId = 'word_bank' | 'brackets' | 'transform' | 'two_columns';
+export type SentenceLayoutId = 'word_bank' | 'brackets' | 'transform' | 'two_columns' | 'error_correction' | 'rewrite' | 'dialogue_order';
 
 export interface SentenceLayoutMeta {
   id: SentenceLayoutId;
@@ -22,6 +22,9 @@ export const SENTENCE_LAYOUTS: SentenceLayoutMeta[] = [
   { id: 'brackets', label: '2. Từ trong ngoặc', typeLabel: 'Words in Brackets', desc: 'Mỗi câu có chỗ trống, gợi ý trong ngoặc nằm cột bên phải, ví dụ (money/buy)' },
   { id: 'transform', label: '3. Viết lại với gợi ý', typeLabel: 'Sentence Transformation', desc: 'Cột trái là gợi ý (I\'m not going out / cold), cột phải là phần đầu câu trả lời: It\'s ______' },
   { id: 'two_columns', label: '4. Hai cột gọn', typeLabel: 'Short Sentences (2 columns)', desc: 'Các câu ngắn chia hai cột, tiết kiệm giấy – hợp bài điền at / on / in' },
+  { id: 'error_correction', label: '5. Tìm lỗi và sửa', typeLabel: 'Error Correction', desc: 'Mỗi câu có một lỗi sai; bên phải có đường kẻ để học sinh viết lại câu đã sửa' },
+  { id: 'dialogue_order', label: '7. Sắp xếp hội thoại', typeLabel: 'Dialogue Ordering', desc: 'Mỗi dòng thoại "Amy: …" có đường kẻ ngắn ở đầu để điền số thứ tự, tên người nói tô màu (người 1 đỏ, người 2 xanh), rồi lời thoại' },
+  { id: 'rewrite', label: '6. Viết lại câu (xếp dọc)', typeLabel: 'Rewrite Sentences', desc: 'Câu gốc một dòng; bên dưới là phần mở đầu cho sẵn (I prefer …) rồi đường kẻ dài để viết tiếp' },
 ];
 
 export interface SentenceItem {
@@ -32,6 +35,8 @@ export interface SentenceItem {
   hint?: string;
   /** Đáp án mẫu cho câu ví dụ (hiện chữ đỏ gạch chân khi bật Show Example) */
   example?: string;
+  /** Phần mở đầu cho sẵn của câu trả lời ở layout "Viết lại câu": I prefer, You don't … */
+  starter?: string;
 }
 
 export type SentenceStyleKey = 'title' | 'instruction' | 'wordBank' | 'sentences' | 'hints';
@@ -142,13 +147,34 @@ export interface ParsedSentenceCompletion {
   title: string;
   targetWord: string;
   words: string[];
-  sentences: { text: string; hint?: string }[];
+  sentences: { text: string; hint?: string; starter?: string }[];
   layout: SentenceLayoutId;
   warnings: string[];
 }
 
 const HINT_END_RE = /\s*\(([^()]{2,60})\)\s*$/;
 const HINT_START_RE = /^\s*\(([^()]{2,80})\)\s*(.*)$/;
+const ERROR_TITLE_RE = /\b(?:find|spot|correct)\b.*\b(?:mistakes?|errors?)\b|tìm lỗi/i;
+const REWRITE_TITLE_RE = /\brewrite\b|viết lại/i;
+const NUMBERED_LINE_RE = /^\d{1,3}\s*[.)]\s*\S/;
+
+/** Bỏ dấu gạch dưới / chấm / gạch ngang ở cuối phần mở đầu: "I prefer ______" -> "I prefer" */
+const cleanStarter = (s: string): string => s.replace(/[\s_.…–-]+$/, '').trim();
+
+/** Layout "Viết lại câu": dòng đánh số là câu gốc, dòng không số ngay sau đó là phần mở đầu cho sẵn */
+const parseRewriteSentences = (passage: string): { text: string; starter?: string }[] => {
+  const items: { text: string; starter?: string }[] = [];
+  for (const line of passage.replace(/\r\n?/g, '\n').split('\n').map((l) => l.trim()).filter(Boolean)) {
+    if (NUMBERED_LINE_RE.test(line) || items.length === 0) {
+      items.push({ text: line.replace(/^\d{1,3}\s*[.)]\s*/, '') });
+      continue;
+    }
+    const cur = items[items.length - 1];
+    const part = cleanStarter(line);
+    cur.starter = cur.starter ? `${cur.starter} ${part}` : part;
+  }
+  return items;
+};
 
 /** Đoán từ trọng tâm từ tiêu đề: cụm in nghiêng/hoa sau "USE", "USING" hoặc "WITH THESE WORDS" */
 export const guessTargetWord = (title: string): string => {
@@ -158,8 +184,25 @@ export const guessTargetWord = (title: string): string => {
   return word.toLowerCase();
 };
 
+const DIALOGUE_ORDER_TITLE_RE = /\b(?:dialogue|conversation)\b.*\border\b|correct order|sắp xếp hội thoại/i;
+
 export const parseSentenceCompletionText = (raw: string): ParsedSentenceCompletion => {
   const base = parseGapFillingText(raw);
+  if (DIALOGUE_ORDER_TITLE_RE.test(base.title)) {
+    const items = base.passage
+      .replace(/\r\n?/g, '\n')
+      .split('\n')
+      .map((l) => l.trim().replace(/^\d{1,3}\s*[.)]\s*/, '').replace(/^[_\s]+(?=[A-Z])/, ''))
+      .filter(Boolean)
+      .map((text) => ({ text }));
+    const warnings = items.length === 0 ? ['Không thấy dòng thoại nào. Mỗi dòng viết dạng "Amy: …".'] : [];
+    return { ok: items.length > 0, title: base.title, targetWord: '', words: [], sentences: items, layout: 'dialogue_order', warnings };
+  }
+  if (!ERROR_TITLE_RE.test(base.title) && REWRITE_TITLE_RE.test(base.title)) {
+    const items = parseRewriteSentences(base.passage);
+    const warnings = items.length === 0 ? ['Không thấy câu nào. Mỗi câu một dòng đánh số 1., 2., …, dòng mở đầu (I prefer …) ngay bên dưới.'] : [];
+    return { ok: items.length > 0, title: base.title, targetWord: '', words: [], sentences: items, layout: 'rewrite', warnings };
+  }
   const lines = passageSentences(base.passage);
   const sentences: { text: string; hint?: string }[] = [];
   let startHints = 0;
@@ -171,7 +214,7 @@ export const parseSentenceCompletionText = (raw: string): ParsedSentenceCompleti
     if (em && em.index > 0) { sentences.push({ text: line.slice(0, em.index).trim(), hint: em[1].trim() }); endHints++; continue; }
     sentences.push({ text: line });
   }
-  const layout: SentenceLayoutId = startHints >= 2 ? 'transform' : endHints >= 2 ? 'brackets' : base.words.length >= 3 ? 'word_bank' : 'two_columns';
+  const layout: SentenceLayoutId = ERROR_TITLE_RE.test(base.title) ? 'error_correction' : startHints >= 2 ? 'transform' : endHints >= 2 ? 'brackets' : base.words.length >= 3 ? 'word_bank' : 'two_columns';
   const warnings: string[] = [];
   if (sentences.length === 0) warnings.push('Không thấy câu nào. Mỗi câu một dòng, đánh số 1., 2., …');
   return { ok: sentences.length > 0, title: base.title, targetWord: guessTargetWord(base.title), words: base.words, sentences, layout, warnings };

@@ -185,6 +185,27 @@ export const ListeningTableEditor: React.FC<Props> = ({ folder, editingExercise,
     }
   };
 
+  const handleExtraImage = async (idx: number, ev: React.ChangeEvent<HTMLInputElement>) => {
+    const file = ev.target.files?.[0];
+    ev.target.value = '';
+    if (!file) return;
+    try {
+      const url = await fileToSmallDataUrl(file, 1200, 'image/jpeg');
+      const ratio = await new Promise<number>((resolve) => {
+        const im = new Image();
+        im.onload = () => resolve(im.naturalWidth && im.naturalHeight ? Math.round((im.naturalWidth / im.naturalHeight) * 100) / 100 : 16 / 9);
+        im.onerror = () => resolve(16 / 9);
+        im.src = url;
+      });
+      const extra = [...(dataRef.current.image.extra || [])];
+      extra[idx - 1] = { url, ratio };
+      update({ image: { ...dataRef.current.image, extra } });
+    } catch {
+      window.alert('Không đọc được ảnh này.');
+    }
+  };
+  const imageCount = Math.min(4, Math.max(1, data.settings.imageCount ?? 1));
+
   const [gen, setGen] = useState<{ busy: boolean; msg: string }>({ busy: false, msg: '' });
   const probeExtension = async (): Promise<{ present: boolean; ready: boolean; note: string }> => {
     try {
@@ -203,7 +224,7 @@ export const ListeningTableEditor: React.FC<Props> = ({ folder, editingExercise,
     if (!probe.ready) { setGen({ busy: false, msg: probe.note }); setData((d) => ({ ...d, image: { ...d.image, prompt: p } })); return; }
     try {
       const res = await generateImageViaExtension({ prompt: buildFinalPrompt(p, MAP_STYLE), aspectRatio: '16:9' });
-      setData((d) => ({ ...d, image: { url: res.imageUrl, ratio: 16 / 9, prompt: p }, settings: { ...d.settings, showImage: true } }));
+      setData((d) => ({ ...d, image: { ...d.image, url: res.imageUrl, ratio: 16 / 9, prompt: p }, settings: { ...d.settings, showImage: true } }));
       setGen({ busy: false, msg: 'Đã tạo và gắn ảnh vào bài.' });
     } catch (e) {
       setGen({ busy: false, msg: friendlyExtensionError(e instanceof Error ? e.message : 'Không tạo được ảnh') });
@@ -518,6 +539,22 @@ export const ListeningTableEditor: React.FC<Props> = ({ folder, editingExercise,
                 <label className={`${smallBtn} cursor-pointer`}><ImagePlus size={12} /> Tải ảnh từ máy<input type="file" accept="image/*" hidden onChange={(e) => { void handleImageFile(e); }} /></label>
                 {data.image.url && <button type="button" onClick={() => update({ image: { ...data.image, url: undefined, ratio: undefined } })} className="text-[11px] font-semibold text-rose-600 hover:underline text-left">Xóa ảnh</button>}
               </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600">Số ảnh
+                <select value={imageCount} onChange={(ev) => updateSettings({ imageCount: Number(ev.target.value) })} className={`${fieldCls} !w-16 !py-1`}>
+                  {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </label>
+              {Array.from({ length: imageCount - 1 }).map((_, k) => {
+                const slot = data.image.extra?.[k];
+                return (
+                  <span key={k} className="flex items-center gap-1.5">
+                    {slot?.url ? <img src={slot.url} alt="" className="w-14 h-[40px] object-cover rounded-md border border-slate-200" /> : <span className="w-14 h-[40px] rounded-md border border-dashed border-slate-300 bg-slate-50 text-[10px] text-slate-400 flex items-center justify-center">Ảnh {k + 2}</span>}
+                    <label className={`${smallBtn} cursor-pointer`}>Ảnh {k + 2}<input type="file" accept="image/*" hidden onChange={(ev) => { void handleExtraImage(k + 1, ev); }} /></label>
+                  </span>
+                );
+              })}
             </div>
             <AutoTextarea value={data.image.prompt || ''} onChange={(e) => update({ image: { ...data.image, prompt: e.target.value } })} placeholder="Prompt tạo ảnh (tự sinh từ nội dung, có thể sửa)" className={`${fieldCls} resize-none min-h-[34px] text-[11px]`} />
             {gen.msg && <p className={`text-[11.5px] rounded-md px-2 py-1 border ${gen.busy ? 'text-blue-700 bg-blue-50 border-blue-100' : 'text-amber-700 bg-amber-50 border-amber-100'}`}>{gen.msg}</p>}

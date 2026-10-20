@@ -1,4 +1,19 @@
 @import "tailwindcss";
+@import "./typeset.css";
+
+:root {
+  --font-geist: 'Geist', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-geist-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.typeset-docs {
+  --typeset-font-body: var(--font-geist);
+  --typeset-font-heading: var(--font-geist);
+  --typeset-font-mono: var(--font-geist-mono);
+  --typeset-size: 18px;
+  --typeset-leading: 1.7;
+  --typeset-flow: 1.25em;
+}
 
 /* Font của giao diện web: Geist (chữ) + Geist Mono (mã), cỡ 15px, giãn dòng 1.75 */
 @theme {
@@ -9,9 +24,9 @@
 body {
   background-color: #F9FAFB;
   color: #111827;
-  font-family: var(--font-sans);
-  font-size: 15px;
-  line-height: 1.75;
+  font-family: var(--font-geist);
+  font-size: 17px;
+  line-height: 1.7;
   -webkit-font-smoothing: antialiased;
 }
 

@@ -122,7 +122,7 @@ const QuestionBody: React.FC<QuestionRendererProps> = ({
                 ({question.correctAnswer})
               </span>
             ) : (
-              <span className="inline-block border-b border-[#555555] w-28 ml-2"></span>
+              <span className="inline-block border-b border-dashed border-[#555555] w-28 ml-2"></span>
             )}
           </div>
         </div>
@@ -146,11 +146,11 @@ const QuestionBody: React.FC<QuestionRendererProps> = ({
         {/* Answer Line */}
         <div className="mt-2 pl-[20px]">
           {isTeacherKey && question.correctAnswer ? (
-            <div className="text-red-600 font-semibold text-[10.5pt] border-b border-[#888888] pb-0.5">
+            <div className="text-red-600 font-semibold text-[10.5pt] border-b border-dashed border-[#888888] pb-0.5">
               ➔ {question.correctAnswer}
             </div>
           ) : (
-            <div className="border-b border-[#888888] h-[18px]"></div>
+            <div className="border-b border-dashed border-[#888888] h-[18px]"></div>
           )}
         </div>
       </div>
@@ -180,7 +180,7 @@ const QuestionBody: React.FC<QuestionRendererProps> = ({
             {Array.from({ length: lines }).map((_, lIdx) => (
               <div 
                 key={lIdx} 
-                className="w-full border-b border-[#888888] h-[16px]"
+                className="w-full border-b border-dashed border-[#888888] h-[16px]"
                 style={{ borderBottom: PRINT_TOKENS.borders.writingLine }}
               />
             ))}

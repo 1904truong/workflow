@@ -64,6 +64,7 @@ export const ListeningTableRenderer: React.FC<Props> = ({ data, exerciseIndex = 
   const pick = (k: TableStyleKey) => (editable?.onSelectKey ? () => editable.onSelectKey!(k) : undefined);
   const qrUrl = audio.shareUrl ? getAudioQrCodeUrl(audio.shareUrl) : '';
   const border = `0.75pt solid ${settings.tableBorderColor}`;
+  const imageOnly = settings.layout === 'image_only';
   const ratio = image.ratio || DEFAULT_RATIO;
   const colWidths = table.columns.map((_, i) => (i === 0 ? '17%' : `${(83 / Math.max(1, table.columns.length - 1)).toFixed(2)}%`));
 
@@ -107,7 +108,7 @@ export const ListeningTableRenderer: React.FC<Props> = ({ data, exerciseIndex = 
                 <EditableText value={data.exerciseTitle} onCommit={editable?.onTitle} selected={sel('title')} onSelect={pick('title')} />
               </h2>
               {data.instruction && (
-                <p className="italic mt-[1.5mm]" style={{ fontSize: '10pt', ...css('instruction') }}>
+                <p className={imageOnly ? 'mt-[1.5mm] font-bold' : 'italic mt-[1.5mm]'} style={{ fontSize: '10pt', ...css('instruction') }}>
                   <EditableText value={data.instruction} onCommit={editable?.onInstruction} selected={sel('instruction')} onSelect={pick('instruction')} />
                 </p>
               )}
@@ -119,18 +120,26 @@ export const ListeningTableRenderer: React.FC<Props> = ({ data, exerciseIndex = 
       {hideExerciseHeading && qr && <div className="flex justify-end mb-[3mm]">{qr}</div>}
 
       {settings.showImage && (
-        <div className="mx-auto mb-[4mm]" style={{ width: `${settings.imageWidthPercent}%`, aspectRatio: String(ratio) }}>
-          {image.url ? (
-            <img src={image.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '3mm', display: 'block' }} />
-          ) : (
-            <div style={{ width: '100%', height: '100%', border: '0.75pt dashed #9ca3af', borderRadius: '3mm', background: '#f8fafc', color: '#9ca3af', fontSize: '9pt', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              Ảnh / bản đồ
-            </div>
-          )}
+        <div className="mx-auto mb-[4mm] flex gap-[3mm]" style={{ width: `${settings.imageWidthPercent}%` }}>
+          {Array.from({ length: Math.min(4, Math.max(1, settings.imageCount ?? 1)) }).map((_, i) => {
+            const slot = i === 0 ? image : image.extra?.[i - 1];
+            const slotRatio = (slot?.ratio || (i === 0 ? ratio : DEFAULT_RATIO));
+            return (
+              <div key={i} className="flex-1 min-w-0" style={{ aspectRatio: String(slotRatio) }}>
+                {slot?.url ? (
+                  <img src={slot.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '3mm', display: 'block' }} />
+                ) : (
+                  <div style={{ width: '100%', height: '100%', border: '0.75pt dashed #9ca3af', borderRadius: '3mm', background: '#f8fafc', color: '#9ca3af', fontSize: '9pt', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    Ảnh / bản đồ
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
-      <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', marginBottom: '4mm', ...css('table') }}>
+      {!imageOnly && <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', marginBottom: '4mm', ...css('table') }}>
         <colgroup>{colWidths.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
         <thead>
           <tr>
@@ -150,9 +159,9 @@ export const ListeningTableRenderer: React.FC<Props> = ({ data, exerciseIndex = 
             </tr>
           ))}
         </tbody>
-      </table>
+      </table>}
 
-      <ol style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+      {!imageOnly && <ol style={{ listStyle: 'none', margin: 0, padding: 0 }}>
         {questions.map((q, i) => (
           <li key={q.id} className="flex items-end gap-[3mm]" style={{ breakInside: 'avoid', marginBottom: `${settings.questionGapMm}mm` }}>
             {settings.showQuestionNumbers && <strong style={{ minWidth: '6mm', fontWeight: 800 }}>{i + 1}.</strong>}
@@ -162,7 +171,7 @@ export const ListeningTableRenderer: React.FC<Props> = ({ data, exerciseIndex = 
             {settings.showAnswerLines && <span className="flex-1" style={{ borderBottom: '1pt dashed #444', height: '1.1em', minWidth: '30mm' }} />}
           </li>
         ))}
-      </ol>
+      </ol>}
     </div>
   );
 };

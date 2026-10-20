@@ -261,6 +261,9 @@ export const MatchingHeadingsEditor: React.FC<Props> = ({ folder, editingExercis
         ideas: mk('i', parsed.ideas),
         ...(parsed.exerciseTitle ? { exerciseTitle: parsed.exerciseTitle } : {}),
         ...(parsed.passageTitle ? { passageTitle: parsed.passageTitle } : {}),
+        settings: parsed.listOnly
+          ? { ...data.settings, showPassage: false, showImage: false, showPassageTitle: false }
+          : { ...data.settings, showPassage: true },
       });
     }
     setModal(null);

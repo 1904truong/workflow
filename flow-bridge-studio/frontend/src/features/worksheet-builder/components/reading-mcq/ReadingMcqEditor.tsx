@@ -243,6 +243,16 @@ export const ReadingMcqEditor: React.FC<Props> = ({ folder, editingExercise, onS
     try { update({ imageUrl: await fileToSmallDataUrl(file, 900, 'image/jpeg') }); } catch { window.alert('Không đọc được file ảnh.'); }
   };
 
+  const uploadExtraImages = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = '';
+    if (!files.length) return;
+    try {
+      const urls = await Promise.all(files.map((f) => fileToSmallDataUrl(f, 900, 'image/jpeg')));
+      update({ extraImages: [...(dataRef.current.extraImages || []), ...urls] });
+    } catch { window.alert('Không đọc được file ảnh.'); }
+  };
+
   const editOptionText = (qid: string, oid: string, text: string) => patchQuestion(qid, (q) => ({ ...q, options: q.options.map((o) => (o.id === oid ? { ...o, text } : o)) }));
   const addOption = () => selectedQ && patchQuestion(selectedQ.id, (q) => ({ ...q, options: [...q.options, { id: newMcqId('o'), text: '' }] }));
   const removeOption = (qid: string, oid: string) => patchQuestion(qid, (q) => ({ ...q, options: q.options.filter((o) => o.id !== oid) }));
@@ -535,6 +545,21 @@ export const ReadingMcqEditor: React.FC<Props> = ({ folder, editingExercise, onS
                 </label>
               </div>
             </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {(data.extraImages || []).map((src, i) => (
+                <span key={i} className="relative group">
+                  <img src={src} alt="" className="w-16 aspect-[4/3] object-cover rounded-md border border-slate-200" />
+                  <button type="button" title="Xóa ảnh phụ" onClick={() => update({ extraImages: (data.extraImages || []).filter((_, k) => k !== i) })} className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-rose-600 text-white text-[10px] leading-none opacity-0 group-hover:opacity-100">×</button>
+                </span>
+              ))}
+              <label className={`${smallBtn} cursor-pointer`}>+ Ảnh phụ (xếp dọc dưới ảnh chính)<input type="file" accept="image/*" multiple hidden onChange={(ev) => { void uploadExtraImages(ev); }} /></label>
+            </div>
+            {data.shortAnswer && (
+              <label className="flex items-center gap-1.5 text-[11px] text-slate-600">Dòng kẻ trả lời
+                <input type="range" min={0} max={90} step={2} value={data.settings.answerLineWidthMm ?? 68} onChange={(ev) => updateSettings({ answerLineWidthMm: Number(ev.target.value) })} />
+                <span className="w-9 text-right">{data.settings.answerLineWidthMm === 0 ? 'ẩn' : `${data.settings.answerLineWidthMm ?? 68}mm`}</span>
+              </label>
+            )}
             <AutoTextarea value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="Mô tả ảnh cho AI (để trống: tự lấy từ tiêu đề và đoạn đầu bài đọc)" className={`${fieldCls} resize-none min-h-[34px]`} />
             {imgMsg && <p className="text-[11.5px] rounded-md px-2 py-1 border text-amber-700 bg-amber-50 border-amber-100">{imgMsg}</p>}
           </section>

@@ -1068,7 +1068,7 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
       audio: prev.audio,
       settings: {
         ...prev.settings,
-        ...(parsed.settings.layout === 'dialogue' ? DIALOGUE_PRESET : parsed.settings.layout === 'passage_image' ? PASSAGE_IMAGE_PRESET : parsed.settings.layout === 'outline' ? OUTLINE_PRESET : parsed.settings.layout === 'sentence_list' ? SENTENCE_LIST_PRESET : {}),
+        ...(parsed.settings.layout === 'form_completion' ? { ...PASSAGE_IMAGE_PRESET, layout: 'form_completion' as const } : parsed.settings.layout === 'headed_columns' || parsed.settings.layout === 'question_list' ? { layout: parsed.settings.layout } : parsed.settings.layout === 'dialogue' ? DIALOGUE_PRESET : parsed.settings.layout === 'passage_image' ? PASSAGE_IMAGE_PRESET : parsed.settings.layout === 'outline' ? OUTLINE_PRESET : parsed.settings.layout === 'sentence_list' ? SENTENCE_LIST_PRESET : {}),
       },
     }));
     setShowSmartPaste(false);
@@ -1727,7 +1727,7 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
           </section>
 
           {/* Layout 9 / 10: ảnh lớn cạnh bài đọc (+ câu hỏi trả lời ngắn ở layout 9) */}
-          {(data.settings.layout === 'passage_image' || data.settings.layout === 'outline') && (
+          {(data.settings.layout === 'passage_image' || data.settings.layout === 'form_completion' || data.settings.layout === 'outline' || data.settings.layout === 'question_list') && (
             <>
               <section className="bg-white border border-blue-100 rounded-xl shadow-xs overflow-hidden pb-4 space-y-3 [&>*:not(:first-child)]:mx-4">
                 <div className="flex items-center justify-between px-4 py-2.5 bg-blue-50/70 !mx-0">
@@ -1755,7 +1755,7 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
                 {bodyGen.msg && <p className={`text-[11.5px] rounded-md px-2 py-1 border ${bodyGen.busy ? 'text-blue-700 bg-blue-50 border-blue-100' : 'text-amber-700 bg-amber-50 border-amber-100'}`}>{bodyGen.msg}</p>}
               </section>
 
-              {data.settings.layout === 'passage_image' && <section className="bg-white border border-blue-100 rounded-xl shadow-xs overflow-hidden pb-4 space-y-3 [&>*:not(:first-child)]:mx-4">
+              {(data.settings.layout === 'passage_image' || data.settings.layout === 'question_list') && <section className="bg-white border border-blue-100 rounded-xl shadow-xs overflow-hidden pb-4 space-y-3 [&>*:not(:first-child)]:mx-4">
                 <div className="flex items-center justify-between px-4 py-2.5 bg-blue-50/70 !mx-0">
                   <h3 className="text-sm font-bold text-slate-900">Câu hỏi trả lời ngắn ({questions.length})</h3>
                   <button type="button" onClick={() => setQuestions([...questions, { id: `q_${Date.now().toString(36)}`, text: '' }])} className="px-2.5 h-7 rounded-lg border border-blue-200 bg-white text-[11px] font-semibold text-blue-700 hover:bg-blue-50 flex items-center gap-1"><Plus size={12} /> Add Question</button>

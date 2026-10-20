@@ -7,7 +7,7 @@ import {
 import { PageZoomOverlay } from '../shared/PageZoomOverlay';
 import type { Exercise, LessonFolder, Worksheet } from '../../types';
 import {
-  bumpMcqSize, createGrammarMcq, normalizeFragments, parseSentenceLines, parsePronunciationText, toggleUnderline, moveMcq, newMcqId, newQuestion, optionLabel, parseMcqText, setMcqStyle,
+  bumpMcqSize, createGrammarMcq, normalizeFragments, parseSentenceLines, parsePronunciationRows, toggleUnderline, moveMcq, newMcqId, newQuestion, optionLabel, parseMcqText, setMcqStyle,
   shuffleOptionsOf, validateGrammarMcq, MCQ_LAYOUTS,
   type GrammarMcqData, type McqQuestion, type McqStyleKey,
 } from '../../services/grammar-mcq/grammarMcqCore';
@@ -239,9 +239,9 @@ export const GrammarMcqEditor: React.FC<Props> = ({ folder, editingExercise, onS
       update({ questions: [...data.questions.filter((q) => q.text.trim()), ...added], ...(r.title ? { exerciseTitle: r.title } : {}) });
       setSelectedQid(added[0].id);
     } else if (modal === 'smart' && pron) {
-      const rows = parsePronunciationText(pasteText);
+      const rows = parsePronunciationRows(pasteText);
       if (rows.length === 0) { setModalMsg('Không nhận ra dòng nào dạng "1. A. chair B. school C. couch D. children".'); return; }
-      const questions: McqQuestion[] = rows.map((r) => ({ ...newQuestion(), options: r.map((t) => ({ id: newMcqId('o'), text: t })) }));
+      const questions: McqQuestion[] = rows.map((r) => ({ ...newQuestion(), ...(r.heading !== undefined ? { heading: r.heading } : {}), options: r.options.map((t) => ({ id: newMcqId('o'), text: t })) }));
       update({ questions: [...data.questions.filter((q) => q.options.some((o) => o.text.trim())), ...questions] });
       setSelectedQid(questions[0].id);
     } else if (modal === 'smart') {
@@ -512,7 +512,17 @@ export const GrammarMcqEditor: React.FC<Props> = ({ folder, editingExercise, onS
                   <span draggable onDragStart={(e) => { dragRef.current = i; e.dataTransfer.effectAllowed = 'move'; }} onDragEnd={() => { dragRef.current = null; }} className="pt-2 text-slate-300 hover:text-slate-600 cursor-grab active:cursor-grabbing shrink-0" title="Kéo để đổi vị trí"><GripVertical size={14} /></span>
                   <span className="min-w-6 h-7 mt-0.5 px-1.5 rounded-md bg-slate-100 text-[11px] font-bold text-slate-600 flex items-center justify-center shrink-0">{i + 1}</span>
                   {pron ? (
-                    <div className="flex-1 min-w-0 grid grid-cols-4 gap-1.5">
+                    <div className="flex-1 min-w-0 space-y-1.5">
+                      {q.heading !== undefined && (
+                        <input
+                          value={q.heading}
+                          onFocus={() => setSelectedQid(q.id)}
+                          onChange={(e) => update({ questions: data.questions.map((x) => (x.id === q.id ? { ...x, heading: e.target.value } : x)) })}
+                          placeholder="Tiêu đề phần, vd: A. Choose the word which has the underlined part pronounced differently from the others."
+                          className={`${fieldCls} w-full italic font-semibold`}
+                        />
+                      )}
+                    <div className="grid grid-cols-4 gap-1.5">
                       {q.options.map((o, oi) => (
                         <label key={o.id} className="flex items-center gap-1 min-w-0 text-[11px] font-bold text-slate-500">
                           {optionLabel(oi, 'uppercase')}
@@ -527,10 +537,12 @@ export const GrammarMcqEditor: React.FC<Props> = ({ folder, editingExercise, onS
                         </label>
                       ))}
                     </div>
+                    </div>
                   ) : (
                   <AutoTextarea value={q.text} onFocus={() => setSelectedQid(q.id)} onChange={(e) => editQuestionText(q.id, e.target.value)} placeholder={sw === 'rearrange' ? 'Các từ xáo trộn, cách nhau bằng /  vd: she / book / a / bought' : sw === 'construct' ? 'Từ gợi ý, cách nhau bằng /  vd: We / expect / the man / not come / back' : 'Question… (dùng ________ cho chỗ trống)'} className={`${fieldCls} block flex-1 min-w-0 resize-none min-h-[34px]`} />
                   )}
                   <span className="flex items-center shrink-0 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto transition-opacity">
+                    {pron && <button type="button" className={`${iconBtn} text-[10px] font-bold`} title={q.heading === undefined ? 'Thêm tiêu đề phần trước câu này (số câu đếm lại từ 1)' : 'Bỏ tiêu đề phần'} onClick={() => update({ questions: data.questions.map((x) => (x.id === q.id ? { ...x, heading: x.heading === undefined ? '' : undefined } : x)) })}>H</button>}
                     <button type="button" className={iconBtn} title="Lên" disabled={i === 0} onClick={() => moveQuestion(i, i - 1)}><ArrowUp size={13} /></button>
                     <button type="button" className={iconBtn} title="Xuống" disabled={i === data.questions.length - 1} onClick={() => moveQuestion(i, i + 1)}><ArrowDown size={13} /></button>
                     <button type="button" className={iconBtn} title="Nhân bản" onClick={() => duplicateQuestion(q.id)}><Copy size={13} /></button>

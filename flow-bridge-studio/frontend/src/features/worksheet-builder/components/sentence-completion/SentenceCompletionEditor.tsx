@@ -216,7 +216,7 @@ export const SentenceCompletionEditor: React.FC<Props> = ({ folder, editingExerc
         exerciseTitle: parsed.title || p.exerciseTitle,
         targetWord: parsed.targetWord || p.targetWord,
         words: parsed.words.map((text) => ({ id: newSentenceId(), text })),
-        sentences: parsed.sentences.map((s): SentenceItem => ({ id: newSentenceId(), text: s.text, ...(s.hint ? { hint: s.hint } : {}) })),
+        sentences: parsed.sentences.map((s): SentenceItem => ({ id: newSentenceId(), text: s.text, ...(s.hint ? { hint: s.hint } : {}), ...(s.starter ? { starter: s.starter } : {}) })),
         settings: { ...p.settings, layout: parsed.layout, showWordBank: parsed.words.length > 0 },
       }));
     }
@@ -341,6 +341,7 @@ export const SentenceCompletionEditor: React.FC<Props> = ({ folder, editingExerc
             onWord: (id, v) => editWord(id, v),
             onSentence: (id, v) => patchSentence(id, { text: v }),
             onHint: (id, v) => patchSentence(id, { hint: v.replace(/^\(|\)$/g, '') }),
+            onStarter: (id, v) => patchSentence(id, { starter: v || undefined }),
             selectedKey: selKey,
             onSelectKey: setSelKey,
           } : undefined}
@@ -502,7 +503,7 @@ export const SentenceCompletionEditor: React.FC<Props> = ({ folder, editingExerc
               <button type="button" onClick={() => openModal('smart')} className={smallBtn}>Smart Paste</button>
             </>} open={open[3]} onToggle={() => toggle(3)} />
             {open[3] && (<>
-              <p className="text-[10.5px] text-slate-400">Chỗ trống viết <code className="px-1 rounded bg-slate-100">______</code>.{data.settings.layout === 'brackets' ? ' Gợi ý hiện bên phải: (money/buy).' : data.settings.layout === 'transform' ? ' Gợi ý hiện bên trái, ô câu là phần đầu câu trả lời: It’s ______.' : ''}</p>
+              <p className="text-[10.5px] text-slate-400">Chỗ trống viết <code className="px-1 rounded bg-slate-100">______</code>.{data.settings.layout === 'brackets' ? ' Gợi ý hiện bên phải: (money/buy).' : data.settings.layout === 'transform' ? ' Gợi ý hiện bên trái, ô câu là phần đầu câu trả lời: It’s ______.' : data.settings.layout === 'error_correction' ? ' Nhập câu có lỗi sai, không cần chỗ trống; bên phải tự có đường kẻ để học sinh viết câu đã sửa.' : ''}</p>
               {data.sentences.length === 0 && <p className="text-xs text-slate-400 py-2 text-center">Chưa có câu nào. Bấm Add Sentence, Import hoặc Smart Paste.</p>}
               <div className="space-y-2">
                 {data.sentences.map((s, i) => (
@@ -518,6 +519,9 @@ export const SentenceCompletionEditor: React.FC<Props> = ({ folder, editingExerc
                       <input value={s.text} onChange={(e) => patchSentence(s.id, { text: e.target.value })} placeholder="Câu có chỗ trống ______" className={fieldCls} />
                       {(data.settings.layout === 'brackets' || data.settings.layout === 'transform' || s.hint) && (
                         <input value={s.hint || ''} onChange={(e) => patchSentence(s.id, { hint: e.target.value })} placeholder={data.settings.layout === 'transform' ? "Gợi ý bên trái: I'm not going out / cold" : 'Gợi ý trong ngoặc: money/buy'} className={`${fieldCls} !py-1.5 italic`} />
+                      )}
+                      {data.settings.layout === 'rewrite' && (
+                        <input value={s.starter || ''} onChange={(e) => patchSentence(s.id, { starter: e.target.value || undefined })} placeholder="Phần mở đầu cho sẵn: I prefer (để trống nếu chỉ cần đường kẻ)" className={`${fieldCls} !py-1.5 italic`} />
                       )}
                       {data.settings.showExample && (
                         <input value={s.example || ''} onChange={(e) => patchSentence(s.id, { example: e.target.value || undefined })} placeholder="Đáp án mẫu (chỉ dùng cho câu ví dụ – để trống nếu không phải ví dụ)" className={`${fieldCls} !py-1.5 !border-red-200 text-red-700`} />

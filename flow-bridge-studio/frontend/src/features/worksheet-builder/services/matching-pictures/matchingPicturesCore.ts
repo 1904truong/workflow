@@ -127,7 +127,7 @@ export const DEFAULT_MATCHING_PICTURES_SETTINGS: MatchingPicturesSettings = {
   answerPosition: 'left',
   labelStyle: 'paragraph_numbered',
   showAnswerArea: true,
-  fontFamily: 'Arial',
+  fontFamily: 'Quicksand',
   fontSizePt: 12,
   headingFontSizePt: 14,
   lineHeight: 1.5,

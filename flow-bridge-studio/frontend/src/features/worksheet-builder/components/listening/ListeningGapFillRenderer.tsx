@@ -75,7 +75,8 @@ export const ListeningGapFillRenderer: React.FC<ListeningGapFillRendererProps> =
   // - Hội thoại / Bài đọc + QR còn mang cài đặt mặc định chung (chữ 12pt, giãn dòng 1.7, có tai nghe) thì tự dùng bộ cài đặt khớp mẫu.
   const rawSettings = data.settings;
   const hasParagraphImages = rawSettings.imagePosition !== 'none' && data.paragraphs.some((pp) => !!pp.imageAssetUrl);
-  const layoutEff = rawSettings.layout === 'original' && !hasParagraphImages ? 'passage_qr' : rawSettings.layout;
+  const formMode = rawSettings.layout === 'form_completion';
+  const layoutEff = formMode ? 'passage_image' : rawSettings.layout === 'original' && !hasParagraphImages ? 'passage_qr' : rawSettings.layout;
   const preset = layoutEff === 'dialogue' ? DIALOGUE_PRESET : layoutEff === 'passage_qr' ? PASSAGE_QR_PRESET : layoutEff === 'passage_image' ? PASSAGE_IMAGE_PRESET : layoutEff === 'outline' ? OUTLINE_PRESET : layoutEff === 'sentence_list' ? SENTENCE_LIST_PRESET : null;
   const defaultTypography = rawSettings.passageFontSizePt === 12 && rawSettings.lineHeight === 1.7;
   const settings = preset && defaultTypography
@@ -155,7 +156,7 @@ export const ListeningGapFillRenderer: React.FC<ListeningGapFillRendererProps> =
       // Default: underline
       blankLineStyle = {
         ...blankLineStyle,
-        borderBottom: sampleStyle ? '1pt dashed #1e293b' : '1.2pt solid #1e293b',
+        borderBottom: '1pt dashed #1e293b',
         margin: sampleStyle ? '0 0.8mm 0 1.4mm' : '0 1mm',
         // Dòng kẻ nằm sát chân chữ như ký tự gạch dưới ở phiếu mẫu
         ...(sampleStyle ? { lineHeight: 1 } : {}),
@@ -632,8 +633,11 @@ export const ListeningGapFillRenderer: React.FC<ListeningGapFillRendererProps> =
               )}
             </div>
           )}
-          {data.paragraphs.map((para, idx) => (
-            <div key={para.id || idx} style={{ marginBottom: paragraphSpacingMargin, textAlign: 'justify', textIndent: '8mm' }}>
+          {(formMode
+            ? data.paragraphs.flatMap((para, idx) => (para.text || '').split('\n').map((t) => t.trim()).filter(Boolean).map((t) => ({ para: { ...para, text: t }, idx })))
+            : data.paragraphs.map((para, idx) => ({ para, idx }))
+          ).map(({ para, idx }, k) => (
+            <div key={`${para.id || idx}_${k}`} style={formMode ? { marginBottom: paragraphSpacingMargin, textAlign: 'left', paddingLeft: /^\s*\(/.test(para.text) ? '6mm' : 0 } : { marginBottom: paragraphSpacingMargin, textAlign: 'justify', textIndent: '8mm' }}>
               {renderParagraphContent(para, idx, true)}
             </div>
           ))}
@@ -654,6 +658,25 @@ export const ListeningGapFillRenderer: React.FC<ListeningGapFillRendererProps> =
       </div>
     );
   };
+
+  // ── 13. Danh sách câu hỏi trả lời ngắn: "Conversation 1: câu hỏi" + đường kẻ trả lời bên dưới
+  const renderQuestionListLayout = () => (
+    <ol style={{ listStyle: 'none', margin: 0, padding: 0, fontSize: `${settings.passageFontSizePt}pt`, lineHeight }}>
+      {(data.questions || []).map((q, i) => {
+        const m = /^([A-Za-z][A-Za-z ]{0,24}\d*):\s*(.+)$/.exec(q.text);
+        return (
+          <li key={q.id} style={{ breakInside: 'avoid', marginBottom: '2mm' }}>
+            <div className="flex items-baseline gap-[2mm]">
+              <strong style={{ minWidth: '6mm', fontWeight: 800 }}>{i + 1}.</strong>
+              {m && <strong style={{ fontStyle: 'italic', fontWeight: 800, minWidth: '30mm' }}>{m[1]}:</strong>}
+              <span className="flex-1">{m ? m[2] : q.text}</span>
+            </div>
+            <div style={{ marginLeft: '8mm', marginTop: '5mm', marginBottom: '2mm', width: '92%', borderBottom: '1pt dashed #444', height: '1px' }} />
+          </li>
+        );
+      })}
+    </ol>
+  );
 
   // ── 10. Dàn ý gạch đầu dòng: "•" dòng chính, "+" dòng con thụt vào; ảnh bên phải ──
   const renderOutlineLayout = () => {
@@ -733,6 +756,38 @@ export const ListeningGapFillRenderer: React.FC<ListeningGapFillRendererProps> =
       ))}
     </div>
   );
+
+  // ── 12. Cột có tiêu đề: đoạn bắt đầu bằng "## " mở một cột mới; không có tiêu đề nào thì chia hai cột đều
+  const renderHeadedColumnsLayout = () => {
+    const cols: { heading?: string; items: { para: ListeningParagraph; idx: number }[] }[] = [];
+    data.paragraphs.forEach((para, idx) => {
+      const m = /^\s*##\s*(.+)$/.exec(para.text || '');
+      if (m) cols.push({ heading: m[1].trim(), items: [] });
+      else {
+        if (!cols.length) cols.push({ items: [] });
+        cols[cols.length - 1].items.push({ para, idx });
+      }
+    });
+    if (cols.length === 1 && !cols[0].heading && cols[0].items.length > 1) {
+      const all = cols[0].items;
+      const half = Math.ceil(all.length / 2);
+      cols.splice(0, 1, { items: all.slice(0, half) }, { items: all.slice(half) });
+    }
+    return (
+      <div className="grid items-start gap-x-[8mm]" style={{ gridTemplateColumns: `repeat(${Math.max(1, cols.length)}, minmax(0, 1fr))`, fontSize: `${settings.passageFontSizePt}pt`, lineHeight }}>
+        {cols.map((col, ci) => (
+          <div key={ci}>
+            {col.heading && <div style={{ fontFamily: HEAD_FONT, fontWeight: 800, textTransform: 'uppercase', marginBottom: '2.5mm', color: '#0f172a' }}>{col.heading}</div>}
+            {col.items.map(({ para, idx }) => (
+              <div key={para.id || idx} style={{ marginBottom: paragraphSpacingMargin, breakInside: 'avoid' }}>
+                {renderParagraphContent(para, idx)}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   /** Tiêu đề có nhấn màu: phần đặt trong {{ }} in nghiêng, màu đỏ */
   const richTitle = (t: string) => t.split(/(\{\{[^}]+\}\})/).filter(Boolean).map((p, i) => (/^\{\{[^}]+\}\}$/.test(p) ? <em key={i} style={{ color: '#c8102e', fontWeight: 800 }}>{p.slice(2, -2)}</em> : <span key={i}>{p}</span>));
@@ -833,6 +888,8 @@ export const ListeningGapFillRenderer: React.FC<ListeningGapFillRendererProps> =
       {settings.layout === 'dialogue' && renderDialogueLayout()}
       {settings.layout === 'passage_qr' && renderPassageQrLayout()}
       {settings.layout === 'sentence_list' && renderSentenceListLayout()}
+      {settings.layout === 'headed_columns' && renderHeadedColumnsLayout()}
+      {settings.layout === 'question_list' && renderQuestionListLayout()}
       {settings.layout === 'passage_image' && renderPassageImageLayout()}
       {outline && renderOutlineLayout()}
       {(settings.layout === 'original' || !settings.layout) && renderOriginalLayout()}

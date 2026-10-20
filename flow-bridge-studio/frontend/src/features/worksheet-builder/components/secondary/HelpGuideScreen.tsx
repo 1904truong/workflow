@@ -96,19 +96,25 @@ export const HelpGuideScreen: React.FC = () => {
           </div>
         </div>
 
-        {/* 3. A4 Print Standards */}
-        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-xs space-y-3">
-          <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5 pb-2 border-b border-slate-100">
-            <Printer size={14} className="text-blue-600" />
-            ISO A4 Print Layout Specifications
-          </h2>
-          <div className="text-xs text-slate-600 space-y-2 leading-relaxed">
+        {/* 3. A4 Print Standards - Powered by shadcn/typeset */}
+        <div className="bg-white border border-slate-200 rounded-3xl p-6 md:p-8 shadow-xs">
+          <div className="typeset typeset-docs max-w-[37em]">
+            <div className="flex items-center gap-2 not-typeset mb-2 text-slate-800 font-bold text-sm tracking-wide uppercase">
+              <Printer size={16} className="text-blue-600" />
+              <span>ISO A4 Print Layout Specifications</span>
+            </div>
+            <h2>Standard Physical Dimensions</h2>
             <p>
               Worksheets in Flow Bridge Studio strictly follow physical ISO A4 standards (<strong>210 mm × 297 mm</strong>) with <strong>15 mm page margins</strong>, yielding an exact printable content width of <strong>180 mm</strong>.
             </p>
             <p>
               Fonts are standardized to <strong>Arial 16pt bold</strong> for document headers, <strong>Arial 12pt bold</strong> for exercise headings, and <strong>Arial 11pt</strong> with a 1.35 line height for questions and reading passages. Long passages split gracefully across subsequent pages without cutting questions or images.
             </p>
+            <ul>
+              <li><strong>Physical Paper:</strong> ISO 216 A4 (210 × 297 mm) with exact millimeter sizing.</li>
+              <li><strong>Print Isolation:</strong> Trang in A4 sử dụng font Arial và kích thước pt độc lập, hoàn toàn không bị ảnh hưởng bởi typography web.</li>
+              <li><strong>Web Interface:</strong> Trang tài liệu và hướng dẫn web sử dụng font Geist với tỷ lệ dòng 1.6 qua preset <code>typeset-docs</code>.</li>
+            </ul>
           </div>
         </div>
       </div>

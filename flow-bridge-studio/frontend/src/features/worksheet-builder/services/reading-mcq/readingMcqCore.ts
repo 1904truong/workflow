@@ -23,6 +23,8 @@ export interface ReadingMcqSettings extends GrammarMcqSettings {
   /** Chiều rộng ảnh bài báo (mm), ảnh nằm góc phải và chữ chạy quanh */
   imageWidthMm: number;
   justifyPassage: boolean;
+  /** Reading Short Answer / True-False: độ dài dòng kẻ trả lời (mm), mặc định 68; 26 cho dòng ngắn viết T / F */
+  answerLineWidthMm?: number;
 }
 
 export interface ReadingMcqData extends Omit<GrammarMcqData, 'settings' | 'textStyles'> {
@@ -33,6 +35,8 @@ export interface ReadingMcqData extends Omit<GrammarMcqData, 'settings' | 'textS
   /** Mỗi đoạn cách nhau một dòng trống */
   passage: string;
   imageUrl?: string;
+  /** Ảnh phụ xếp dọc dưới ảnh chính ở cột phải (bài đọc nhiều ảnh như Earthships) */
+  extraImages?: string[];
   textStyles?: ReadingTextStyles;
   settings: ReadingMcqSettings;
 }

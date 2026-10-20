@@ -5,12 +5,13 @@ import type { ListeningAudio } from '../listening/listeningGapFillCore.ts';
 import type { TextStyle } from '../matching-pictures/matchingPicturesCore.ts';
 import type { AiImagePlan } from '../ai/imagePlanSchema.ts';
 
-export type TableLayoutId = 'image_table';
+export type TableLayoutId = 'image_table' | 'image_only';
 
 export interface TableLayoutMeta { id: TableLayoutId; label: string; desc: string }
 /** Layout sau này sẽ thêm vào đây */
 export const TABLE_LAYOUTS: TableLayoutMeta[] = [
   { id: 'image_table', label: '1. Ảnh + Bảng', desc: 'Ảnh/bản đồ ở trên, bảng điền ở giữa, câu hỏi trả lời ngắn bên dưới; QR ở góc phải tiêu đề' },
+  { id: 'image_only', label: '2. Chỉ ảnh / bản đồ', desc: 'Tiêu đề + dòng đề bài in đậm, QR góc phải, ảnh lớn ở giữa để học sinh vẽ đường đi hoặc ghi lên ảnh; không có bảng và câu hỏi' },
 ];
 
 export interface TableRow { id: string; cells: string[] }
@@ -31,6 +32,8 @@ export interface TableImage {
   /** Tỉ lệ rộng/cao của khung ảnh (tự theo ảnh thật khi có ảnh) */
   ratio?: number;
   prompt?: string;
+  /** Ảnh thứ 2, 3, 4 khi settings.imageCount > 1 (ảnh thứ nhất là url/ratio ở trên) */
+  extra?: { url?: string; ratio?: number }[];
 }
 
 export interface ListeningTableSettings {
@@ -43,6 +46,8 @@ export interface ListeningTableSettings {
   showAudioIcon: boolean;
   showQrCode: boolean;
   showImage: boolean;
+  /** Số khung ảnh xếp ngang phía trên bảng (1–4) */
+  imageCount?: number;
   /** Chiều rộng ảnh theo % bề ngang trang in */
   imageWidthPercent: number;
   tableBorderColor: string;
@@ -69,7 +74,7 @@ export interface ListeningTableData {
 
 export const DEFAULT_TABLE_SETTINGS: ListeningTableSettings = {
   layout: 'image_table',
-  fontFamily: 'Arial',
+  fontFamily: 'Quicksand',
   fontSizePt: 10.5,
   headingFontSizePt: 12.5,
   lineHeight: 1.45,
@@ -226,7 +231,7 @@ export const parseTableText = (raw: string): ParsedTable => {
 export const validateListeningTable = (d: ListeningTableData): { errors: string[]; warnings: string[] } => {
   const errors: string[] = [];
   const warnings: string[] = [];
-  if (d.table.rows.every((r) => r.cells.every((c) => !c.trim()))) errors.push('Bảng chưa có nội dung.');
+  if (d.settings.layout !== 'image_only' && d.table.rows.every((r) => r.cells.every((c) => !c.trim()))) errors.push('Bảng chưa có nội dung.');
   d.questions.forEach((q, i) => { if (!q.text.trim()) errors.push(`Câu hỏi ${i + 1} đang trống.`); });
   if (d.settings.showQrCode && !d.audio.shareUrl) warnings.push('Chưa có đường dẫn audio nên mã QR chưa dùng được.');
   return { errors, warnings };

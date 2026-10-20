@@ -27,7 +27,7 @@ export const TypeChooser: React.FC<Props> = ({ text, detectedCount, onPick, onRe
   const shown = showAll ? ranked : (good.length ? good.slice(0, 5) : ranked.slice(0, 5));
 
   return (
-    <div className="flex-1 overflow-auto p-6">
+    <div className="flex-1 min-h-0 h-full overflow-y-auto p-6 pb-16">
       <div className="max-w-3xl mx-auto space-y-4">
         <div>
           <h2 className="text-lg font-bold text-slate-900">Chọn dạng bài phù hợp</h2>

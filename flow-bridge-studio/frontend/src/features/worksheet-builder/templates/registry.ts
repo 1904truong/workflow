@@ -40,6 +40,14 @@ export const EXERCISE_REGISTRY: Record<ExerciseType, ExerciseTypeMeta> = {
     defaultSlotsCount: 0,
     description: 'Students decide whether statements are True or False.',
   },
+  listening_matching: {
+    type: 'listening_matching',
+    label: 'Listening Matching',
+    category: 'Listening',
+    defaultTemplate: 'template_a',
+    defaultSlotsCount: 0,
+    description: 'Students listen and match the options (a–e) to the questions (1–5).',
+  },
   listening_table_completion: {
     type: 'listening_table_completion',
     label: 'Listening Table Completion',

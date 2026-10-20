@@ -40,8 +40,20 @@ const EditableText: React.FC<{
   selected?: boolean;
   onSelect?: () => void;
   block?: boolean;
-}> = ({ value, onCommit, css, selected, onSelect, block }) => {
-  if (!onCommit) return <span style={css}>{value}</span>;
+  /** [[chữ]] -> nghiêng, đỏ, đậm (TRUE (T) / FALSE (F) trong tiêu đề) */
+  rich?: boolean;
+}> = ({ value, onCommit, css, selected, onSelect, block, rich }) => {
+  if (!onCommit) {
+    return (
+      <span style={css}>
+        {rich
+          ? value.split(/(\[\[[^\]]+\]\]|\b(?:TRUE|FALSE)\s*\([TF]\))/g).map((part, i) => (/^(\[\[.*\]\]|(?:TRUE|FALSE)\s*\([TF]\))$/.test(part)
+            ? <em key={i} style={{ color: '#c81e1e', fontWeight: 800 }}>{part.startsWith('[[') ? part.slice(2, -2) : part}</em>
+            : <span key={i}>{part}</span>))
+          : value}
+      </span>
+    );
+  }
   return (
     <span
       contentEditable
@@ -76,7 +88,7 @@ export const ReadingMcqRenderer: React.FC<Props> = ({ data, exerciseIndex = 1, h
   const showFrame = settings.showPassageImage && !data.imageUrl;
 
   const blankSpan = (key: string) => (
-    <span key={key} style={{ display: 'inline-block', width: '22mm', borderBottom: '0.75pt solid #222', margin: '0 0.6mm', lineHeight: 1, verticalAlign: 'baseline' }}>&nbsp;</span>
+    <span key={key} style={{ display: 'inline-block', width: '22mm', borderBottom: '1pt dashed #222', margin: '0 0.6mm', lineHeight: 1, verticalAlign: 'baseline' }}>&nbsp;</span>
   );
 
   const renderText = (q: McqQuestion) => {
@@ -113,11 +125,11 @@ export const ReadingMcqRenderer: React.FC<Props> = ({ data, exerciseIndex = 1, h
         </p>
       )}
       {showImage && (
-        <img
-          src={data.imageUrl}
-          alt=""
-          style={{ float: 'right', width: `${settings.imageWidthMm}mm`, margin: '1mm 0 2mm 4mm', borderRadius: '2mm', border: '0.75pt solid #cbd5e1', objectFit: 'cover', display: 'block' }}
-        />
+        <div style={{ float: 'right', width: `${settings.imageWidthMm}mm`, margin: '1mm 0 2mm 4mm', display: 'flex', flexDirection: 'column', gap: '2mm', textIndent: 0 }}>
+          {[data.imageUrl!, ...(data.extraImages || [])].map((src, i) => (
+            <img key={i} src={src} alt="" style={{ width: '100%', borderRadius: '2mm', border: '0.75pt solid #cbd5e1', objectFit: 'cover', display: 'block' }} />
+          ))}
+        </div>
       )}
       {showFrame && (
         <label
@@ -144,7 +156,7 @@ export const ReadingMcqRenderer: React.FC<Props> = ({ data, exerciseIndex = 1, h
             {data.exerciseNumber || exerciseIndex}
           </span>
           <h2 style={{ margin: 0, color: NAVY, fontFamily: HEAD_FONT, fontWeight: 800, fontSize: `${settings.headingFontSizePt}pt`, textTransform: 'uppercase', lineHeight: 1.3, ...css('title') }}>
-            <EditableText value={data.exerciseTitle} onCommit={editable?.onTitle} selected={sel('title')} onSelect={pick('title')} />
+            <EditableText value={data.exerciseTitle} onCommit={editable?.onTitle} selected={sel('title')} onSelect={pick('title')} rich />
           </h2>
         </div>
       )}
@@ -161,12 +173,24 @@ export const ReadingMcqRenderer: React.FC<Props> = ({ data, exerciseIndex = 1, h
             onClick={() => editable?.onSelectQuestion?.(q.id)}
             style={{ breakInside: 'avoid', marginBottom: `${settings.questionGapMm}mm`, outline: editable?.selectedQuestionId === q.id ? '1px dashed #3b82f6' : undefined, outlineOffset: '1.5mm' }}
           >
-            <div className="flex items-start gap-[1.5mm]">
-              {settings.showNumbering && <strong style={{ minWidth: '7mm', fontWeight: 800 }}>{i + 1}.</strong>}
-              <span className="flex-1" >{renderText(q)}</span>
-              {data.shortAnswer && <span className="shrink-0" style={{ width: '68mm', borderBottom: '0.75pt solid #444', alignSelf: 'flex-end', height: '1em' }} />}
-              {settings.showAnswerBoxes && <span className="shrink-0" style={{ width: '7mm', height: '6mm', border: '0.75pt solid #444', borderRadius: '1mm' }} />}
-            </div>
+            {(() => {
+              const hasBlank = splitBlanks(q.text).some((p) => p.type === 'blank');
+              const showLine = !!data.shortAnswer && settings.answerLineWidthMm !== 0 && !hasBlank;
+              const cols = [
+                ...(settings.showNumbering ? ['7mm'] : []),
+                'minmax(0, 1fr)',
+                ...(showLine ? [`${settings.answerLineWidthMm ?? 68}mm`] : []),
+                ...(settings.showAnswerBoxes ? ['7mm'] : []),
+              ];
+              return (
+                <div style={{ display: 'grid', gridTemplateColumns: cols.join(' '), columnGap: '1.5mm', alignItems: 'start' }}>
+                  {settings.showNumbering && <strong style={{ fontWeight: 800 }}>{i + 1}.</strong>}
+                  <span>{renderText(q)}</span>
+                  {showLine && <span style={{ borderBottom: '1pt dashed #444', alignSelf: 'end', height: '1em' }} />}
+                  {settings.showAnswerBoxes && <span style={{ width: '7mm', height: '6mm', border: '0.75pt solid #444', borderRadius: '1mm' }} />}
+                </div>
+              );
+            })()}
             {!data.shortAnswer && <div style={{ paddingLeft: '7mm', marginTop: '0.8mm' }}>{q.options.map((_, oi) => renderOption(q, oi))}</div>}
           </div>
         ))}

@@ -120,6 +120,7 @@ export const ClozeToolbar: React.FC<Props> = ({
       items: [
         { type: 'file', id: 'image', icon: ImageIcon, label: hasImage ? 'Replace image – thay ảnh minh họa' : 'Insert image – tải ảnh minh họa cho đoạn văn', accept: 'image/*', onFile: onImageFile },
         { type: 'button', id: 'genimage', icon: ImagePlus, label: 'AI image – tạo ảnh minh họa bằng extension từ nội dung đoạn văn', disabled: !!generatingImage, disabledReason: 'Đang tạo ảnh…', onClick: onGenerateImage },
+        { type: 'button', id: 'imgtoggle', icon: s.imagePosition === 'none' ? ImageOff : ImageIcon, label: s.imagePosition === 'none' ? 'Show image – đang ẩn khung ảnh, bấm để hiện' : 'Hide image – đang hiện khung ảnh, bấm để ẩn (ảnh đã tải vẫn được giữ)', active: s.imagePosition !== 'none', onClick: () => onSettings({ imagePosition: s.imagePosition === 'none' ? 'right' : 'none' }) },
         { type: 'button', id: 'noimage', icon: ImageOff, label: 'Remove image – xóa ảnh khỏi bài', disabled: !s.imageUrl, disabledReason: 'Bài chưa có ảnh', onClick: onRemoveImage },
         {
           type: 'options', id: 'imgpos', icon: ImageIcon, label: 'Image position & width – vị trí và độ rộng ảnh', closeOnSelect: false, widthClass: 'w-44',

@@ -47,7 +47,7 @@ export const PRINT_TOKENS = {
     imagePlaceholder: '0.75pt dashed #999999',
     headerDivider: '0.75pt solid #888888',
     footerDivider: '0.5pt solid #AAAAAA',
-    writingLine: '0.5pt solid #888888',
+    writingLine: '1pt dashed #888888',
   },
   spacing: {
     titleToStudentInfoMm: 4,

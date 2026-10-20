@@ -15,6 +15,7 @@ export interface SentenceEditable {
   onWord?: (id: string, v: string) => void;
   onSentence?: (id: string, v: string) => void;
   onHint?: (id: string, v: string) => void;
+  onStarter?: (id: string, v: string) => void;
   selectedKey?: SentenceStyleKey;
   onSelectKey?: (k: SentenceStyleKey) => void;
 }
@@ -137,6 +138,60 @@ export const SentenceCompletionRenderer: React.FC<Props> = ({ data, exerciseInde
           {sentences.map((s, i) => (
             <li key={s.id} className="flex items-baseline gap-[2mm]" style={{ breakInside: 'avoid', marginBottom: gap }}>
               {num(i)}<span className="flex-1">{renderText(s)}</span>
+            </li>
+          ))}
+        </ol>
+      );
+    }
+    if (layout === 'dialogue_order') {
+      const speakers: string[] = [];
+      return (
+        <div style={{ margin: 0, padding: 0 }}>
+          {sentences.map((s) => {
+            const m = /^([A-Z][A-Za-z]{1,14}):\s*(.*)$/.exec(s.text);
+            const name = m?.[1];
+            if (name && !speakers.includes(name)) speakers.push(name);
+            const color = name ? (speakers.indexOf(name) % 2 === 0 ? RED : '#1d4ed8') : '#111';
+            return (
+              <div key={s.id} className="flex items-baseline gap-[2.5mm]" style={{ breakInside: 'avoid', marginBottom: gap }}>
+                <span className="shrink-0" style={{ width: '13mm', borderBottom: '1pt dashed #1e293b', height: '1em' }} />
+                {name && <strong style={{ color, minWidth: '11mm', fontWeight: 800 }}>{name}</strong>}
+                <span className="flex-1" style={{ textAlign: 'justify', ...css('sentences') }} onClick={pick('sentences')}>
+                  <EditableText value={m ? m[2] : s.text} onCommit={editable?.onSentence ? (v) => editable.onSentence!(s.id, name ? `${name}: ${v}` : v) : undefined} css={css('sentences')} selected={sel('sentences')} onSelect={pick('sentences')} />
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+    if (layout === 'rewrite') {
+      return (
+        <ol style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+          {sentences.map((s, i) => (
+            <li key={s.id} style={{ breakInside: 'avoid', marginBottom: gap }}>
+              <div className="flex items-baseline gap-[2mm]">
+                {num(i)}<span className="flex-1">{renderText(s)}</span>
+              </div>
+              <div className="flex items-end gap-[1.5mm]" style={{ marginLeft: settings.showNumbering ? '9mm' : 0, marginTop: '1.5mm' }}>
+                {(s.starter || editable?.onStarter) && (
+                  <EditableText value={s.starter || ''} onCommit={editable?.onStarter ? (v) => editable.onStarter!(s.id, v) : undefined} css={{ whiteSpace: 'nowrap', ...css('sentences') }} selected={sel('sentences')} onSelect={pick('sentences')} />
+                )}
+                <span className="flex-1" style={{ borderBottom: '1pt dashed #1e293b', minHeight: '1em', marginBottom: '0.6mm' }} />
+              </div>
+            </li>
+          ))}
+        </ol>
+      );
+    }
+    if (layout === 'error_correction') {
+      return (
+        <ol style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+          {sentences.map((s, i) => (
+            <li key={s.id} className="flex items-end gap-[2mm]" style={{ breakInside: 'avoid', marginBottom: gap }}>
+              {num(i)}
+              <span style={{ flex: '0 0 56%' }}>{renderText(s)}</span>
+              <span className="flex-1" style={{ borderBottom: '1pt dashed #1e293b', minHeight: '1em', marginBottom: '0.6mm' }} />
             </li>
           ))}
         </ol>

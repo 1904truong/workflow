@@ -229,6 +229,11 @@ export function exportWorksheetToDocx(worksheet: Worksheet, mode: 'student' | 't
             </table>
             <ol style="margin-top: 8pt;">${ex.listeningTable.questions.map((q) => `<li style="margin-bottom: 6pt;">${escapeXml(q.text)} ____________________</li>`).join('')}</ol>
           </div>
+        ` : ex.listeningMatching ? `
+          <div style="margin-top: 8pt; margin-bottom: 8pt;">
+            ${ex.listeningMatching.problems.map((q, i) => `<p style="margin: 0 0 4pt 0;"><strong>${i + 1}.</strong> ${escapeXml(q.text)} ____________</p>`).join('')}
+            ${ex.listeningMatching.options.map((o, i) => `<p style="margin: 0 0 4pt 14pt;"><strong>${String.fromCharCode(97 + i)}.</strong> ${escapeXml(o.text)}</p>`).join('')}
+          </div>
         ` : ex.listeningTrueFalse ? `
           <div style="margin-top: 8pt; margin-bottom: 8pt;">
             <table style="width: 100%; border-collapse: collapse;">
@@ -259,7 +264,8 @@ export function exportWorksheetToDocx(worksheet: Worksheet, mode: 'student' | 't
             <table style="width: 100%; border-collapse: collapse;">
               ${ex.sentenceCompletion.sentences.map((st, i) => `<tr>
                 <td style="width: 6%; padding: 4pt;"><strong>${i + 1}.</strong></td>
-                <td style="width: ${st.hint ? '64%' : '94%'}; padding: 4pt;">${escapeXml(st.text.replace(/_{3,}/g, '____________'))}</td>
+                <td style="width: ${ex.sentenceCompletion!.settings.layout === 'error_correction' ? '54%' : st.hint ? '64%' : '94%'}; padding: 4pt;">${escapeXml(st.text.replace(/_{3,}/g, '____________'))}${ex.sentenceCompletion!.settings.layout === 'rewrite' ? `<br/>${escapeXml(st.starter || '')} ______________________________` : ''}</td>
+                ${ex.sentenceCompletion!.settings.layout === 'error_correction' ? '<td style="width: 40%; padding: 4pt; border-bottom: 1pt solid #111;">&#160;</td>' : ''}
                 ${st.hint ? `<td style="width: 30%; padding: 4pt;"><em><strong>(${escapeXml(st.hint)})</strong></em></td>` : ''}
               </tr>`).join('')}
             </table>

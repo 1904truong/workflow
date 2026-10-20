@@ -94,7 +94,7 @@ const AnswerOptions: React.FC<{ kind: Kind; labels?: boolean }> = ({ kind, label
       return (
         <span key={o} className="inline-flex items-end" style={{ gap: '1mm' }}>
           <span className="inline-flex flex-col items-center" style={{ minWidth: o === 'NG' ? '9mm' : '7mm' }}>
-            <span style={{ fontWeight: 700, fontSize: '9.5pt', lineHeight: 1.2, borderBottom: '0.9pt solid #1f2937', width: '100%', textAlign: 'center' }}>{o}</span>
+            <span style={{ fontWeight: 700, fontSize: '9.5pt', lineHeight: 1.2, borderBottom: '1pt dashed #1f2937', width: '100%', textAlign: 'center' }}>{o}</span>
           </span>
           {o !== 'NG' && <span style={{ fontWeight: 700 }}>/</span>}
         </span>

@@ -45,6 +45,27 @@ const Thumb: React.FC<{ id: string }> = ({ id }) => {
       </div>
     );
   }
+  if (id === 'dialogue_order') {
+    return (
+      <div className={frame}>
+        {[0, 1, 2, 3].map((i) => <div key={i} className="flex items-center gap-1"><span className="w-2 h-px bg-slate-700" /><span className={`w-2 h-0.5 rounded ${i % 2 ? 'bg-blue-500' : 'bg-red-500'}`} />{line('flex-1')}</div>)}
+      </div>
+    );
+  }
+  if (id === 'rewrite') {
+    return (
+      <div className={frame}>
+        {[0, 1].map((i) => <div key={i} className="space-y-1"><div className="flex items-center gap-1"><span className="w-1 h-0.5 bg-slate-700 rounded" />{line('w-4/5')}</div><div className="flex items-center gap-1 pl-2"><span className="w-3 h-0.5 bg-slate-700 rounded" />{line('flex-1')}</div></div>)}
+      </div>
+    );
+  }
+  if (id === 'error_correction') {
+    return (
+      <div className={frame}>
+        {[0, 1, 2, 3].map((i) => <div key={i} className="flex items-center gap-1"><span className="w-1 h-0.5 bg-slate-700 rounded" />{line('w-1/2')}{line('flex-1')}</div>)}
+      </div>
+    );
+  }
   return (
     <div className={`${frame} flex-row`}>
       {[0, 1].map((c) => <div key={c} className="flex-1 space-y-1.5 pt-0.5">{[0, 1, 2, 3].map((i) => <div key={i} className="flex items-center gap-1"><span className="w-1 h-0.5 bg-slate-700 rounded" />{line('flex-1')}</div>)}</div>)}

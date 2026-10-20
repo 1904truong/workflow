@@ -121,6 +121,30 @@ export const ListeningLayoutThumbnail: React.FC<{ layout: ListeningLayoutId; cla
           <div className="h-px bg-slate-400 w-3/4 mt-0.5 border-b border-dashed" />
         </div>
       );
+    case 'form_completion':
+      return (
+        <div className={`${className} bg-slate-50 border border-slate-300 rounded p-1 flex gap-1 shrink-0 shadow-2xs`}>
+          <div className="flex-1 space-y-0.5">{[0, 1, 2].map((i) => <div key={i}><span className="block h-0.5 w-1/2 bg-slate-700 rounded" /><span className="block h-px w-full mt-0.5 ml-1 bg-slate-400 border-b border-dashed" /></div>)}</div>
+          <div className="w-4 h-4 bg-sky-400 rounded-xs shrink-0" />
+        </div>
+      );
+    case 'question_list':
+      return (
+        <div className={`${className} bg-slate-50 border border-slate-300 rounded p-1 space-y-0.5 shrink-0 shadow-2xs`}>
+          {[0, 1, 2].map((i) => <div key={i}><div className="flex items-center gap-0.5"><span className="w-2 h-0.5 bg-slate-700 rounded" /><span className="h-0.5 bg-slate-400 rounded flex-1" /></div><div className="h-px bg-slate-400 w-full mt-0.5 border-b border-dashed" /></div>)}
+        </div>
+      );
+    case 'headed_columns':
+      return (
+        <div className={`${className} bg-slate-50 border border-slate-300 rounded p-1 flex gap-1 shrink-0 shadow-2xs`}>
+          {[0, 1].map((c) => (
+            <div key={c} className="flex-1 space-y-0.5">
+              <div className="h-0.5 bg-slate-700 rounded w-3/4" />
+              {[0, 1, 2].map((i) => <div key={i} className="flex items-center gap-0.5"><span className="h-0.5 bg-slate-300 rounded flex-1" /><span className="h-px w-2 bg-slate-600" /></div>)}
+            </div>
+          ))}
+        </div>
+      );
     case 'sentence_list':
       return (
         <div className={`${className} bg-slate-50 border border-slate-300 rounded p-1 space-y-0.5 shrink-0 shadow-2xs`}>

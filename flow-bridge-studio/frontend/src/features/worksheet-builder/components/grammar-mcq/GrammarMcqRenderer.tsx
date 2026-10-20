@@ -67,7 +67,7 @@ export const GrammarMcqRenderer: React.FC<Props> = ({ data, exerciseIndex = 1, h
   const layout = settings.layout;
 
   const blankSpan = (key: string, width = 22) => (
-    <span key={key} style={{ display: 'inline-block', width: `${width}mm`, borderBottom: '0.75pt solid #222', margin: '0 0.6mm', lineHeight: 1, verticalAlign: 'baseline' }}>&nbsp;</span>
+    <span key={key} style={{ display: 'inline-block', width: `${width}mm`, borderBottom: '1pt dashed #222', margin: '0 0.6mm', lineHeight: 1, verticalAlign: 'baseline' }}>&nbsp;</span>
   );
 
   /** Câu hỏi: gạch dưới liên tiếp thành chỗ trống; khi sửa trực tiếp thì hiện chữ gốc */
@@ -133,7 +133,7 @@ export const GrammarMcqRenderer: React.FC<Props> = ({ data, exerciseIndex = 1, h
                 <span className="flex-1">{renderText(q)}</span>
               </div>
               {settings.showAnswerBoxes && Array.from({ length: Math.max(1, data.answerLines || 1) }).map((_, li) => (
-                <div key={li} style={{ marginLeft: settings.showNumbering ? '7mm' : 0, width: settings.showNumbering ? `calc(${w} - 7mm)` : w, borderBottom: '0.75pt solid #444', height: '7mm' }} />
+                <div key={li} style={{ marginLeft: settings.showNumbering ? '7mm' : 0, width: settings.showNumbering ? `calc(${w} - 7mm)` : w, borderBottom: '1pt dashed #444', height: '7mm' }} />
               ))}
             </>
           ), { marginBottom: `${Math.max(gap, 3)}mm` }))}
@@ -144,15 +144,27 @@ export const GrammarMcqRenderer: React.FC<Props> = ({ data, exerciseIndex = 1, h
       // Một câu một hàng: số thứ tự + các từ A / B / C / D chia đều (từ có phần gạch chân)
       return (
         <div>
-          {questions.map((q, i) => wrapper(q, (
-            <div className="flex items-baseline gap-[1.5mm]">
-              {numberTag(i)}
-              <div className="grid flex-1" style={{ gridTemplateColumns: `repeat(${Math.max(1, q.options.length)}, minmax(0, 1fr))`, columnGap: '4mm' }}>
-                {q.options.map((_, oi) => renderOption(q, oi))}
-              </div>
-              {answerBox}
-            </div>
-          ), { marginBottom: `${Math.max(gap, 4)}mm` }))}
+          {questions.map((q, i) => {
+            // Số câu đếm lại từ 1 sau mỗi tiêu đề phần (A. / B.)
+            let start = 0;
+            for (let k = 0; k <= i; k++) if (questions[k].heading !== undefined) start = k;
+            return (
+              <React.Fragment key={q.id}>
+                {q.heading !== undefined && q.heading !== '' && (
+                  <div style={{ fontWeight: 800, fontStyle: 'italic', margin: `${i === 0 ? 0 : 2}mm 0 3mm` }}>{q.heading}</div>
+                )}
+                {wrapper(q, (
+                  <div className="flex items-baseline gap-[1.5mm]">
+                    {numberTag(i - start)}
+                    <div className="grid flex-1" style={{ gridTemplateColumns: `repeat(${Math.max(1, q.options.length)}, minmax(0, 1fr))`, columnGap: '4mm' }}>
+                      {q.options.map((_, oi) => renderOption(q, oi))}
+                    </div>
+                    {answerBox}
+                  </div>
+                ), { marginBottom: `${Math.max(gap, 4)}mm` })}
+              </React.Fragment>
+            );
+          })}
         </div>
       );
     }

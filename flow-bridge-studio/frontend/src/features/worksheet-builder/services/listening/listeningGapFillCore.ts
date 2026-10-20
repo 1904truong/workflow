@@ -10,6 +10,9 @@ export type ListeningLayoutId =
   | 'dialogue'       // Layout 7: Hội thoại (SUE: ... TEO: ...), không đánh số đoạn
   | 'passage_qr'     // Layout 8: Bài đọc đánh số, QR nhỏ chạy chữ vòng quanh, ảnh nhân vật ở đầu bài
   | 'passage_image' // Layout 9: Bài đọc không đánh số, ảnh lớn bên phải (QR đè góc ảnh), câu hỏi trả lời ngắn bên dưới
+  | 'form_completion' // Layout 14: Điền form: nhãn (Days:) + dòng (1) ______, ảnh bên phải có QR đè góc
+  | 'question_list'  // Layout 13: Chỉ danh sách câu hỏi trả lời ngắn (Conversation 1: …), QR góc phải tiêu đề
+  | 'headed_columns' // Layout 12: Nhiều cột có tiêu đề ('## ASKING…' mở cột mới), QR góc phải tiêu đề
   | 'sentence_list' // Layout 11: Câu rời đánh số (1), (2)… mỗi câu một dòng, dòng giới thiệu in nghiêng, QR góc phải
   | 'outline';      // Layout 10: Dàn ý gạch đầu dòng (• / +), QR góc phải tiêu đề, ảnh bên phải
 
@@ -219,6 +222,9 @@ export const LISTENING_LAYOUTS: { id: ListeningLayoutId; label: string; desc: st
   { id: 'passage_image', label: '9. Bài đọc + ảnh lớn', desc: 'Bài đọc không đánh số, ảnh lớn bên phải với QR đè góc ảnh, câu hỏi trả lời ngắn bên dưới' },
   { id: 'outline', label: '10. Dàn ý gạch đầu dòng', desc: 'Dòng • và dòng con + , chỗ trống đánh số (1), (2)…, QR góc phải tiêu đề, ảnh bên phải' },
   { id: 'sentence_list', label: '11. Câu rời đánh số + QR', desc: 'Mỗi câu một dòng với chỗ trống (1), (2)…, dòng giới thiệu in nghiêng dưới tiêu đề, tiêu đề đoạn căn giữa, QR góc phải' },
+  { id: 'form_completion', label: '14. Điền form + ảnh', desc: 'Tiêu đề giữa, các nhãn (Days:, Starting time:) và dòng điền (1) ______ thụt vào, ảnh lớn bên phải có QR đè góc' },
+  { id: 'question_list', label: '13. Câu hỏi trả lời ngắn', desc: 'Không có đoạn văn: các câu hỏi đánh số, nhãn in đậm nghiêng (Conversation 1:), đường kẻ trả lời bên dưới mỗi câu, QR góc phải tiêu đề' },
+  { id: 'headed_columns', label: '12. Cột có tiêu đề', desc: 'Hai (hay nhiều) cột, mỗi cột có tiêu đề in đậm (viết ## ở đầu dòng để mở cột mới), các dòng có chỗ trống (a), (b)…, QR góc phải tiêu đề' },
   { id: 'passage_qr', label: '8. Bài đọc + QR', desc: 'Đoạn đánh số kín chữ, mã QR nhỏ ở đầu bài chữ chạy vòng quanh, ảnh nhân vật ở góc tiêu đề' },
 ];
 
@@ -236,7 +242,7 @@ export const DEFAULT_LISTENING_SETTINGS: ListeningGapFillSettings = {
   answerLayout: 'grid',
   answerColumns: 4,
   answerLabelStyle: 'lowercase',
-  fontFamily: 'Arial',
+  fontFamily: 'Quicksand',
   passageFontSizePt: 12,
   headingFontSizePt: 14,
   lineHeight: 1.7,
@@ -561,6 +567,10 @@ export const parseListeningSmartPaste = (raw: string): ListeningGapFillData => {
   const OUTLINE_RE = /^([•●▪▫◦·]|\+)\s*(.*)$/;
   const isOutline = lines.filter((l) => OUTLINE_RE.test(l)).length >= 2;
   const outlineSub: boolean[] = [];
+  // Cột có tiêu đề: có dòng "## Tiêu đề"; mỗi dòng là một đoạn riêng
+  const isHeaded = lines.some((l) => /^##\s*\S/.test(l));
+  // Điền form: nhãn kết thúc bằng ":" và các dòng "(1) ______"; mỗi dòng là một đoạn riêng
+  const isForm = !isHeaded && lines.filter((l) => /^\(\w+\)\s*_{2,}/.test(l)).length >= 2 && lines.some((l) => /:\s*$/.test(l));
   const hasNumbered = lines.some((l) => /^\d+[.)]\s+\S/.test(l));
   const hasSpeakers = lines.filter((l) => SPEAKER_RE.test(l)).length >= 2;
   // Bài đọc không đánh số và không phải hội thoại: các đoạn cách nhau bằng dòng trống
@@ -579,16 +589,19 @@ export const parseListeningSmartPaste = (raw: string): ListeningGapFillData => {
     }
 
     // Detect exercise title
-    if (i === 0 && (line.toUpperCase() === line || line.toLowerCase().includes('listen') || line.toLowerCase().includes('fill'))) {
+    if (i === 0 && !/^##/.test(line) && (!isForm || /listen|complete|fill|answer|write/i.test(line)) && (line.toUpperCase() === line || line.toLowerCase().includes('listen') || line.toLowerCase().includes('fill'))) {
       exerciseTitle = line;
       continue;
     }
 
     // Detect passage title (short uppercase line before text)
+    if (isHeaded) { paragraphTexts.push(line); continue; }
     if (paragraphTexts.length === 0 && proseBuf.length === 0 && line.length < 50 && line === line.toUpperCase()) {
       passageTitle = line;
       continue;
     }
+
+    if (isForm) { paragraphTexts.push(line); continue; }
 
     if (prose) {
       proseBuf.push(line);
@@ -656,11 +669,16 @@ export const parseListeningSmartPaste = (raw: string): ListeningGapFillData => {
   return createListeningGapFill({
     exerciseTitle: exerciseTitle || 'LISTEN AND FILL IN THE GAP',
     ...(prose ? { settings: { ...DEFAULT_LISTENING_SETTINGS, ...PASSAGE_IMAGE_PRESET } as ListeningGapFillSettings, questions: questionTexts.map((t, i) => ({ id: `q_${Date.now().toString(36)}_${i}`, text: t })), bodyImage: {} } : {}),
-    passageTitle: isDialogue ? '' : passageTitle || 'THINGS TO SEE AND DO IN LONDON',
+    ...(isForm ? { settings: { ...DEFAULT_LISTENING_SETTINGS, ...PASSAGE_IMAGE_PRESET, layout: 'form_completion' as const } as ListeningGapFillSettings, bodyImage: {} } : {}),
+    ...(isHeaded ? { settings: { ...DEFAULT_LISTENING_SETTINGS, layout: 'headed_columns' as const } as ListeningGapFillSettings } : {}),
+    passageTitle: isDialogue || isHeaded ? '' : passageTitle || 'THINGS TO SEE AND DO IN LONDON',
     ...(isOutline ? { settings: { ...DEFAULT_LISTENING_SETTINGS, ...OUTLINE_PRESET } as ListeningGapFillSettings, bodyImage: {} } : {}),
     ...(isDialogue ? { settings: { ...DEFAULT_LISTENING_SETTINGS, ...DIALOGUE_PRESET } as ListeningGapFillSettings } : {}),
     paragraphs: paragraphs.length > 0 ? paragraphs : SAMPLE_LONDON_PARAGRAPHS,
     blanks: blanks.length > 0 ? blanks : SAMPLE_LONDON_BLANKS,
+    ...(questionTexts.length > 0 && paragraphTexts.length === 0
+      ? { settings: { ...DEFAULT_LISTENING_SETTINGS, layout: 'question_list' as const } as ListeningGapFillSettings, paragraphs: [], blanks: [], passageTitle: '', bodyImage: {} }
+      : {}),
   });
 };
 

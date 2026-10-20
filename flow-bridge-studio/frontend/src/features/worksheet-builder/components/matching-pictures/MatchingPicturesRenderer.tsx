@@ -137,7 +137,7 @@ export const MatchingPicturesRenderer: React.FC<MatchingPicturesRendererProps> =
           style={{
             display: 'inline-block',
             width: '12mm',
-            borderBottom: '1.5pt solid #1e293b',
+            borderBottom: '1.5pt dashed #1e293b',
             textAlign: 'center',
             fontWeight: 800,
             color: '#1d4ed8',

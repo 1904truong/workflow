@@ -70,7 +70,7 @@ export interface ListeningTrueFalseData {
 
 export const DEFAULT_TF_SETTINGS: ListeningTrueFalseSettings = {
   layout: 'answer_line',
-  fontFamily: 'Arial',
+  fontFamily: 'Quicksand',
   fontSizePt: 11,
   headingFontSizePt: 12.5,
   lineHeight: 1.5,

@@ -44,6 +44,30 @@ test('Ex4 – câu ngắn không khung từ, không gợi ý: layout two_columns
   assert.equal(p.layout, 'two_columns');
 });
 
+test('Ex5 – tìm lỗi và sửa: tiêu đề "FIND THE MISTAKES" chọn layout error_correction, giữ nguyên câu', () => {
+  const p = parseSentenceCompletionText(`FIND THE MISTAKES AND CORRECT
+1. This is the more wonderful book she has ever read.
+2. No mountain in the world is the biggest than Everest.
+3. Bill Gates is the richer people in the world.`);
+  assert.equal(p.layout, 'error_correction');
+  assert.equal(p.sentences.length, 3);
+  assert.equal(p.sentences[1].text, 'No mountain in the world is the biggest than Everest.');
+});
+
+test('Ex6 – viết lại câu: dòng mở đầu không số ghép vào câu đứng trước, bỏ gạch dưới', () => {
+  const p = parseSentenceCompletionText(`REWRITE THE SENTENCES
+1. Listening to music is more interesting than watching TV.
+I prefer ______
+2. It isn't important for you to finish the work today.
+You don't ______
+3. How much is this dictionary?
+What ______`);
+  assert.equal(p.layout, 'rewrite');
+  assert.equal(p.sentences.length, 3);
+  assert.equal(p.sentences[0].text, 'Listening to music is more interesting than watching TV.');
+  assert.deepEqual(p.sentences.map((s) => s.starter), ['I prefer', "You don't", 'What']);
+});
+
 test('Target Word được nhấn mạnh trong tiêu đề, không phân biệt hoa thường', () => {
   const parts = splitTitleByTarget('COMPLETE THE SENTENCES. USE ENOUGH WITH THESE WORDS.', 'enough');
   assert.deepEqual(parts.filter((x) => x.emphasis).map((x) => x.text), ['ENOUGH']);

@@ -122,7 +122,7 @@ export const MatchingVocabularyToolbar: React.FC<Props> = ({
             thumb: (
               <div className="w-full h-14 p-1.5 bg-slate-50 border border-slate-300 rounded flex gap-1.5">
                 <div className="flex-1 space-y-1">{[0, 1, 2, 3].map((i) => <div key={i} className="flex items-center gap-1"><span className="h-0.5 flex-1 bg-slate-400 rounded" />{l.id !== 'plain_list' && <span className="w-1.5 h-1.5 border border-slate-500 rounded-xs" />}</div>)}</div>
-                {l.id !== 'plain_list' && <span className="w-px bg-slate-300" />}
+                {l.id === 'two_columns' && <span className="w-px bg-slate-300" />}
                 <div className="flex-1 space-y-1">{[0, 1, 2, 3].map((i) => <span key={i} className="block h-0.5 bg-slate-400 rounded" />)}</div>
               </div>
             ),

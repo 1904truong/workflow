@@ -103,7 +103,7 @@ export const MatchingHeadingsRenderer: React.FC<Props> = ({ data, exerciseIndex 
       )}
 
       {/* Bài đọc: ảnh nổi bên phải, chữ chạy vòng quanh */}
-      <div className="flow-root">
+      {settings.showPassage !== false && <div className="flow-root">
         {showImageBox && (
           <div style={{ float: 'right', width: `${settings.imageWidthMm}mm`, margin: '1mm 0 2mm 4mm', aspectRatio: String(ratio) }}>
             {img.url ? (
@@ -118,7 +118,7 @@ export const MatchingHeadingsRenderer: React.FC<Props> = ({ data, exerciseIndex 
             <EditableText value={p.text} inline onCommit={editable?.onParagraph ? (v) => editable.onParagraph!(p.id, v) : undefined} selected={sel('passage')} onSelect={pick('passage')} />
           </p>
         ))}
-      </div>
+      </div>}
 
       {/* Danh sách nối: Paragraph n (trái) – ý chính a, b, c (phải) */}
       {rows > 0 && (

@@ -499,7 +499,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-50 text-slate-800 font-sans">
+    <div className="flex h-screen w-screen overflow-hidden bg-slate-50 text-slate-800 font-sans typeset typeset-docs">
       {/* 1. Global Navigation Sidebar (248px desktop) */}
       <AppSidebar
         activeNav={activeNavId}

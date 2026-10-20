@@ -12,7 +12,7 @@ import {
 } from '../../services/smartPasteParser';
 import { EXERCISE_REGISTRY } from '../../templates/registry';
 import { TypeChooser } from './TypeChooser';
-import { enrichExercise } from '../../services/smartPasteEnrich';
+import { enrichExercise, stripSpecialized } from '../../services/smartPasteEnrich';
 import { PRINT_TOKENS } from '../../tokens/printTokens';
 import { AiImagePlanPanel, type AiPlanEditorState } from './AiImagePlanPanel';
 import { analyzeWorksheetWithAI } from '../../services/ai/aiAnalyzer';
@@ -279,7 +279,7 @@ export const SmartPasteScreen: React.FC<SmartPasteScreenProps> = ({
           onPick={(type) => {
             const base = detectedExercises[0];
             if (!base) return;
-            const ex = enrichExercise({ ...base, type }, pasteText);
+            const ex = enrichExercise({ ...stripSpecialized(base), type }, pasteText);
             onConfirmImport([{ ...ex, type, order: folder.exercises.length + 1 }]);
           }}
         />

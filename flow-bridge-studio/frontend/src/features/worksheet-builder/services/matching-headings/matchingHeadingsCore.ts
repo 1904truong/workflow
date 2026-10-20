@@ -52,6 +52,8 @@ export interface MatchingHeadingsSettings {
   showExerciseTitle: boolean;
   showInstruction: boolean;
   showPassageTitle: boolean;
+  /** false = không in bài đọc, chỉ in danh sách Paragraph n – ý chính (bài đọc nằm ở trang khác) */
+  showPassage?: boolean;
   showImage: boolean;
   pageBreakBefore: boolean;
 }
@@ -165,6 +167,8 @@ export interface ParsedHeadings {
   passageTitle: string;
   paragraphs: string[];
   ideas: string[];
+  /** Chỉ có danh sách nối (không dán bài đọc): các đoạn là chỗ trống, không in bài đọc */
+  listOnly?: boolean;
   warnings: string[];
 }
 
@@ -183,11 +187,13 @@ export const parseHeadingsText = (raw: string): ParsedHeadings => {
   const ideas: string[] = [];
   const body: string[] = [];
   let inList = false;
+  let labelCount = 0;
   for (const line of lines) {
     if (!line) { body.push(''); continue; }
     const pl = PARA_LABEL_RE.exec(line);
     if (pl) {
       inList = true;
+      labelCount++;
       const rest = pl[1].trim();
       const im = IDEA_RE.exec(rest);
       if (im) ideas.push(im[2].trim());
@@ -224,7 +230,12 @@ export const parseHeadingsText = (raw: string): ParsedHeadings => {
   if (cur.length) blocks.push(cur);
   const paragraphs: string[] = (blocks.length > 1 ? blocks.map((b) => b.join(' ')) : blocks.flat()).filter(Boolean);
 
+  let listOnly = false;
+  if (paragraphs.length === 0 && labelCount > 0) {
+    listOnly = true;
+    for (let k = 0; k < labelCount; k++) paragraphs.push('');
+  }
   if (paragraphs.length === 0) warnings.push('Không thấy đoạn văn nào.');
   if (ideas.length === 0) warnings.push('Không thấy danh sách ý chính a., b., c.');
-  return { ok: paragraphs.length > 0 && ideas.length > 0, exerciseTitle, passageTitle, paragraphs, ideas, warnings };
+  return { ok: paragraphs.length > 0 && ideas.length > 0, exerciseTitle, passageTitle, paragraphs, ideas, listOnly, warnings };
 };

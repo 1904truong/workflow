@@ -28,9 +28,12 @@ export const classifyByHeading = (heading: string): ExerciseType | null => {
   if (/suggested words|suggested cues|cue words|using the (?:words|cues)|construct/.test(h)) return 'sentence_construction';
   if (/headings?|main ideas?/.test(h) && /match|choose|paragraph/.test(h)) return 'matching_headings';
   if (/word formation|form of the (?:word|verb)|in brackets|in parentheses|words? in the box|from the box|phrases? in the box|chia động từ|đổi dạng/.test(h)) return 'gap_filling_word_formation';
+  if (/\b(?:find|spot|correct)\b.*\b(?:mistakes?|errors?)\b|tìm lỗi/.test(h)) return 'sentence_completion';
   if (/\benough\b|\btoo\b.*\bto\b|complete the sentences|sentence completion|rewrite the sentences/.test(h)) return 'sentence_completion';
   if (/match.*(?:phrasal verb|word|vocabulary|definition|meaning)|nối/.test(h)) return 'matching_vocabulary';
   if (/true.*false.*not given|t\/f\/ng/.test(h)) return 'true_false_not_given';
+  // Đọc bài rồi viết T / F (không có Not Given, không phải bài nghe): dùng Reading Short Answer có bài đọc và dòng kẻ ngắn
+  if (!/listen/.test(h) && /\btrue\b.*\bfalse\b|\(t\)\s*or\s*false/.test(h)) return 'reading_short_answer';
   if (/listen/.test(h)) {
     if (/are the sentences|true or false|\btrue\b.*\bfalse\b/.test(h) && !/fill|gap|blank/.test(h)) return 'listening_true_false';
     if (/fill|gap|blank|complete|điền/.test(h)) return 'listening_gap_fill';
@@ -137,7 +140,7 @@ export const enrichExercise = (ex: Exercise, chunk: string): Exercise => {
           passageAuthor: r.author,
           passage: r.passage,
           questions: qs,
-          settings: (sa ? { showPassageImage: false, questionGapMm: 4.5 } : {}) as never,
+          settings: (sa ? { showPassageImage: false, questionGapMm: 4.5, ...(/\btrue\b.*\bfalse\b/i.test(title) ? { answerLineWidthMm: 26 } : {}) } : {}) as never,
         }),
       };
     }
@@ -235,7 +238,7 @@ export const enrichExercise = (ex: Exercise, chunk: string): Exercise => {
           exerciseTitle: (p.title || title).toUpperCase(),
           targetWord: p.targetWord,
           words: p.words.map((text) => ({ id: newSentenceId(), text })),
-          sentences: p.sentences.map((x): SentenceItem => ({ id: newSentenceId(), text: x.text, ...(x.hint ? { hint: x.hint } : {}) })),
+          sentences: p.sentences.map((x): SentenceItem => ({ id: newSentenceId(), text: x.text, ...(x.hint ? { hint: x.hint } : {}), ...(x.starter ? { starter: x.starter } : {}) })),
           settings: { layout: p.layout, showWordBank: p.words.length > 0 } as never,
         }),
       };
@@ -261,4 +264,15 @@ export const enrichExercise = (ex: Exercise, chunk: string): Exercise => {
     default:
       return base;
   }
+};
+
+/** Bỏ dữ liệu riêng của dạng đã đoán lúc phân tích, để chọn dạng khác thì dựng lại từ đầu và mở đúng trình soạn */
+export const stripSpecialized = (ex: Exercise): Exercise => {
+  const {
+    matching, cloze, listeningGapFill, matchingPictures, matchingHeadings, tfng, gapFilling, sentenceCompletion,
+    matchingVocabulary, listeningTrueFalse, listeningTable, listeningMcq, readingMcq, grammarMcq, ...rest
+  } = ex;
+  void matching; void cloze; void listeningGapFill; void matchingPictures; void matchingHeadings; void tfng; void gapFilling;
+  void sentenceCompletion; void matchingVocabulary; void listeningTrueFalse; void listeningTable; void listeningMcq; void readingMcq; void grammarMcq;
+  return rest;
 };

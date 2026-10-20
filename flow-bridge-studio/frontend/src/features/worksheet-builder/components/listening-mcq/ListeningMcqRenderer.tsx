@@ -78,7 +78,7 @@ export const ListeningMcqRenderer: React.FC<Props> = ({ data, exerciseIndex = 1,
   const layout = settings.layout;
 
   const blankSpan = (key: string, width = 22) => (
-    <span key={key} style={{ display: 'inline-block', width: `${width}mm`, borderBottom: '0.75pt solid #222', margin: '0 0.6mm', lineHeight: 1, verticalAlign: 'baseline' }}>&nbsp;</span>
+    <span key={key} style={{ display: 'inline-block', width: `${width}mm`, borderBottom: '1pt dashed #222', margin: '0 0.6mm', lineHeight: 1, verticalAlign: 'baseline' }}>&nbsp;</span>
   );
 
   /** Câu hỏi: gạch dưới liên tiếp thành chỗ trống; khi sửa trực tiếp thì hiện chữ gốc */

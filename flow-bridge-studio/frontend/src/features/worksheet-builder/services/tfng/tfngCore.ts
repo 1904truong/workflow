@@ -69,7 +69,7 @@ export interface TfngData {
 
 export const DEFAULT_TFNG_SETTINGS: TfngSettings = {
   layout: 'circle',
-  fontFamily: 'Arial',
+  fontFamily: 'Quicksand',
   fontSizePt: 11,
   headingFontSizePt: 12.5,
   lineHeight: 1.5,

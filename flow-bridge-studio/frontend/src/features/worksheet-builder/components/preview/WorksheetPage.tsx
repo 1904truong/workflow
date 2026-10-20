@@ -12,7 +12,8 @@ export const WorksheetPage = ({
 }: WorksheetPageProps) => {
   return (
     <div
-      className="worksheet-page bg-white shadow-xl mx-auto relative flex flex-col box-border transition-all select-text print:shadow-none print:m-0"
+      data-not-typeset
+      className="not-typeset worksheet-page bg-white shadow-xl mx-auto relative flex flex-col box-border transition-all select-text print:shadow-none print:m-0"
       style={{
         width: `${PRINT_TOKENS.page.widthMm}mm`,
         minHeight: `${PRINT_TOKENS.page.heightMm}mm`,
@@ -21,6 +22,9 @@ export const WorksheetPage = ({
         paddingLeft: `${PRINT_TOKENS.page.marginLeftMm}mm`,
         paddingRight: `${PRINT_TOKENS.page.marginRightMm}mm`,
         fontFamily: PRINT_TOKENS.typography.fontFamily,
+        // Pinned so the A4 sheet does not inherit the web UI's body size.
+        fontSize: '15px',
+        lineHeight: 1.75,
         color: PRINT_TOKENS.page.textColor,
         backgroundColor: PRINT_TOKENS.page.backgroundColor,
       }}

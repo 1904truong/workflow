@@ -54,8 +54,13 @@ ehthumbs.db
 Thumbs.db
 .gemini/
 .idea/
+.vscode/
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+
+# Local layout references & PDFs
+ZLayout/
+*.pdf

@@ -2,6 +2,7 @@ export type ExerciseType =
   | 'listening_gap_fill'
   | 'listening_multiple_choice'
   | 'listening_true_false'
+  | 'listening_matching'
   | 'listening_table_completion'
   | 'reading_multiple_choice'
   | 'true_false_not_given'
@@ -119,6 +120,8 @@ export interface Exercise {
   /** Dữ liệu bài Listening True / False (câu T/F, audio + QR, ảnh minh họa). */
   listeningTrueFalse?: import('../services/listening-true-false/listeningTrueFalseCore').ListeningTrueFalseData;
   /** Dữ liệu bài Listening Table Completion (bảng điền, ảnh/bản đồ, audio + QR, câu hỏi). */
+  /** Dữ liệu bài Listening Matching (câu hỏi 1–n, lựa chọn a–e, audio + QR, hộp đáp án). */
+  listeningMatching?: import('../services/listening-matching/listeningMatchingCore').ListeningMatchingData;
   listeningTable?: import('../services/listening-table/listeningTableCore').ListeningTableData;
   /** Dữ liệu bài Grammar & Vocabulary Multiple Choice dạng danh sách câu (6 layout in được). */
   listeningMcq?: import('../services/listening-mcq/listeningMcqCore').ListeningMcqData;

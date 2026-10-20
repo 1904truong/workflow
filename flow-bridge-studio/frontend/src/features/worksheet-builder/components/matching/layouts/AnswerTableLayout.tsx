@@ -28,7 +28,7 @@ export const AnswerTableLayout = ({ data }: LayoutProps) => {
                 </span>
               </td>
               <td style={{ ...cell, textAlign: 'center' }}>
-                {data.settings.showAnswerBoxes && <span className="inline-block align-bottom" style={{ width: '20mm', borderBottom: '0.75pt solid #333', height: '1.2em' }} />}
+                {data.settings.showAnswerBoxes && <span className="inline-block align-bottom" style={{ width: '20mm', borderBottom: '1pt dashed #333', height: '1.2em' }} />}
               </td>
             </tr>
           ))}

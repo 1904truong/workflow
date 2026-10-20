@@ -17,7 +17,8 @@ export const MCQ_LAYOUTS: McqLayoutMeta[] = [
 
 /** imageUrl: chỉ dùng ở bài Listening MC dạng ảnh A/B/C (text khi đó là mô tả ảnh, không in) */
 export interface McqOption { id: string; text: string; imageUrl?: string }
-export interface McqQuestion { id: string; text: string; options: McqOption[] }
+/** heading: dòng tiêu đề phần in trước câu này (bài phát âm: "A. Choose the word …"); số câu đếm lại từ 1 sau mỗi tiêu đề */
+export interface McqQuestion { id: string; text: string; options: McqOption[]; heading?: string }
 
 export type McqStyleKey = 'title' | 'instruction' | 'questions' | 'options';
 export const MCQ_STYLE_LABELS: Record<McqStyleKey, string> = {
@@ -62,7 +63,7 @@ export interface GrammarMcqData {
 
 export const DEFAULT_MCQ_SETTINGS: GrammarMcqSettings = {
   layout: 'original',
-  fontFamily: 'Arial',
+  fontFamily: 'Quicksand',
   fontSizePt: 10.5,
   headingFontSizePt: 12.5,
   lineHeight: 1.4,
@@ -260,6 +261,19 @@ export const parsePronunciationText = (raw: string): string[][] =>
     .map((l) => l.replace(/^\d{1,3}\s*[.)]\s*/, ''))
     .map((l) => l.split(/(?:^|\s+)(?=\(?[a-dA-D][.)]\s)/).map((p) => p.replace(/^\(?[a-dA-D][.)]\s+/, '').trim()).filter(Boolean))
     .filter((o) => o.length >= 2);
+
+/** Như parsePronunciationText nhưng giữ tiêu đề phần: dòng không có từ A–D (vd "A. Choose the word …") gắn vào câu kế tiếp */
+export const parsePronunciationRows = (raw: string): { heading?: string; options: string[] }[] => {
+  const rows: { heading?: string; options: string[] }[] = [];
+  let heading: string | undefined;
+  for (const line of raw.replace(/\r\n?/g, '\n').split('\n').map((l) => l.trim()).filter(Boolean)) {
+    const body = line.replace(/^\d{1,3}\s*[.)]\s*/, '');
+    const opts = body.split(/(?:^|\s+)(?=\(?[a-dA-D][.)]\s)/).map((p) => p.replace(/^\(?[a-dA-D][.)]\s+/, '').trim()).filter(Boolean);
+    if (opts.length >= 2) { rows.push({ heading, options: opts }); heading = undefined; }
+    else if (line.length > 14 && line !== line.toUpperCase()) heading = line;
+  }
+  return rows;
+};
 
 /** Chuẩn hóa từ gợi ý: các từ cách nhau bằng " / " (chấp nhận "/" hoặc "|") */
 export const normalizeFragments = (line: string): string => {
