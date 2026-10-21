@@ -400,6 +400,24 @@ document.addEventListener("DOMContentLoaded", () => {
     sub: document.getElementById("mgPeopleSub"), summary: document.getElementById("mgPeopleSummary"),
   };
   let mgPeopleMode = "";
+  const pxSize = document.getElementById("pxSize"), pxColor = document.getElementById("pxColor");
+  function pexelsFilters() {
+    const f = { orientation: "auto" };
+    if (pxSize.value) f.size = pxSize.value;
+    if (pxColor.value) f.pexelsColor = pxColor.value;
+    return f;
+  }
+  [pxSize, pxColor].forEach((el) => el.addEventListener("change", () => {
+    chrome.storage.local.get("stockFilters").then((r) => {
+      const all = (r && r.stockFilters) || {};
+      all.pexels = pexelsFilters();
+      chrome.storage.local.set({ stockFilters: all });
+    }).catch(() => {});
+  }));
+  chrome.storage.local.get("stockFilters").then((r) => {
+    const m = (r && r.stockFilters && r.stockFilters.pexels) || {};
+    pxSize.value = m.size || ""; pxColor.value = m.pexelsColor || "";
+  }).catch(() => {});
   function magnificFilters() {
     const f = { orientation: "auto", fileType: mg.fileType.value || "" };
     if (mg.ai.value) f.ai = mg.ai.value;
@@ -477,6 +495,18 @@ document.addEventListener("DOMContentLoaded", () => {
     orange: { label: "Orange", cls: "", bg: "#f97316" },
     yellow: { label: "Yellow", cls: "", bg: "#eab308" },
     gray:   { label: "Gray",   cls: "", bg: "#64748b" },
+    "white-black": { label: "White & Black", cls: "", bg: "linear-gradient(135deg, white 50%, rgb(13, 13, 13) 50%)" },
+    "gray-black": { label: "Gray & Black", cls: "", bg: "linear-gradient(135deg, rgb(200, 200, 200) 50%, rgb(13, 13, 13) 50%)" },
+    "blue-green": { label: "Blue & Green", cls: "", bg: "linear-gradient(135deg, rgb(51, 106, 234) 50%, rgb(23, 209, 198) 50%)" },
+    "red-blue": { label: "Red & Blue", cls: "", bg: "linear-gradient(135deg, rgb(235, 100, 76) 50%, rgb(31, 64, 140) 50%)" },
+    "yellow-blue": { label: "Yellow & Blue", cls: "", bg: "linear-gradient(135deg, rgb(254, 182, 2) 50%, rgb(51, 106, 234) 50%)" },
+    "green-yellow": { label: "Green & Yellow", cls: "", bg: "linear-gradient(135deg, rgb(23, 209, 198) 50%, rgb(254, 182, 2) 50%)" },
+    "orange-red": { label: "Orange & Red", cls: "", bg: "linear-gradient(135deg, rgb(234, 126, 17) 50%, rgb(211, 72, 43) 50%)" },
+    "yellow-red": { label: "Yellow & Red", cls: "", bg: "linear-gradient(135deg, rgb(254, 182, 2) 50%, rgb(211, 72, 43) 50%)" },
+    "pink-blue": { label: "Pink & Blue", cls: "", bg: "linear-gradient(135deg, rgb(255, 216, 210) 50%, rgb(100, 142, 239) 50%)" },
+    "pink-yellow": { label: "Pink & Yellow", cls: "", bg: "linear-gradient(135deg, rgb(255, 216, 210) 50%, rgb(254, 182, 2) 50%)" },
+    "purple-blue": { label: "Purple & Blue", cls: "", bg: "linear-gradient(135deg, rgb(76, 80, 174) 50%, rgb(184, 203, 248) 50%)" },
+    "gray-blue": { label: "Gray & Blue", cls: "", bg: "linear-gradient(135deg, rgb(200, 200, 200) 50%, rgb(100, 142, 239) 50%)" },
   };
   const colorPopup = document.getElementById("mgColorPopup");
   const colorBtn   = document.getElementById("mgColorBtn");
@@ -731,7 +761,7 @@ document.addEventListener("DOMContentLoaded", () => {
       autoSubmit: submitMode === "auto",
       referenceImages: refImages.slice(),
       platform: document.querySelector(".platform-chip.active")?.dataset.platform || "flow",
-      filters: magnificFilters(),
+      filters: document.body.dataset.platform === "pexels" ? pexelsFilters() : magnificFilters(),
       chatgptEffort: Number(document.getElementById("chatgptEffort")?.value || 1),
       autoDownload: autoDownloadToggle ? autoDownloadToggle.checked : true,
     };

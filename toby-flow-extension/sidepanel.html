@@ -127,12 +127,12 @@
 
       <!-- NỀN TẢNG -->
       <div class="platforms-row">
-        <button class="platform-chip active" data-platform="flow"><span class="platform-logo">✦</span><span>Flow</span></button>
-        <button class="platform-chip" data-platform="chatgpt"><img class="platform-logo-img" src="icons/platforms/chatgpt.png" alt=""><span>ChatGPT</span></button>
+        <button class="platform-chip active" data-platform="flow"><img class="platform-logo-img" src="icons/platforms/flow.svg" alt=""><span>Flow</span></button>
+        <button class="platform-chip" data-platform="chatgpt"><img class="platform-logo-img" src="icons/platforms/chatgpt.svg" alt=""><span>ChatGPT</span></button>
         <button class="platform-chip" data-platform="grok"><span class="platform-logo">⟳</span><span>Grok</span></button>
         <button class="platform-chip" data-platform="gemini"><img class="platform-logo-img" src="icons/platforms/gemini.png" alt=""><span>Gemini</span></button>
-        <button class="platform-chip" data-platform="magnific"><img class="platform-logo-img" src="icons/platforms/magnific.png" alt=""><span>Magnific</span></button>
-        <button class="platform-chip" data-platform="pexels"><img class="platform-logo-img" src="icons/platforms/pexels.png" alt=""><span>Pexels</span></button>
+        <button class="platform-chip" data-platform="magnific"><img class="platform-logo-img" src="icons/platforms/magnific.svg" alt=""><span>Magnific</span></button>
+        <button class="platform-chip" data-platform="pexels"><img class="platform-logo-img" src="icons/platforms/pexels.svg" alt=""><span>Pexels</span></button>
       </div>
 
       <!-- LOẠI + MODEL + TỶ LỆ + SỐ LƯỢNG -->
@@ -201,7 +201,7 @@
               <span id="mgColorLabel">Auto</span>
               <span class="mg-color-arrow">▾</span>
             </button>
-            <select id="mgColor" class="form-select mg-select" style="display:none"></select>
+            <input type="hidden" id="mgColor" value="">
           </div>
           <div class="mg-field"><span class="mg-label">Detail level</span>
             <select id="mgDetail" class="form-select mg-select"><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></div>
@@ -239,6 +239,16 @@
         </div>
       </section>
 
+      <!-- CẤU HÌNH TÌM ẢNH PEXELS -->
+      <section class="mg-config pexels-only" id="pexelsConfig">
+        <div class="mg-grid">
+          <div class="mg-field"><span class="mg-label">Size</span>
+            <select id="pxSize" class="form-select mg-select"><option value="">Any</option><option value="large">Large</option><option value="medium">Medium</option><option value="small">Small</option></select></div>
+          <div class="mg-field"><span class="mg-label">Color</span>
+            <select id="pxColor" class="form-select mg-select"><option value="">Any</option><option value="red">Red</option><option value="orange">Orange</option><option value="yellow">Yellow</option><option value="green">Green</option><option value="turquoise">Turquoise</option><option value="blue">Blue</option><option value="violet">Violet</option><option value="pink">Pink</option><option value="brown">Brown</option><option value="black">Black</option><option value="gray">Gray</option><option value="white">White</option></select></div>
+        </div>
+      </section>
+
       <!-- COLOR PICKER POPUP (Magnific) -->
       <div id="mgColorPopup" class="mg-color-popup" style="display:none">
         <div class="mg-color-grid">
@@ -254,6 +264,19 @@
           <button type="button" class="mg-cp-swatch" style="background:#f97316" data-color="orange" title="Orange"></button>
           <button type="button" class="mg-cp-swatch" style="background:#eab308" data-color="yellow" title="Yellow"></button>
           <button type="button" class="mg-cp-swatch" style="background:#64748b" data-color="gray" title="Gray"></button>
+          <div class="mg-cp-title">Duotone</div>
+          <button type="button" class="mg-cp-swatch" style="background:linear-gradient(135deg, white 50%, rgb(13, 13, 13) 50%)" data-color="white-black" title="White & Black"></button>
+          <button type="button" class="mg-cp-swatch" style="background:linear-gradient(135deg, rgb(200, 200, 200) 50%, rgb(13, 13, 13) 50%)" data-color="gray-black" title="Gray & Black"></button>
+          <button type="button" class="mg-cp-swatch" style="background:linear-gradient(135deg, rgb(51, 106, 234) 50%, rgb(23, 209, 198) 50%)" data-color="blue-green" title="Blue & Green"></button>
+          <button type="button" class="mg-cp-swatch" style="background:linear-gradient(135deg, rgb(235, 100, 76) 50%, rgb(31, 64, 140) 50%)" data-color="red-blue" title="Red & Blue"></button>
+          <button type="button" class="mg-cp-swatch" style="background:linear-gradient(135deg, rgb(254, 182, 2) 50%, rgb(51, 106, 234) 50%)" data-color="yellow-blue" title="Yellow & Blue"></button>
+          <button type="button" class="mg-cp-swatch" style="background:linear-gradient(135deg, rgb(23, 209, 198) 50%, rgb(254, 182, 2) 50%)" data-color="green-yellow" title="Green & Yellow"></button>
+          <button type="button" class="mg-cp-swatch" style="background:linear-gradient(135deg, rgb(234, 126, 17) 50%, rgb(211, 72, 43) 50%)" data-color="orange-red" title="Orange & Red"></button>
+          <button type="button" class="mg-cp-swatch" style="background:linear-gradient(135deg, rgb(254, 182, 2) 50%, rgb(211, 72, 43) 50%)" data-color="yellow-red" title="Yellow & Red"></button>
+          <button type="button" class="mg-cp-swatch" style="background:linear-gradient(135deg, rgb(255, 216, 210) 50%, rgb(100, 142, 239) 50%)" data-color="pink-blue" title="Pink & Blue"></button>
+          <button type="button" class="mg-cp-swatch" style="background:linear-gradient(135deg, rgb(255, 216, 210) 50%, rgb(254, 182, 2) 50%)" data-color="pink-yellow" title="Pink & Yellow"></button>
+          <button type="button" class="mg-cp-swatch" style="background:linear-gradient(135deg, rgb(76, 80, 174) 50%, rgb(184, 203, 248) 50%)" data-color="purple-blue" title="Purple & Blue"></button>
+          <button type="button" class="mg-cp-swatch" style="background:linear-gradient(135deg, rgb(200, 200, 200) 50%, rgb(100, 142, 239) 50%)" data-color="gray-blue" title="Gray & Blue"></button>
         </div>
       </div>
 

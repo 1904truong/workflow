@@ -1,4 +1,4 @@
-// Flow Bridge Background Service Worker
+﻿// Flow Bridge Background Service Worker
 console.log("[Flow Bridge] Service Worker Started");
 
 // Mở Side Panel khi click vào icon extension
@@ -297,7 +297,11 @@ const FILTER_SPECS = {
     { key: "fileType", param: "file_type", values: ["jpg", "ai", "eps", "svg", "png", "psd"] },
     { key: "ai", param: "ai", values: ["excluded", "only"] },
   ],
-  pexels: [{ key: "orientation", param: "orientation", values: ["landscape", "portrait", "square"] }],
+  pexels: [
+    { key: "orientation", param: "orientation", values: ["landscape", "portrait", "square"] },
+    { key: "size", param: "size", values: ["large", "medium", "small"] },
+    { key: "pexelsColor", param: "color", values: ["red", "orange", "yellow", "green", "turquoise", "blue", "violet", "pink", "brown", "black", "gray", "white"] },
+  ],
 };
 // Mặc định: ảnh ngang/dọc theo bài, không lọc file type (pipeline Supabase chỉ nhận JPG/PNG/WEBP; AI/EPS/SVG/PSD sẽ bị từ chối khi tải về)
 const DEFAULT_FILTERS = { magnific: { orientation: "auto", fileType: "" }, pexels: { orientation: "auto" } };
@@ -404,6 +408,35 @@ async function ensureMagnificFilters(expected) {
   return { done: false, clicked: `${param}=${value}`, missing };
 }
 
+// Chạy trong trang Magnific (phải tự đủ): mở menu "Color" rồi bấm chấm màu có aria-label khớp (ví dụ "Red", "White & Black").
+// Các chấm màu là nút bấm (không có liên kết) nên không dựng được qua địa chỉ.
+async function applyMagnificColor(label) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const vis = (el) => !!el && el.getBoundingClientRect().width > 0 && el.getBoundingClientRect().height > 0;
+  const waitFor = async (fn, ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const v = fn(); if (v) return v; await sleep(150); } return null; };
+  const press = (el) => {
+    const r = el.getBoundingClientRect();
+    const o = { bubbles: true, cancelable: true, view: window, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: 0, pointerType: "mouse", isPrimary: true };
+    ["pointerover", "pointerenter", "mouseover", "pointerdown", "mousedown", "pointerup", "mouseup", "click"].forEach((t) => {
+      el.dispatchEvent(new (t.startsWith("pointer") ? PointerEvent : MouseEvent)(t, o));
+    });
+  };
+  const btn = await waitFor(() => { const b = document.querySelector("button[data-cy='filter-color']"); return vis(b) ? b : null; }, 20000);
+  if (!btn) return { ok: false, error: "Không thấy nút lọc Color" };
+  press(btn);
+  const menu = await waitFor(() => [...document.querySelectorAll("[role='menu']")].find(vis), 4000);
+  if (!menu) return { ok: false, error: "Menu Color không mở" };
+  const dot = [...menu.querySelectorAll("button[aria-label]")].find((b) => b.getAttribute("aria-label") === label);
+  if (!dot) return { ok: false, error: `Không thấy chấm màu "${label}"` };
+  press(dot);
+  await sleep(600);
+  // Menu còn mở thì đóng lại để không che kết quả
+  if ([...document.querySelectorAll("[role='menu']")].some(vis)) document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  return { ok: true, url: location.href };
+}
+
+const colorLabelOf = (v) => String(v || "").split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" & ");
+
 // Chờ địa chỉ tab đổi (chuyển trang kiểu SPA không bắn sự kiện tải xong) rồi chờ thêm cho kết quả tải
 async function waitUrlChange(tabId, oldUrl, ms) {
   const t0 = Date.now();
@@ -470,9 +503,22 @@ async function startStockSearch(reqId, provider, keyword, webTabId, filters, asp
   const cfg = CHAT_PLATFORMS[provider];
   let [tab] = await chrome.tabs.query({ url: cfg.match });
   const resolved = await resolveFilters(provider, filters, aspectRatio);
-  // Color và Scenery chưa có tham số địa chỉ trên Magnific: thêm vào từ khóa tìm kiếm cho ảnh sát ý hơn
-  const searchKw = [kw, resolved.color, resolved.scenery].filter(Boolean).join(" ");
-  const url = src.searchUrl(searchKw, resolved);
+  // Scenery chưa có bộ lọc trên Magnific nên thêm vào từ khóa; Color thì bấm đúng chấm màu trong menu Color (xem applyMagnificColor)
+  let searchKw = [kw, resolved.scenery].filter(Boolean).join(" ");
+  let urlFilters = resolved;
+  if (provider === "pexels" && resolved._inKeyword) {
+    urlFilters = {}; // web đã viết sẵn mọi lựa chọn vào từ khóa
+  } else if (provider === "pexels") {
+    // Pexels chỉ có ô tìm kiếm: mọi cấu hình (hướng ảnh, màu, cỡ) gộp thẳng vào câu tìm, không dùng tham số lọc
+    const o = resolved.orientation === "auto" ? orientationOfRatio(aspectRatio) : resolved.orientation;
+    const size = resolved.size === "large" ? "high resolution" : "";
+    const col = resolved.color ? String(resolved.color).replace("-", " ") : resolved.pexelsColor;
+    const ppl = resolved.people === "exclude" ? "no people" : resolved.people === "include" || resolved.peopleGender || resolved.peopleAge || resolved.peopleEthnicity || resolved.peopleRange
+      ? ["people", resolved.peopleRange === "1" ? "one person" : resolved.peopleRange && resolved.peopleRange !== "4" ? resolved.peopleRange + " people" : "", resolved.peopleGender, resolved.peopleAge, resolved.peopleEthnicity].filter(Boolean).join(" ").replace(/-/g, " ") : "";
+    searchKw = [kw, resolved.scenery, ppl, o, col, size].filter(Boolean).join(" ");
+    urlFilters = {};
+  }
+  const url = src.searchUrl(searchKw, urlFilters);
   if (tab) tab = await chrome.tabs.update(tab.id, { url, active: true });
   else tab = await chrome.tabs.create({ url, active: true });
   if (tab.windowId) await chrome.windows.update(tab.windowId, { focused: true }).catch(() => {});
@@ -503,6 +549,21 @@ async function startStockSearch(reqId, provider, keyword, webTabId, filters, asp
         showStockFrame(tab.id, true);
       }
       console.log("[Flow Bridge][Stock] Bộ lọc Magnific cần:", JSON.stringify(expected), "đã bấm:", JSON.stringify(log));
+      const color = (await resolveFilters(provider, filters, aspectRatio)).color;
+      if (color) {
+        appliedText += (appliedText ? ", " : "") + "color=" + color;
+        const before = await chrome.tabs.get(tab.id).catch(() => null);
+        const [cr] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: applyMagnificColor, args: [colorLabelOf(color)] }).catch(() => []);
+        const cres = (cr && cr.result) || { ok: false, error: "Không đọc được trang" };
+        console.log("[Flow Bridge][Stock] Màu:", JSON.stringify(cres));
+        if (!cres.ok) {
+          await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: stockBanner, args: ["Chưa chọn được màu: " + cres.error] }).catch(() => {});
+          await new Promise((rr) => setTimeout(rr, 3500));
+        } else {
+          await waitUrlChange(tab.id, before && before.url, 6000);
+        }
+        showStockFrame(tab.id, true);
+      }
     }
     return chrome.scripting.executeScript({ target: { tabId: tab.id }, func: stockBanner, args: [`Đã tìm "${kw}"${appliedText ? " (" + appliedText + ")" : ""} — chọn ảnh rồi bấm Tải xuống, ảnh sẽ tự vào bài trên web`] }).catch(() => {});
   });
@@ -650,6 +711,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (options.provider && STOCK_SOURCES[options.provider]) {
           return sendResponse(await startStockSearch(reqId, options.provider, options.keyword || prompt, sender.tab ? sender.tab.id : null, options.filters, options.aspectRatio));
         }
+        // Nguồn ChatGPT: tạo ảnh bằng ChatGPT
+        if (options.provider === "chatgpt") {
+          webRequests.set(reqId, { webTabId: sender.tab ? sender.tab.id : null, startedAt: Date.now() });
+          const chatPayload = {
+            prompts: [prompt],
+            aspectRatio: options.aspectRatio || "1:1",
+            platform: "chatgpt",
+            chatgptEffort: options.chatgptEffort || 1,
+            autoDownload: false,
+            _webReq: reqId,
+            referenceImages: Array.isArray(options.referenceImages) ? options.referenceImages.slice(0, 3) : [],
+          };
+          const res = await dispatchToChatPlatform(chatPayload);
+          if (!res || !res.success) {
+            webRequests.delete(reqId);
+            return sendResponse({ ok: false, code: (res && res.error) || "CHATGPT_FAILED", message: (res && (res.reason || res.error)) || "Không thể chạy ChatGPT" });
+          }
+          return sendResponse({ ok: true, started: true });
+        }
         // Hiện prompt + ảnh từ web vào side panel (nếu đang mở) và nhớ lại để lần mở side panel sau vẫn thấy
         const fill = { prompt, referenceImages: Array.isArray(options.referenceImages) ? options.referenceImages.slice(0, 3) : [], at: Date.now() };
         chrome.storage.local.set({ lastWebRequest: fill }).catch?.(() => {});
@@ -747,10 +827,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     case "DISPATCH_GENERATE": {
       // Magnific: tìm ảnh có sẵn theo từ khóa (prompt) và bộ lọc ở side panel; người dùng tự chọn ảnh và bấm Tải xuống
-      if (payload && payload.platform === "magnific") {
+      if (payload && (payload.platform === "magnific" || payload.platform === "pexels")) {
         const kw = ((payload.prompts || [])[0] || "").replace(/\s+/g, " ").trim();
         if (!kw) { sendResponse({ success: false, error: "Hãy nhập từ khóa tìm ảnh vào ô Prompt" }); return; }
-        startStockSearch(crypto.randomUUID(), "magnific", kw, null, payload.filters, payload.aspectRatio)
+        startStockSearch(crypto.randomUUID(), payload.platform, kw, null, payload.filters, payload.aspectRatio)
           .then((r) => sendResponse(r && r.ok ? { success: true } : { success: false, error: (r && r.message) || "Không mở được Magnific" }))
           .catch((e) => sendResponse({ success: false, error: String(e && e.message || e) }));
         return true;

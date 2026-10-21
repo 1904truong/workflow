@@ -1518,8 +1518,7 @@ body[data-platform="grok"] .tb-params .tb-field:last-child, body[data-platform="
 body[data-platform="magnific"] .tb-field.count-field, body[data-platform="pexels"] .tb-field.count-field { display: flex !important; }
 body[data-platform="magnific"] .tb-params, body[data-platform="pexels"] .tb-params { grid-template-columns: 1fr 1fr; }
 body[data-platform="magnific"] .tb-params .tb-field:last-child, body[data-platform="pexels"] .tb-params .tb-field:last-child { grid-column: auto; }
-/* Logo nền tảng: ô trắng bo góc để logo đen/nhiều màu vẫn rõ trên nền tối */
-.platform-logo-img { width: 18px; height: 18px; border-radius: 5px; background: #fff; object-fit: contain; padding: 1px; flex: none; }
+.platform-logo-img { width: 18px; height: 18px; border-radius: 5px; object-fit: contain; flex: none; }
 /* Cấu hình tìm ảnh Magnific (cùng bộ lọc với bảng "Confirm run" trên web) */
 .magnific-only { display: none; }
 body[data-platform="magnific"] .magnific-only { display: block; }
@@ -1556,3 +1555,6 @@ body[data-platform="magnific"] .mg-config { display: flex; flex-direction: colum
 .mg-cp-swatch:hover { transform: scale(1.18); }
 .mg-cp-swatch.active { border-color: #c4f135; box-shadow: 0 0 0 1px #c4f13560; }
 .mg-cp-swatch.mg-swatch-auto { background: conic-gradient(#ef4444 0deg 60deg,#f97316 60deg 120deg,#eab308 120deg 180deg,#22c55e 180deg 240deg,#3b82f6 240deg 300deg,#8b5cf6 300deg 360deg); }
+.mg-cp-title { grid-column: 1 / -1; font-size: 11px; color: #94a3b8; padding: 4px 2px 0; }
+.pexels-only { display: none; }
+body[data-platform="pexels"] .pexels-only { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; }
