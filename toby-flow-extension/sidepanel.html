@@ -194,8 +194,15 @@
             <select id="mgAi" class="form-select mg-select"><option value="">All</option><option value="excluded">Exclude AI</option><option value="only">Only AI</option></select></div>
           <div class="mg-field"><span class="mg-label">File type</span>
             <select id="mgFileType" class="form-select mg-select"><option value="">All</option><option value="jpg">JPG</option><option value="png">PNG</option><option value="ai">AI</option><option value="eps">EPS</option><option value="svg">SVG</option><option value="psd">PSD</option></select></div>
-          <div class="mg-field"><span class="mg-label">Color</span>
-            <select id="mgColor" class="form-select mg-select"><option value="">Auto</option><option value="black">Black</option><option value="white">White</option><option value="green">Green</option><option value="cyan">Cyan</option><option value="blue">Blue</option><option value="purple">Purple</option><option value="pink">Pink</option><option value="red">Red</option><option value="orange">Orange</option><option value="yellow">Yellow</option><option value="gray">Gray</option></select></div>
+          <div class="mg-field mg-color-field" id="mgColorField">
+            <span class="mg-label">Color</span>
+            <button type="button" id="mgColorBtn" class="mg-color-btn">
+              <span id="mgColorSwatch" class="mg-color-swatch mg-swatch-auto"></span>
+              <span id="mgColorLabel">Auto</span>
+              <span class="mg-color-arrow">▾</span>
+            </button>
+            <select id="mgColor" class="form-select mg-select" style="display:none"></select>
+          </div>
           <div class="mg-field"><span class="mg-label">Detail level</span>
             <select id="mgDetail" class="form-select mg-select"><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></div>
         </div>
@@ -231,6 +238,24 @@
             <select id="mgScenery" class="form-select mg-select"><option value="">All</option><option value="nature">Nature</option><option value="city">City</option><option value="beach">Beach</option><option value="mountain">Mountain</option><option value="countryside">Countryside</option><option value="indoor">Indoor</option><option value="night">Night</option></select></div>
         </div>
       </section>
+
+      <!-- COLOR PICKER POPUP (Magnific) -->
+      <div id="mgColorPopup" class="mg-color-popup" style="display:none">
+        <div class="mg-color-grid">
+          <button type="button" class="mg-cp-swatch mg-swatch-auto active" data-color="" title="Auto"></button>
+          <button type="button" class="mg-cp-swatch" style="background:#111827" data-color="black" title="Black"></button>
+          <button type="button" class="mg-cp-swatch" style="background:#f1f5f9;border:1px solid #334155" data-color="white" title="White"></button>
+          <button type="button" class="mg-cp-swatch" style="background:#14b8a6" data-color="green" title="Green"></button>
+          <button type="button" class="mg-cp-swatch" style="background:#22d3ee" data-color="cyan" title="Cyan"></button>
+          <button type="button" class="mg-cp-swatch" style="background:#3b82f6" data-color="blue" title="Blue"></button>
+          <button type="button" class="mg-cp-swatch" style="background:#8b5cf6" data-color="purple" title="Purple"></button>
+          <button type="button" class="mg-cp-swatch" style="background:#ec4899" data-color="pink" title="Pink"></button>
+          <button type="button" class="mg-cp-swatch" style="background:#ef4444" data-color="red" title="Red"></button>
+          <button type="button" class="mg-cp-swatch" style="background:#f97316" data-color="orange" title="Orange"></button>
+          <button type="button" class="mg-cp-swatch" style="background:#eab308" data-color="yellow" title="Yellow"></button>
+          <button type="button" class="mg-cp-swatch" style="background:#64748b" data-color="gray" title="Gray"></button>
+        </div>
+      </div>
 
       <section class="tb-ref">
         <div class="tb-ref-head">

@@ -460,7 +460,70 @@ document.addEventListener("DOMContentLoaded", () => {
     mg.age.value = m.peopleAge || "";
     mg.ethnicity.value = m.peopleEthnicity || "";
     renderPeople();
+    syncColorBtn(m.color || "");
   }).catch(() => {});
+
+  // ── Color swatch picker ──
+  const COLOR_META = {
+    "": { label: "Auto", cls: "mg-swatch-auto", bg: "" },
+    black:  { label: "Black",  cls: "", bg: "#111827" },
+    white:  { label: "White",  cls: "", bg: "#f1f5f9" },
+    green:  { label: "Green",  cls: "", bg: "#14b8a6" },
+    cyan:   { label: "Cyan",   cls: "", bg: "#22d3ee" },
+    blue:   { label: "Blue",   cls: "", bg: "#3b82f6" },
+    purple: { label: "Purple", cls: "", bg: "#8b5cf6" },
+    pink:   { label: "Pink",   cls: "", bg: "#ec4899" },
+    red:    { label: "Red",    cls: "", bg: "#ef4444" },
+    orange: { label: "Orange", cls: "", bg: "#f97316" },
+    yellow: { label: "Yellow", cls: "", bg: "#eab308" },
+    gray:   { label: "Gray",   cls: "", bg: "#64748b" },
+  };
+  const colorPopup = document.getElementById("mgColorPopup");
+  const colorBtn   = document.getElementById("mgColorBtn");
+  const colorSwatch = document.getElementById("mgColorSwatch");
+  const colorLabel  = document.getElementById("mgColorLabel");
+
+  function syncColorBtn(val) {
+    const meta = COLOR_META[val] || COLOR_META[""];
+    colorLabel.textContent = meta.label;
+    colorSwatch.className = "mg-color-swatch" + (meta.cls ? " " + meta.cls : "");
+    colorSwatch.style.background = meta.bg || "";
+    // highlight active swatch in popup
+    colorPopup.querySelectorAll(".mg-cp-swatch").forEach((s) =>
+      s.classList.toggle("active", s.dataset.color === val));
+  }
+
+  function positionColorPopup() {
+    const field = document.getElementById("mgColorField");
+    if (!field) return;
+    const fr = field.getBoundingClientRect();
+    const pr = colorPopup.parentElement.getBoundingClientRect();
+    colorPopup.style.left = (fr.left - pr.left) + "px";
+    colorPopup.style.top  = (fr.bottom - pr.top + 4) + "px";
+  }
+
+  colorBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const isOpen = colorPopup.style.display !== "none";
+    colorPopup.style.display = isOpen ? "none" : "block";
+    if (!isOpen) positionColorPopup();
+  });
+
+  colorPopup.addEventListener("click", (e) => {
+    const s = e.target.closest(".mg-cp-swatch");
+    if (!s) return;
+    const val = s.dataset.color;
+    mg.color.value = val;
+    syncColorBtn(val);
+    colorPopup.style.display = "none";
+    saveMagnific();
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!colorPopup.contains(e.target) && e.target !== colorBtn) {
+      colorPopup.style.display = "none";
+    }
+  });
 
   // Nền tảng đang chọn (flow | chatgpt | grok | gemini | magnific | pexels)
   let currentPlatform = "flow";
