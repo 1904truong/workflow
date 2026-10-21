@@ -128,11 +128,11 @@
       <!-- NỀN TẢNG -->
       <div class="platforms-row">
         <button class="platform-chip active" data-platform="flow"><span class="platform-logo">✦</span><span>Flow</span></button>
-        <button class="platform-chip" data-platform="chatgpt"><span class="platform-logo">◎</span><span>ChatGPT</span></button>
+        <button class="platform-chip" data-platform="chatgpt"><img class="platform-logo-img" src="icons/platforms/chatgpt.png" alt=""><span>ChatGPT</span></button>
         <button class="platform-chip" data-platform="grok"><span class="platform-logo">⟳</span><span>Grok</span></button>
-        <button class="platform-chip" data-platform="gemini"><span class="platform-logo">✧</span><span>Gemini</span></button>
-        <button class="platform-chip" data-platform="magnific"><span class="platform-logo">❖</span><span>Magnific</span></button>
-        <button class="platform-chip" data-platform="pexels"><span class="platform-logo">▣</span><span>Pexels</span></button>
+        <button class="platform-chip" data-platform="gemini"><img class="platform-logo-img" src="icons/platforms/gemini.png" alt=""><span>Gemini</span></button>
+        <button class="platform-chip" data-platform="magnific"><img class="platform-logo-img" src="icons/platforms/magnific.png" alt=""><span>Magnific</span></button>
+        <button class="platform-chip" data-platform="pexels"><img class="platform-logo-img" src="icons/platforms/pexels.png" alt=""><span>Pexels</span></button>
       </div>
 
       <!-- LOẠI + MODEL + TỶ LỆ + SỐ LƯỢNG -->
@@ -187,6 +187,51 @@
       </section>
 
       <!-- ẢNH THAM CHIẾU -->
+      <!-- CẤU HÌNH TÌM ẢNH MAGNIFIC (chỉ hiện khi chọn Magnific); prompt ở trên là từ khóa tìm ảnh -->
+      <section class="mg-config magnific-only" id="magnificConfig">
+        <div class="mg-grid">
+          <div class="mg-field"><span class="mg-label">Image type</span>
+            <select id="mgAi" class="form-select mg-select"><option value="">All</option><option value="excluded">Exclude AI</option><option value="only">Only AI</option></select></div>
+          <div class="mg-field"><span class="mg-label">File type</span>
+            <select id="mgFileType" class="form-select mg-select"><option value="">All</option><option value="jpg">JPG</option><option value="png">PNG</option><option value="ai">AI</option><option value="eps">EPS</option><option value="svg">SVG</option><option value="psd">PSD</option></select></div>
+          <div class="mg-field"><span class="mg-label">Color</span>
+            <select id="mgColor" class="form-select mg-select"><option value="">Auto</option><option value="black">Black</option><option value="white">White</option><option value="green">Green</option><option value="cyan">Cyan</option><option value="blue">Blue</option><option value="purple">Purple</option><option value="pink">Pink</option><option value="red">Red</option><option value="orange">Orange</option><option value="yellow">Yellow</option><option value="gray">Gray</option></select></div>
+          <div class="mg-field"><span class="mg-label">Detail level</span>
+            <select id="mgDetail" class="form-select mg-select"><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></div>
+        </div>
+
+        <!-- People: ô mẹ của Number of people / Gender / Age / Ethnicity; thu gọn thành một dòng, bấm mới xổ ra -->
+        <div class="mg-field mg-people" id="mgPeople">
+          <div class="mg-people-head">
+            <span class="mg-label">People</span>
+            <button type="button" id="mgPeopleCollapse" class="mg-collapse" title="Collapse" style="display:none">▴</button>
+          </div>
+          <button type="button" id="mgPeopleToggle" class="mg-people-toggle"><span id="mgPeopleSummary">All</span><span>▾</span></button>
+          <div id="mgPeoplePanel" class="mg-people-panel" style="display:none">
+            <div class="mg-seg" id="mgPeopleMode">
+              <button type="button" data-v="" class="active">All</button>
+              <button type="button" data-v="exclude">No people</button>
+              <button type="button" data-v="include">With people</button>
+            </div>
+            <div class="mg-grid" id="mgPeopleSub" style="display:none">
+              <div class="mg-field"><span class="mg-label">Number of people</span>
+                <select id="mgPeopleRange" class="form-select mg-select"><option value="">Any</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4+</option></select></div>
+              <div class="mg-field"><span class="mg-label">Gender</span>
+                <select id="mgPeopleGender" class="form-select mg-select"><option value="">Any</option><option value="male">Male</option><option value="female">Female</option></select></div>
+              <div class="mg-field"><span class="mg-label">Age</span>
+                <select id="mgPeopleAge" class="form-select mg-select"><option value="">Any</option><option value="infant">Infant</option><option value="child">Child</option><option value="teen">Teen</option><option value="young-adult">Young adult</option><option value="adult">Adult</option><option value="senior">Senior</option><option value="elder">Elder</option></select></div>
+              <div class="mg-field"><span class="mg-label">Ethnicity</span>
+                <select id="mgPeopleEthnicity" class="form-select mg-select"><option value="">Any</option><option value="south-asian">South Asian</option><option value="middle-eastern">MENA</option><option value="east-asian">East Asian</option><option value="black">Black</option><option value="hispanic">Hispanic/Latino</option><option value="white">White</option><option value="multiracial">Multiracial</option></select></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mg-grid">
+          <div class="mg-field"><span class="mg-label">Scenery</span>
+            <select id="mgScenery" class="form-select mg-select"><option value="">All</option><option value="nature">Nature</option><option value="city">City</option><option value="beach">Beach</option><option value="mountain">Mountain</option><option value="countryside">Countryside</option><option value="indoor">Indoor</option><option value="night">Night</option></select></div>
+        </div>
+      </section>
+
       <section class="tb-ref">
         <div class="tb-ref-head">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>

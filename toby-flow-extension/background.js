@@ -299,19 +299,43 @@ const FILTER_SPECS = {
   ],
   pexels: [{ key: "orientation", param: "orientation", values: ["landscape", "portrait", "square"] }],
 };
-// Mặc định: ảnh ngang/dọc theo bài và chỉ lấy JPG (pipeline lưu Supabase chỉ nhận JPG/PNG/WEBP; vector/zip sẽ bị từ chối)
-const DEFAULT_FILTERS = { magnific: { orientation: "auto", fileType: "jpg" }, pexels: { orientation: "auto" } };
+// Mặc định: ảnh ngang/dọc theo bài, không lọc file type (pipeline Supabase chỉ nhận JPG/PNG/WEBP; AI/EPS/SVG/PSD sẽ bị từ chối khi tải về)
+const DEFAULT_FILTERS = { magnific: { orientation: "auto", fileType: "" }, pexels: { orientation: "auto" } };
 const orientationOfRatio = (r) => ({ "16:9": "landscape", "4:3": "landscape", "3:2": "landscape", "9:16": "portrait", "3:4": "portrait", "2:3": "portrait", "1:1": "square" })[r] || "";
 
-// Nhận cấu hình bộ lọc đã gộp: { orientation, fileType, ai } và tỉ lệ khung hình; trả về chuỗi "&a=b&c=d"
-function filterQuery(provider, filters) {
+// Bộ lọc "People" của Magnific (lấy từ liên kết trong menu): people=exclude | include, kèm people_range / people_gender / people_age / people_ethnicity
+const PEOPLE_SPECS = [
+  { key: "peopleRange", param: "people_range", values: ["1", "2", "3", "4"] },
+  { key: "peopleGender", param: "people_gender", values: ["male", "female"] },
+  { key: "peopleAge", param: "people_age", values: ["infant", "child", "teen", "young-adult", "adult", "senior", "elder"] },
+  { key: "peopleEthnicity", param: "people_ethnicity", values: ["south-asian", "middle-eastern", "east-asian", "black", "hispanic", "white", "multiracial"] },
+];
+
+function peopleList(f) {
+  if (String(f.people || "") === "exclude") return [["people", "exclude"]];
+  const parts = PEOPLE_SPECS.map((spec) => {
+    const v = String(f[spec.key] || "").toLowerCase();
+    return spec.values.includes(v) ? [spec.param, v] : null;
+  }).filter(Boolean);
+  // Có chọn số người / giới tính / tuổi / sắc tộc thì tự hiểu là "có người"
+  return parts.length || String(f.people || "") === "include" ? [["people", "include"], ...parts] : [];
+}
+
+// Danh sách [tham số, giá trị] cần có trên địa chỉ trang tìm kiếm, theo thứ tự các nút lọc từ trái sang phải
+function filterList(provider, filters) {
   const f = filters || {};
-  return (FILTER_SPECS[provider] || []).map((spec) => {
+  const out = (FILTER_SPECS[provider] || []).map((spec) => {
     let v = String(f[spec.key] || "").toLowerCase();
     if (spec.key === "orientation" && v === "auto") v = orientationOfRatio(f.aspectRatio);
     if (provider === "pexels" && v === "panoramic") v = "landscape";
-    return spec.values.includes(v) ? `&${spec.param}=${encodeURIComponent(v)}` : "";
-  }).join("");
+    return spec.values.includes(v) ? [spec.param, v] : null;
+  }).filter(Boolean);
+  return provider === "magnific" ? [...out, ...peopleList(f)] : out;
+}
+
+// Chuỗi "&a=b&c=d" nối vào địa chỉ tìm kiếm
+function filterQuery(provider, filters) {
+  return filterList(provider, filters).map(([p, v]) => `&${p}=${encodeURIComponent(v)}`).join("");
 }
 
 async function resolveFilters(provider, fromWeb, aspectRatio) {
@@ -349,6 +373,47 @@ function ensureStockLoaded() {
 }
 const persistStock = () => stockArea.set({ stockPending: Object.fromEntries(stockPending) }).catch(() => {});
 const STOCK_TIMEOUT_MS = 20 * 60 * 1000;
+
+// Chạy trong trang Magnific (phải tự đủ): kiểm tra các bộ lọc đã có trên địa chỉ trang chưa; thiếu cái nào thì mở menu lọc
+// tương ứng và bấm đúng liên kết (menu của Magnific là các thẻ <a href="...tham_số=giá_trị...">), mỗi lần chỉ bấm một cái vì trang sẽ chuyển trang.
+async function ensureMagnificFilters(expected) {
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const vis = (el) => !!el && el.getBoundingClientRect().width > 0 && el.getBoundingClientRect().height > 0;
+  const waitFor = async (fn, ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { const v = fn(); if (v) return v; await sleep(150); } return null; };
+  const press = (el) => {
+    const r = el.getBoundingClientRect();
+    const o = { bubbles: true, cancelable: true, view: window, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, button: 0, pointerType: "mouse", isPrimary: true };
+    ["pointerover", "pointerenter", "mouseover", "pointerdown", "mousedown", "pointerup", "mouseup", "click"].forEach((t) => {
+      el.dispatchEvent(new (t.startsWith("pointer") ? PointerEvent : MouseEvent)(t, o));
+    });
+  };
+  const missingNow = () => { const sp = new URL(location.href).searchParams; return expected.filter(([p, v]) => sp.get(p) !== v); };
+  const missing = missingNow();
+  if (!missing.length) return { done: true, missing: [] };
+
+  const [param, value] = missing[0];
+  const dataCy = { orientation: "filter-orientation", file_type: "filter-fileType", ai: "filter-aiGenerated" }[param] || (param.startsWith("people") ? "filter-people" : "");
+  const btn = await waitFor(() => { const b = document.querySelector(`button[data-cy='${dataCy}']`); return vis(b) ? b : null; }, 20000);
+  if (!btn) return { done: false, error: `Không thấy nút lọc ${dataCy || param}`, missing };
+  press(btn);
+  const menu = await waitFor(() => [...document.querySelectorAll("[role='menu']")].find(vis), 4000);
+  if (!menu) return { done: false, error: `Menu ${dataCy} không mở`, missing };
+  const link = [...menu.querySelectorAll("a[href]")].find((a) => { try { return new URL(a.href).searchParams.get(param) === value; } catch (_) { return false; } });
+  if (!link) return { done: false, error: `Không thấy lựa chọn ${param}=${value} trong menu`, missing };
+  link.click();
+  return { done: false, clicked: `${param}=${value}`, missing };
+}
+
+// Chờ địa chỉ tab đổi (chuyển trang kiểu SPA không bắn sự kiện tải xong) rồi chờ thêm cho kết quả tải
+async function waitUrlChange(tabId, oldUrl, ms) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    const t = await chrome.tabs.get(tabId).catch(() => null);
+    if (t && t.url && t.url !== oldUrl) break;
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  await new Promise((r) => setTimeout(r, 1800));
+}
 
 // Chạy trong trang (phải tự đủ): thanh nhắc nhỏ phía trên
 function stockBanner(text) {
@@ -404,7 +469,10 @@ async function startStockSearch(reqId, provider, keyword, webTabId, filters, asp
   if (!src || !kw) return { ok: false, code: "EMPTY_PROMPT", message: "Thiếu từ khóa tìm ảnh" };
   const cfg = CHAT_PLATFORMS[provider];
   let [tab] = await chrome.tabs.query({ url: cfg.match });
-  const url = src.searchUrl(kw, await resolveFilters(provider, filters, aspectRatio));
+  const resolved = await resolveFilters(provider, filters, aspectRatio);
+  // Color và Scenery chưa có tham số địa chỉ trên Magnific: thêm vào từ khóa tìm kiếm cho ảnh sát ý hơn
+  const searchKw = [kw, resolved.color, resolved.scenery].filter(Boolean).join(" ");
+  const url = src.searchUrl(searchKw, resolved);
   if (tab) tab = await chrome.tabs.update(tab.id, { url, active: true });
   else tab = await chrome.tabs.create({ url, active: true });
   if (tab.windowId) await chrome.windows.update(tab.windowId, { focused: true }).catch(() => {});
@@ -412,9 +480,31 @@ async function startStockSearch(reqId, provider, keyword, webTabId, filters, asp
   await ensureStockLoaded();
   stockPending.set(reqId, { provider, webTabId, tabId: tab.id, keyword: kw, startedAt: Date.now() });
   await persistStock();
+  let appliedText = "";
   waitTabLoaded(tab).then(async () => {
     showStockFrame(tab.id, true);
-    return chrome.scripting.executeScript({ target: { tabId: tab.id }, func: stockBanner, args: [`Đã tìm "${kw}" — chọn ảnh rồi bấm Tải xuống, ảnh sẽ tự vào bài trên web`] }).catch(() => {});
+    if (provider === "magnific") {
+      const expected = filterList("magnific", await resolveFilters(provider, filters, aspectRatio));
+      const log = [];
+      appliedText = expected.map(([p, v]) => `${p}=${v}`).join(", ");
+      for (let pass = 0; pass < 8 && expected.length; pass++) {
+        const [r] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: ensureMagnificFilters, args: [expected] }).catch(() => []);
+        const res = (r && r.result) || { done: false, error: "Không đọc được trang" };
+        if (res.clicked) log.push(res.clicked);
+        if (res.done) break;
+        if (res.error) {
+          console.warn("[Flow Bridge][Stock] Bộ lọc Magnific:", res.error);
+          await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: stockBanner, args: ["Chưa áp được bộ lọc: " + res.error] }).catch(() => {});
+          await new Promise((rr) => setTimeout(rr, 3500));
+          break;
+        }
+        const cur = await chrome.tabs.get(tab.id).catch(() => null);
+        await waitUrlChange(tab.id, cur && cur.url, 8000);
+        showStockFrame(tab.id, true);
+      }
+      console.log("[Flow Bridge][Stock] Bộ lọc Magnific cần:", JSON.stringify(expected), "đã bấm:", JSON.stringify(log));
+    }
+    return chrome.scripting.executeScript({ target: { tabId: tab.id }, func: stockBanner, args: [`Đã tìm "${kw}"${appliedText ? " (" + appliedText + ")" : ""} — chọn ảnh rồi bấm Tải xuống, ảnh sẽ tự vào bài trên web`] }).catch(() => {});
   });
   setTimeout(() => {
     if (stockPending.has(reqId)) replyToWebTab(reqId, { ok: false, code: "TIMEOUT", message: `Quá thời gian chờ bạn chọn ảnh trên ${src.name}` });
@@ -656,6 +746,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case "DISPATCH_GENERATE": {
+      // Magnific: tìm ảnh có sẵn theo từ khóa (prompt) và bộ lọc ở side panel; người dùng tự chọn ảnh và bấm Tải xuống
+      if (payload && payload.platform === "magnific") {
+        const kw = ((payload.prompts || [])[0] || "").replace(/\s+/g, " ").trim();
+        if (!kw) { sendResponse({ success: false, error: "Hãy nhập từ khóa tìm ảnh vào ô Prompt" }); return; }
+        startStockSearch(crypto.randomUUID(), "magnific", kw, null, payload.filters, payload.aspectRatio)
+          .then((r) => sendResponse(r && r.ok ? { success: true } : { success: false, error: (r && r.message) || "Không mở được Magnific" }))
+          .catch((e) => sendResponse({ success: false, error: String(e && e.message || e) }));
+        return true;
+      }
       if (payload && payload.platform && payload.platform !== "flow" && CHAT_PLATFORMS[payload.platform]) {
         dispatchToChatPlatform(payload).then(sendResponse);
         return true;

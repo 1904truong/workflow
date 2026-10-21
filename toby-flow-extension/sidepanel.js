@@ -389,6 +389,79 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
+  // ── Cấu hình tìm ảnh Magnific (cùng bộ lọc với web); nhớ lại ở storage.stockFilters.magnific để background dùng làm mặc định ──
+  const mg = {
+    ai: document.getElementById("mgAi"), fileType: document.getElementById("mgFileType"),
+    color: document.getElementById("mgColor"), detail: document.getElementById("mgDetail"), scenery: document.getElementById("mgScenery"),
+    range: document.getElementById("mgPeopleRange"), gender: document.getElementById("mgPeopleGender"),
+    age: document.getElementById("mgPeopleAge"), ethnicity: document.getElementById("mgPeopleEthnicity"),
+    toggle: document.getElementById("mgPeopleToggle"), collapse: document.getElementById("mgPeopleCollapse"),
+    panel: document.getElementById("mgPeoplePanel"), mode: document.getElementById("mgPeopleMode"),
+    sub: document.getElementById("mgPeopleSub"), summary: document.getElementById("mgPeopleSummary"),
+  };
+  let mgPeopleMode = "";
+  function magnificFilters() {
+    const f = { orientation: "auto", fileType: mg.fileType.value || "" };
+    if (mg.ai.value) f.ai = mg.ai.value;
+    if (mg.color.value) f.color = mg.color.value;
+    if (mg.scenery.value) f.scenery = mg.scenery.value;
+    f.detail = mg.detail.value || "high";
+    if (mgPeopleMode) f.people = mgPeopleMode;
+    if (mgPeopleMode === "include") {
+      if (mg.range.value) f.peopleRange = mg.range.value;
+      if (mg.gender.value) f.peopleGender = mg.gender.value;
+      if (mg.age.value) f.peopleAge = mg.age.value;
+      if (mg.ethnicity.value) f.peopleEthnicity = mg.ethnicity.value;
+    }
+    return f;
+  }
+  function renderPeople() {
+    mg.mode.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.v === mgPeopleMode));
+    mg.sub.style.display = mgPeopleMode === "include" ? "grid" : "none";
+    const f = magnificFilters();
+    const parts = mgPeopleMode === "exclude" ? ["No people"] : mgPeopleMode === "include"
+      ? ["With people", f.peopleRange && `${f.peopleRange === "4" ? "4+" : f.peopleRange} person(s)`, f.peopleGender, f.peopleAge, f.peopleEthnicity].filter(Boolean) : ["All"];
+    mg.summary.textContent = parts.join(" · ");
+  }
+  function saveMagnific() {
+    renderPeople();
+    chrome.storage.local.get("stockFilters").then((r) => {
+      const all = (r && r.stockFilters) || {};
+      all.magnific = { ...magnificFilters(), mode: mgPeopleMode };
+      chrome.storage.local.set({ stockFilters: all });
+    }).catch(() => {});
+  }
+  [mg.ai, mg.fileType, mg.color, mg.detail, mg.scenery, mg.range, mg.gender, mg.age, mg.ethnicity].forEach((el) => el.addEventListener("change", saveMagnific));
+  mg.mode.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    mgPeopleMode = b.dataset.v;
+    if (mgPeopleMode !== "include") { mg.range.value = ""; mg.gender.value = ""; mg.age.value = ""; mg.ethnicity.value = ""; }
+    saveMagnific();
+  });
+  const setPeopleOpen = (open) => {
+    document.getElementById("mgPeople").classList.toggle("open", open);
+    mg.panel.style.display = open ? "flex" : "none";
+    mg.toggle.style.display = open ? "none" : "flex";
+    mg.collapse.style.display = open ? "" : "none";
+  };
+  mg.toggle.addEventListener("click", () => setPeopleOpen(true));
+  mg.collapse.addEventListener("click", () => setPeopleOpen(false));
+  chrome.storage.local.get("stockFilters").then((r) => {
+    const m = (r && r.stockFilters && r.stockFilters.magnific) || {};
+    mg.ai.value = m.ai || "";
+    mg.fileType.value = m.fileType || "";
+    mg.color.value = m.color || "";
+    mg.detail.value = m.detail || "high";
+    mg.scenery.value = m.scenery || "";
+    mgPeopleMode = m.mode || m.people || "";
+    mg.range.value = m.peopleRange || "";
+    mg.gender.value = m.peopleGender || "";
+    mg.age.value = m.peopleAge || "";
+    mg.ethnicity.value = m.peopleEthnicity || "";
+    renderPeople();
+  }).catch(() => {});
+
   // Nền tảng đang chọn (flow | chatgpt | grok | gemini | magnific | pexels)
   let currentPlatform = "flow";
   const PLATFORM_NAMES = { flow: "Google Flow", chatgpt: "ChatGPT", grok: "Grok", gemini: "Gemini", magnific: "Magnific", pexels: "Pexels" };
@@ -595,6 +668,7 @@ document.addEventListener("DOMContentLoaded", () => {
       autoSubmit: submitMode === "auto",
       referenceImages: refImages.slice(),
       platform: document.querySelector(".platform-chip.active")?.dataset.platform || "flow",
+      filters: magnificFilters(),
       chatgptEffort: Number(document.getElementById("chatgptEffort")?.value || 1),
       autoDownload: autoDownloadToggle ? autoDownloadToggle.checked : true,
     };
