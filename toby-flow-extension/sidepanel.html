@@ -127,10 +127,12 @@
 
       <!-- NỀN TẢNG -->
       <div class="platforms-row">
-        <button class="platform-chip active" data-platform="flow"><span class="platform-logo">✦</span><span>Flow</span></button>
-        <button class="platform-chip" data-platform="chatgpt"><span class="platform-logo">◎</span><span>ChatGPT</span></button>
+        <button class="platform-chip active" data-platform="flow"><img class="platform-logo-img" src="icons/platforms/flow.svg" alt=""><span>Flow</span></button>
+        <button class="platform-chip" data-platform="chatgpt"><img class="platform-logo-img" src="icons/platforms/chatgpt.svg" alt=""><span>ChatGPT</span></button>
         <button class="platform-chip" data-platform="grok"><span class="platform-logo">⟳</span><span>Grok</span></button>
-        <button class="platform-chip" data-platform="gemini"><span class="platform-logo">✧</span><span>Gemini</span></button>
+        <button class="platform-chip" data-platform="gemini"><img class="platform-logo-img" src="icons/platforms/gemini.png" alt=""><span>Gemini</span></button>
+        <button class="platform-chip" data-platform="magnific"><img class="platform-logo-img" src="icons/platforms/magnific.svg" alt=""><span>Magnific</span></button>
+        <button class="platform-chip" data-platform="pexels"><img class="platform-logo-img" src="icons/platforms/pexels.svg" alt=""><span>Pexels</span></button>
       </div>
 
       <!-- LOẠI + MODEL + TỶ LỆ + SỐ LƯỢNG -->
@@ -174,7 +176,7 @@
             <span class="select-arrow">▾</span>
           </div>
         </div>
-        <div class="tb-field flow-only">
+        <div class="tb-field flow-only count-field">
           <span class="tb-flabel">Số lượng</span>
           <div class="stepper-box tb-stepper">
             <button class="step-btn" id="stepDec">−</button>
@@ -185,6 +187,99 @@
       </section>
 
       <!-- ẢNH THAM CHIẾU -->
+      <!-- CẤU HÌNH TÌM ẢNH MAGNIFIC (chỉ hiện khi chọn Magnific); prompt ở trên là từ khóa tìm ảnh -->
+      <section class="mg-config magnific-only" id="magnificConfig">
+        <div class="mg-grid">
+          <div class="mg-field"><span class="mg-label">Image type</span>
+            <select id="mgAi" class="form-select mg-select"><option value="">All</option><option value="excluded">Exclude AI</option><option value="only">Only AI</option></select></div>
+          <div class="mg-field"><span class="mg-label">File type</span>
+            <select id="mgFileType" class="form-select mg-select"><option value="">All</option><option value="jpg">JPG</option><option value="png">PNG</option><option value="ai">AI</option><option value="eps">EPS</option><option value="svg">SVG</option><option value="psd">PSD</option></select></div>
+          <div class="mg-field mg-color-field" id="mgColorField">
+            <span class="mg-label">Color</span>
+            <button type="button" id="mgColorBtn" class="mg-color-btn">
+              <span id="mgColorSwatch" class="mg-color-swatch mg-swatch-auto"></span>
+              <span id="mgColorLabel">Auto</span>
+              <span class="mg-color-arrow">▾</span>
+            </button>
+            <input type="hidden" id="mgColor" value="">
+          </div>
+          <div class="mg-field"><span class="mg-label">Detail level</span>
+            <select id="mgDetail" class="form-select mg-select"><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></div>
+        </div>
+
+        <!-- People: ô mẹ của Number of people / Gender / Age / Ethnicity; thu gọn thành một dòng, bấm mới xổ ra -->
+        <div class="mg-field mg-people" id="mgPeople">
+          <div class="mg-people-head">
+            <span class="mg-label">People</span>
+            <button type="button" id="mgPeopleCollapse" class="mg-collapse" title="Collapse" style="display:none">▴</button>
+          </div>
+          <button type="button" id="mgPeopleToggle" class="mg-people-toggle"><span id="mgPeopleSummary">All</span><span>▾</span></button>
+          <div id="mgPeoplePanel" class="mg-people-panel" style="display:none">
+            <div class="mg-seg" id="mgPeopleMode">
+              <button type="button" data-v="" class="active">All</button>
+              <button type="button" data-v="exclude">No people</button>
+              <button type="button" data-v="include">With people</button>
+            </div>
+            <div class="mg-grid" id="mgPeopleSub" style="display:none">
+              <div class="mg-field"><span class="mg-label">Number of people</span>
+                <select id="mgPeopleRange" class="form-select mg-select"><option value="">Any</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4+</option></select></div>
+              <div class="mg-field"><span class="mg-label">Gender</span>
+                <select id="mgPeopleGender" class="form-select mg-select"><option value="">Any</option><option value="male">Male</option><option value="female">Female</option></select></div>
+              <div class="mg-field"><span class="mg-label">Age</span>
+                <select id="mgPeopleAge" class="form-select mg-select"><option value="">Any</option><option value="infant">Infant</option><option value="child">Child</option><option value="teen">Teen</option><option value="young-adult">Young adult</option><option value="adult">Adult</option><option value="senior">Senior</option><option value="elder">Elder</option></select></div>
+              <div class="mg-field"><span class="mg-label">Ethnicity</span>
+                <select id="mgPeopleEthnicity" class="form-select mg-select"><option value="">Any</option><option value="south-asian">South Asian</option><option value="middle-eastern">MENA</option><option value="east-asian">East Asian</option><option value="black">Black</option><option value="hispanic">Hispanic/Latino</option><option value="white">White</option><option value="multiracial">Multiracial</option></select></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mg-grid">
+          <div class="mg-field"><span class="mg-label">Scenery</span>
+            <select id="mgScenery" class="form-select mg-select"><option value="">All</option><option value="nature">Nature</option><option value="city">City</option><option value="beach">Beach</option><option value="mountain">Mountain</option><option value="countryside">Countryside</option><option value="indoor">Indoor</option><option value="night">Night</option></select></div>
+        </div>
+      </section>
+
+      <!-- CẤU HÌNH TÌM ẢNH PEXELS -->
+      <section class="mg-config pexels-only" id="pexelsConfig">
+        <div class="mg-grid">
+          <div class="mg-field"><span class="mg-label">Size</span>
+            <select id="pxSize" class="form-select mg-select"><option value="">Any</option><option value="large">Large</option><option value="medium">Medium</option><option value="small">Small</option></select></div>
+          <div class="mg-field"><span class="mg-label">Color</span>
+            <select id="pxColor" class="form-select mg-select"><option value="">Any</option><option value="red">Red</option><option value="orange">Orange</option><option value="yellow">Yellow</option><option value="green">Green</option><option value="turquoise">Turquoise</option><option value="blue">Blue</option><option value="violet">Violet</option><option value="pink">Pink</option><option value="brown">Brown</option><option value="black">Black</option><option value="gray">Gray</option><option value="white">White</option></select></div>
+        </div>
+      </section>
+
+      <!-- COLOR PICKER POPUP (Magnific) -->
+      <div id="mgColorPopup" class="mg-color-popup" style="display:none">
+        <div class="mg-color-grid">
+          <button type="button" class="mg-cp-swatch mg-swatch-auto active" data-color="" title="Auto"></button>
+          <button type="button" class="mg-cp-swatch" style="background:#111827" data-color="black" title="Black"></button>
+          <button type="button" class="mg-cp-swatch" style="background:#f1f5f9;border:1px solid #334155" data-color="white" title="White"></button>
+          <button type="button" class="mg-cp-swatch" style="background:#14b8a6" data-color="green" title="Green"></button>
+          <button type="button" class="mg-cp-swatch" style="background:#22d3ee" data-color="cyan" title="Cyan"></button>
+          <button type="button" class="mg-cp-swatch" style="background:#3b82f6" data-color="blue" title="Blue"></button>
+          <button type="button" class="mg-cp-swatch" style="background:#8b5cf6" data-color="purple" title="Purple"></button>
+          <button type="button" class="mg-cp-swatch" style="background:#ec4899" data-color="pink" title="Pink"></button>
+          <button type="button" class="mg-cp-swatch" style="background:#ef4444" data-color="red" title="Red"></button>
+          <button type="button" class="mg-cp-swatch" style="background:#f97316" data-color="orange" title="Orange"></button>
+          <button type="button" class="mg-cp-swatch" style="background:#eab308" data-color="yellow" title="Yellow"></button>
+          <button type="button" class="mg-cp-swatch" style="background:#64748b" data-color="gray" title="Gray"></button>
+          <div class="mg-cp-title">Duotone</div>
+          <button type="button" class="mg-cp-swatch" style="background:linear-gradient(135deg, white 50%, rgb(13, 13, 13) 50%)" data-color="white-black" title="White & Black"></button>
+          <button type="button" class="mg-cp-swatch" style="background:linear-gradient(135deg, rgb(200, 200, 200) 50%, rgb(13, 13, 13) 50%)" data-color="gray-black" title="Gray & Black"></button>
+          <button type="button" class="mg-cp-swatch" style="background:linear-gradient(135deg, rgb(51, 106, 234) 50%, rgb(23, 209, 198) 50%)" data-color="blue-green" title="Blue & Green"></button>
+          <button type="button" class="mg-cp-swatch" style="background:linear-gradient(135deg, rgb(235, 100, 76) 50%, rgb(31, 64, 140) 50%)" data-color="red-blue" title="Red & Blue"></button>
+          <button type="button" class="mg-cp-swatch" style="background:linear-gradient(135deg, rgb(254, 182, 2) 50%, rgb(51, 106, 234) 50%)" data-color="yellow-blue" title="Yellow & Blue"></button>
+          <button type="button" class="mg-cp-swatch" style="background:linear-gradient(135deg, rgb(23, 209, 198) 50%, rgb(254, 182, 2) 50%)" data-color="green-yellow" title="Green & Yellow"></button>
+          <button type="button" class="mg-cp-swatch" style="background:linear-gradient(135deg, rgb(234, 126, 17) 50%, rgb(211, 72, 43) 50%)" data-color="orange-red" title="Orange & Red"></button>
+          <button type="button" class="mg-cp-swatch" style="background:linear-gradient(135deg, rgb(254, 182, 2) 50%, rgb(211, 72, 43) 50%)" data-color="yellow-red" title="Yellow & Red"></button>
+          <button type="button" class="mg-cp-swatch" style="background:linear-gradient(135deg, rgb(255, 216, 210) 50%, rgb(100, 142, 239) 50%)" data-color="pink-blue" title="Pink & Blue"></button>
+          <button type="button" class="mg-cp-swatch" style="background:linear-gradient(135deg, rgb(255, 216, 210) 50%, rgb(254, 182, 2) 50%)" data-color="pink-yellow" title="Pink & Yellow"></button>
+          <button type="button" class="mg-cp-swatch" style="background:linear-gradient(135deg, rgb(76, 80, 174) 50%, rgb(184, 203, 248) 50%)" data-color="purple-blue" title="Purple & Blue"></button>
+          <button type="button" class="mg-cp-swatch" style="background:linear-gradient(135deg, rgb(200, 200, 200) 50%, rgb(100, 142, 239) 50%)" data-color="gray-blue" title="Gray & Blue"></button>
+        </div>
+      </div>
+
       <section class="tb-ref">
         <div class="tb-ref-head">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
@@ -402,6 +497,26 @@
           <span class="play-icon">▶</span>
           <span>Chạy</span>
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: CHƯA ĐĂNG NHẬP NỀN TẢNG (Magnific, ChatGPT, Grok, Gemini) -->
+  <div class="modal-backdrop" id="platformLoginModal" style="display:none;">
+    <div class="modal-dialog" style="max-width: 360px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="platformLoginTitle">Chưa đăng nhập</h3>
+        <button class="modal-close-btn" id="platformLoginCloseBtn">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 18px 16px;">
+        <div style="display:flex; gap:10px; margin-bottom:14px;">
+          <span style="font-size:20px;">🔐</span>
+          <div id="platformLoginText" style="color:#cbd5e1; font-size:12px; line-height:1.5;"></div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <button class="primary-login-btn" id="platformLoginOpenBtn" style="width:100%; padding:10px; background:linear-gradient(135deg,#c4f135 0%,#8fcf17 100%); color:#111; border:none; border-radius:8px; font-weight:700; cursor:pointer;">Mở trang đăng nhập</button>
+          <button id="platformLoginRecheckBtn" style="width:100%; padding:10px; background:#18181b; color:#e8ffb0; border:1px solid #3f3f46; border-radius:8px; font-weight:600; cursor:pointer;">Tôi đã đăng nhập — kiểm tra lại</button>
+        </div>
       </div>
     </div>
   </div>

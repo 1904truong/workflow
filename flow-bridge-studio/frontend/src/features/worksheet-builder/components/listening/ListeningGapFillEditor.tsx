@@ -25,9 +25,9 @@ import {
   SENTENCE_LIST_PRESET,
   PASSAGE_IMAGE_PRESET,
 } from '../../services/listening/listeningGapFillCore';
-import { askExtension, generateImageViaExtension } from '../../services/ai/extensionBridge';
-import { buildFinalPrompt } from '../../services/ai/imagePlanCompare';
-import { PHOTO_STYLE, friendlyExtensionError } from '../../services/matching/autoMatching';
+import { useAiImage } from '../../services/ai/useAiImage';
+import { ImageManagerBody } from '../shared/ImageManagerBody';
+import { PHOTO_STYLE } from '../../services/matching/autoMatching';
 import { ListeningGapFillRenderer } from './ListeningGapFillRenderer';
 import { WorksheetRenderer } from '../preview/WorksheetRenderer';
 import { ListeningToolbar, type MoreSectionKey } from './ListeningToolbar';
@@ -871,11 +871,8 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
   };
 
   // Cách 1: tải file từ máy / thư viện – chỉ nghe thử trong editor, chưa có link công khai để quét QR
-  // ── Ảnh lớn cạnh bài đọc (layout 9) ──
-  const handleBodyImageFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
+  // ── Ảnh lớn cạnh bài đọc (khối Image Manager và hàm tạo ảnh dùng chung) ──
+  const handleBodyImageSlot = async (_idx: number, file: File) => {
     try {
       const url = await fileToSmallDataUrl(file, 1000, 'image/jpeg');
       const ratio = await new Promise<number>((resolve) => {
@@ -890,32 +887,19 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
     }
   };
 
-  const [bodyGen, setBodyGen] = useState<{ busy: boolean; msg: string }>({ busy: false, msg: '' });
   const buildBodyImagePrompt = (): string => {
-    const title = data.passageTitle?.trim();
-    const first = (data.paragraphs[0]?.text || '').replace(/\(([a-zA-Z0-9]+)\)\s*_{2,}/g, '').replace(/\s+/g, ' ').slice(0, 240);
+    const d = dataRef.current;
+    const title = d.passageTitle?.trim();
+    const first = (d.paragraphs[0]?.text || '').replace(/\(([a-zA-Z0-9]+)\)\s*_{2,}/g, '').replace(/\s+/g, ' ').slice(0, 240);
     return `Illustration for a reading passage${title ? ` titled "${title}"` : ''}. ${first ? `Scene based on: ${first}` : ''}`.trim();
   };
-  const generateBodyImage = async () => {
-    const prompt = (data.bodyImage?.prompt || buildBodyImagePrompt()).trim();
-    setBodyGen({ busy: true, msg: 'Đang tạo ảnh…' });
-    let probeNote = '';
-    try {
-      const res = await askExtension<{ status?: string; message?: string }>('GET_FLOW_STATUS', {}, 5000);
-      const st = res.payload?.status;
-      if (!(st === 'CONNECTED' || st === 'FLOW_TAB_NOT_FOUND' || st === 'PROJECT_NOT_OPEN')) probeNote = friendlyExtensionError(res.payload?.message || res.error?.message || 'Extension chưa sẵn sàng tạo ảnh.');
-    } catch {
-      probeNote = 'Không kết nối được extension Flow Bridge. Hãy bật extension rồi tải lại trang (F5).';
-    }
-    if (probeNote) { setBodyGen({ busy: false, msg: probeNote }); setData((d) => ({ ...d, bodyImage: { ...d.bodyImage, prompt } })); return; }
-    try {
-      const res = await generateImageViaExtension({ prompt: buildFinalPrompt(prompt, PHOTO_STYLE), aspectRatio: '4:3' });
-      setData((d) => ({ ...d, bodyImage: { url: res.imageUrl, ratio: 4 / 3, prompt } }));
-      setBodyGen({ busy: false, msg: 'Đã tạo và gắn ảnh vào bài.' });
-    } catch (err) {
-      setBodyGen({ busy: false, msg: friendlyExtensionError(err instanceof Error ? err.message : 'Không tạo được ảnh') });
-    }
-  };
+  const { gen: bodyGen, generate: generateBodyImage } = useAiImage({
+    getPrompt: () => dataRef.current.bodyImage?.prompt || buildBodyImagePrompt(),
+    style: PHOTO_STYLE,
+    aspectRatio: '4:3',
+    onPrompt: (p) => setData((d) => ({ ...d, bodyImage: { ...d.bodyImage, prompt: p } })),
+    onImage: (url, p) => setData((d) => ({ ...d, bodyImage: { url, ratio: 4 / 3, prompt: p } })),
+  });
 
   const questions = data.questions || [];
   const setQuestions = (list: NonNullable<ListeningGapFillData['questions']>) => update({ questions: list });
@@ -1258,7 +1242,7 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
         onImageFile={(ev) => handleParagraphImageUpload(ev, activeParagraphIndex)}
         imageSupported={imageSupported}
         onAudioFile={handleAudioUpload}
-        onBodyImageFile={(ev) => { void handleBodyImageFile(ev); }}
+        onBodyImageFile={(ev) => { const f = ev.target.files?.[0]; ev.target.value = ''; if (f) void handleBodyImageSlot(0, f); }}
         onGenerateBodyImage={() => { void generateBodyImage(); }}
         generatingBodyImage={bodyGen.busy}
         onInsertBlank={handleInsertBlank}
@@ -1731,28 +1715,19 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
             <>
               <section className="bg-white border border-blue-100 rounded-xl shadow-xs overflow-hidden pb-4 space-y-3 [&>*:not(:first-child)]:mx-4">
                 <div className="flex items-center justify-between px-4 py-2.5 bg-blue-50/70 !mx-0">
-                  <h3 className="text-sm font-bold text-slate-900">Ảnh lớn cạnh bài đọc</h3>
-                  <button type="button" onClick={() => { void generateBodyImage(); }} disabled={bodyGen.busy} className="px-2.5 h-7 rounded-lg bg-blue-600 text-white text-[11px] font-bold hover:bg-blue-700 disabled:opacity-40 flex items-center gap-1"><ImagePlus size={12} /> {data.bodyImage?.url ? 'Tạo lại ảnh' : 'Tạo ảnh AI'}</button>
+                  <h3 className="text-sm font-bold text-slate-900">Image Manager</h3>
                 </div>
-                <div className="flex items-center gap-3">
-                  {data.bodyImage?.url ? (
-                    <img src={data.bodyImage.url} alt="" className="w-28 h-[72px] object-cover rounded-lg border border-slate-200" />
-                  ) : (
-                    <div className="w-28 h-[72px] rounded-lg border border-dashed border-slate-300 bg-slate-50 text-slate-400 text-[11px] flex items-center justify-center">Chưa có ảnh</div>
-                  )}
-                  <div className="flex flex-col gap-1.5">
-                    <label className="px-2.5 h-7 rounded-lg border border-blue-200 bg-white text-[11px] font-semibold text-blue-700 hover:bg-blue-50 flex items-center gap-1 cursor-pointer"><ImagePlus size={12} /> Tải ảnh từ máy<input type="file" accept="image/*" hidden onChange={(ev) => { void handleBodyImageFile(ev); }} /></label>
-                    {data.bodyImage?.url && <button type="button" onClick={() => update({ bodyImage: { ...data.bodyImage, url: undefined, ratio: undefined } })} className="text-[11px] font-semibold text-rose-600 hover:underline text-left">Xóa ảnh</button>}
-                  </div>
-                </div>
-                <textarea
-                  rows={2}
-                  value={data.bodyImage?.prompt || ''}
-                  onChange={(ev) => update({ bodyImage: { ...data.bodyImage, prompt: ev.target.value } })}
-                  placeholder="Prompt tạo ảnh (tự sinh từ nội dung, có thể sửa)"
-                  className="w-full p-2 border border-slate-200 rounded-lg text-[11px] focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                <ImageManagerBody
+                  slots={[{ url: data.bodyImage?.url }]}
+                  previewRatio={1.5}
+                  onFile={(idx, f) => { void handleBodyImageSlot(idx, f); }}
+                  onRemove={() => update({ bodyImage: { ...data.bodyImage, url: undefined, ratio: undefined } })}
+                  onGenerate={() => { void generateBodyImage(); }}
+                  generating={bodyGen.busy}
+                  prompt={data.bodyImage?.prompt || ''}
+                  onPromptChange={(v) => update({ bodyImage: { ...data.bodyImage, prompt: v } })}
+                  message={bodyGen.msg}
                 />
-                {bodyGen.msg && <p className={`text-[11.5px] rounded-md px-2 py-1 border ${bodyGen.busy ? 'text-blue-700 bg-blue-50 border-blue-100' : 'text-amber-700 bg-amber-50 border-amber-100'}`}>{bodyGen.msg}</p>}
               </section>
 
               {(data.settings.layout === 'passage_image' || data.settings.layout === 'question_list') && <section className="bg-white border border-blue-100 rounded-xl shadow-xs overflow-hidden pb-4 space-y-3 [&>*:not(:first-child)]:mx-4">

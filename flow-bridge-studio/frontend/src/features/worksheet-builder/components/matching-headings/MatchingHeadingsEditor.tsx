@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { createPortal } from 'react-dom';
 import {
   ArrowLeft, Check, Copy, Eye, FileDown, GripVertical, Maximize2, Minimize, Minus, Plus, Printer, X,
-  MoreHorizontal, RotateCcw, RotateCw, Save, Trash2, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, HelpCircle, ChevronDown, ImagePlus,
+  MoreHorizontal, RotateCcw, RotateCw, Save, Trash2, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, HelpCircle, ChevronDown,
 } from 'lucide-react';
 import { PageZoomOverlay } from '../shared/PageZoomOverlay';
 import type { Exercise, LessonFolder, Worksheet } from '../../types';
@@ -16,9 +16,9 @@ import { MatchingHeadingsToolbar, type HeadingsMoreKey } from './MatchingHeading
 import { WorksheetRenderer } from '../preview/WorksheetRenderer';
 import { BrandHeader } from '../preview/BrandHeader';
 import { BrandFooter } from '../preview/BrandFooter';
-import { askExtension, generateImageViaExtension } from '../../services/ai/extensionBridge';
-import { buildFinalPrompt } from '../../services/ai/imagePlanCompare';
-import { PHOTO_STYLE, friendlyExtensionError } from '../../services/matching/autoMatching';
+import { useAiImage } from '../../services/ai/useAiImage';
+import { ImageManagerBody } from '../shared/ImageManagerBody';
+import { PHOTO_STYLE } from '../../services/matching/autoMatching';
 import { resolveBranding, fileToSmallDataUrl } from '../../types/branding';
 import { exportWorksheetToDocx } from '../../services/docxExportService';
 import { useAppHeaderSlot } from '../shared/hooks/useAppHeaderSlot';
@@ -185,11 +185,8 @@ export const MatchingHeadingsEditor: React.FC<Props> = ({ folder, editingExercis
   const moveItem = (key: ListKey, from: number, to: number) => update({ [key]: moveHeadingItem(data[key], from, to) } as Partial<MatchingHeadingsData>);
   const dragRef = useRef<{ key: ListKey; index: number } | null>(null);
 
-  // ── Ảnh bên phải bài đọc
-  const handleImageFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
+  // ── Ảnh bên phải bài đọc (khối Image Manager và hàm tạo ảnh dùng chung)
+  const handleImageSlot = async (_idx: number, file: File) => {
     try {
       const url = await fileToSmallDataUrl(file, 1000, 'image/jpeg');
       const ratio = await new Promise<number>((resolve) => {
@@ -198,38 +195,23 @@ export const MatchingHeadingsEditor: React.FC<Props> = ({ folder, editingExercis
         im.onerror = () => resolve(1.5);
         im.src = url;
       });
-      update({ image: { url, ratio } });
+      update({ image: { ...dataRef.current.image, url, ratio } });
     } catch {
       alert('Không đọc được file ảnh.');
     }
   };
-
-  const [imgGen, setImgGen] = useState<{ busy: boolean; msg: string }>({ busy: false, msg: '' });
   const buildImagePrompt = (): string => {
-    const title = data.passageTitle?.trim();
-    const first = (data.paragraphs[0]?.text || '').replace(/\s+/g, ' ').slice(0, 260);
+    const title = dataRef.current.passageTitle?.trim();
+    const first = (dataRef.current.paragraphs[0]?.text || '').replace(/\s+/g, ' ').slice(0, 260);
     return `Photo illustrating a reading passage${title ? ` titled "${title}"` : ''}. ${first ? `Scene based on: ${first}` : ''}`.trim();
   };
-  const generateImage = async () => {
-    const prompt = (data.image?.prompt || buildImagePrompt()).trim();
-    setImgGen({ busy: true, msg: 'Đang tạo ảnh…' });
-    let probeNote = '';
-    try {
-      const res = await askExtension<{ status?: string; message?: string }>('GET_FLOW_STATUS', {}, 5000);
-      const st = res.payload?.status;
-      if (!(st === 'CONNECTED' || st === 'FLOW_TAB_NOT_FOUND' || st === 'PROJECT_NOT_OPEN')) probeNote = friendlyExtensionError(res.payload?.message || res.error?.message || 'Extension chưa sẵn sàng tạo ảnh.');
-    } catch {
-      probeNote = 'Không kết nối được extension Flow Bridge. Hãy bật extension rồi tải lại trang (F5).';
-    }
-    if (probeNote) { setImgGen({ busy: false, msg: probeNote }); setData((d) => ({ ...d, image: { ...d.image, prompt } })); return; }
-    try {
-      const res = await generateImageViaExtension({ prompt: buildFinalPrompt(prompt, PHOTO_STYLE), aspectRatio: '4:3' });
-      setData((d) => ({ ...d, image: { url: res.imageUrl, ratio: 4 / 3, prompt } }));
-      setImgGen({ busy: false, msg: 'Đã tạo và gắn ảnh vào bài.' });
-    } catch (err) {
-      setImgGen({ busy: false, msg: friendlyExtensionError(err instanceof Error ? err.message : 'Không tạo được ảnh') });
-    }
-  };
+  const { gen: imgGen, generate: generateImage } = useAiImage({
+    getPrompt: () => dataRef.current.image?.prompt || buildImagePrompt(),
+    style: PHOTO_STYLE,
+    aspectRatio: '4:3',
+    onPrompt: (p) => setData((d) => ({ ...d, image: { ...d.image, prompt: p } })),
+    onImage: (url, p) => setData((d) => ({ ...d, image: { url, ratio: 4 / 3, prompt: p } })),
+  });
 
   // ── Smart Paste / Import
   const [modal, setModal] = useState<ModalMode | null>(null);
@@ -505,7 +487,7 @@ export const MatchingHeadingsEditor: React.FC<Props> = ({ folder, editingExercis
         onImportIdeas={() => openModal('ideas')}
         onSmartPaste={() => openModal('smart')}
         onShuffleIdeas={() => update({ ideas: shuffleHeadingItems(data.ideas) })}
-        onImageFile={(e) => { void handleImageFile(e); }}
+        onImageFile={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void handleImageSlot(0, f); }}
         onClearImage={() => update({ image: { prompt: data.image?.prompt } })}
         onGenerateImage={() => { void generateImage(); }}
         generatingImage={imgGen.busy}
@@ -566,28 +548,20 @@ export const MatchingHeadingsEditor: React.FC<Props> = ({ folder, editingExercis
           </section>
 
           <section className="shrink-0 bg-white/60 border border-slate-100 rounded-2xl p-4 shadow-xs space-y-2.5">
-            <SectionHead n={4} title="Image (bên phải bài đọc)" help="Khi chưa có ảnh, phiếu hiện khung chờ ảnh." right={<button type="button" onClick={() => { void generateImage(); }} disabled={imgGen.busy} className="px-2.5 h-7 rounded-lg bg-blue-600 text-white text-[11px] font-bold hover:bg-blue-700 disabled:opacity-40 flex items-center gap-1"><ImagePlus size={12} /> {data.image?.url ? 'Tạo lại ảnh' : 'Tạo ảnh AI'}</button>} open={open[4]} onToggle={() => toggle(4)} />
-            {open[4] && (<>
-            <div className="flex items-center gap-3">
-              {data.image?.url ? (
-                <img src={data.image.url} alt="" className="w-28 h-[72px] object-cover rounded-lg border border-slate-200" />
-              ) : (
-                <div className="w-28 h-[72px] rounded-lg border border-dashed border-slate-300 bg-slate-50 text-slate-400 text-[11px] flex items-center justify-center">Chưa có ảnh</div>
-              )}
-              <div className="flex flex-col gap-1.5">
-                <label className={`${smallBtn} cursor-pointer`}>Tải ảnh từ máy<input type="file" accept="image/*" hidden onChange={(ev) => { void handleImageFile(ev); }} /></label>
-                {data.image?.url && <button type="button" onClick={() => update({ image: { prompt: data.image?.prompt } })} className="text-[11px] font-semibold text-rose-600 hover:underline text-left">Xóa ảnh</button>}
-              </div>
-            </div>
-            <textarea
-              rows={2}
-              value={data.image?.prompt || ''}
-              onChange={(ev) => update({ image: { ...data.image, prompt: ev.target.value } })}
-              placeholder="Prompt tạo ảnh (tự sinh từ bài đọc, có thể sửa)"
-              className="w-full p-2 border border-slate-200 rounded-lg text-[11px] focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-            />
-            {imgGen.msg && <p className={`text-[11.5px] rounded-md px-2 py-1 border ${imgGen.busy ? 'text-blue-700 bg-blue-50 border-blue-100' : 'text-amber-700 bg-amber-50 border-amber-100'}`}>{imgGen.msg}</p>}
-</>)}
+            <SectionHead n={4} title="Image Manager" help="Ảnh bên phải bài đọc. Khi chưa có ảnh, phiếu hiện khung chờ ảnh." open={open[4]} onToggle={() => toggle(4)} />
+            {open[4] && (
+              <ImageManagerBody
+                slots={[{ url: data.image?.url }]}
+                previewRatio={1.5}
+                onFile={(idx, f) => { void handleImageSlot(idx, f); }}
+                onRemove={() => update({ image: { prompt: data.image?.prompt } })}
+                onGenerate={() => { void generateImage(); }}
+                generating={imgGen.busy}
+                prompt={data.image?.prompt || ''}
+                onPromptChange={(v) => update({ image: { ...data.image, prompt: v } })}
+                message={imgGen.msg}
+              />
+            )}
           </section>
         </div>
 

@@ -12,9 +12,10 @@ import type { ParsedMatching } from '../../services/matching/matchingCore';
 import { fileToSmallDataUrl } from '../../types/branding';
 import { MatchingRenderer } from './MatchingRenderer';
 import { analyzeWorksheetWithAI } from '../../services/ai/aiAnalyzer';
-import { askExtension, generateImageViaExtension } from '../../services/ai/extensionBridge';
+import { generateImageViaExtension } from '../../services/ai/extensionBridge';
+import { probeExtension } from '../../services/ai/useAiImage';
 import type { AiImagePlan } from '../../services/ai/imagePlanSchema';
-import { decideLayout, planTargets, runAutoImages, withPrompts, friendlyExtensionError, type AutoImageItem } from '../../services/matching/autoMatching';
+import { decideLayout, planTargets, runAutoImages, withPrompts, type AutoImageItem } from '../../services/matching/autoMatching';
 
 interface Props {
   value: MatchingData;
@@ -141,22 +142,6 @@ export const MatchingEditor: React.FC<Props> = ({ value, onChange, onTitleDetect
   const cancelRef = useRef(false);
   const applyLatest = (next: MatchingData) => { latest.current = next; onChange(next); };
 
-  // Extension chỉ trả lời GET_FLOW_STATUS / ANALYZE_WORKSHEET / TRIGGER_GENERATE / LIST_CLOUD_IMAGES (xem web-bridge.js)
-  type FlowProbe = { present: boolean; ready: boolean; note: string };
-  const probeExtension = async (): Promise<FlowProbe> => {
-    try {
-      const res = await askExtension<{ status?: string; message?: string }>('GET_FLOW_STATUS', {}, 5000);
-      const status = res.payload?.status;
-      // Extension tự mở tab Google Flow và tự chọn "Dự án mới" khi nhận lệnh tạo ảnh (xem background.js),
-      // nên chưa có tab Flow / chưa vào project vẫn tạo ảnh được.
-      if (status === 'CONNECTED' || status === 'FLOW_TAB_NOT_FOUND' || status === 'PROJECT_NOT_OPEN') {
-        return { present: true, ready: true, note: '' };
-      }
-      return { present: true, ready: false, note: friendlyExtensionError(res.payload?.message || res.error?.message || 'Extension chưa sẵn sàng tạo ảnh.') };
-    } catch {
-      return { present: false, ready: false, note: 'Không kết nối được extension Flow Bridge. Hãy tải lại trang (F5) sau khi bật extension.' };
-    }
-  };
 
   const generateTargets = async (plan: AiImagePlan | null, force?: string) => {
     let data = latest.current;

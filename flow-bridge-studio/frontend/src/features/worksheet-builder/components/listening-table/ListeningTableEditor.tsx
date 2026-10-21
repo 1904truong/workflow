@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { createPortal } from 'react-dom';
 import {
   ArrowLeft, Check, Copy, Eye, FileDown, GripVertical, Maximize2, Minimize, Minus, Plus, Printer, X, MoreHorizontal,
-  RotateCcw, RotateCw, Save, Trash2, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, HelpCircle, Sparkles, ImagePlus,
+  RotateCcw, RotateCw, Save, Trash2, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, HelpCircle, Sparkles,
 } from 'lucide-react';
 import { PageZoomOverlay } from '../shared/PageZoomOverlay';
 import type { Exercise, LessonFolder, Worksheet } from '../../types';
@@ -22,10 +22,9 @@ import { exportWorksheetToDocx } from '../../services/docxExportService';
 import { useAppHeaderSlot } from '../shared/hooks/useAppHeaderSlot';
 import { useSplitPane } from '../shared/hooks/useSplitPane';
 import { analyzeWorksheetWithAI } from '../../services/ai/aiAnalyzer';
-import { askExtension, generateImageViaExtension } from '../../services/ai/extensionBridge';
-import { buildFinalPrompt } from '../../services/ai/imagePlanCompare';
+import { probeExtension, useAiImage } from '../../services/ai/useAiImage';
+import { ImageManagerBody } from '../shared/ImageManagerBody';
 import type { AiImagePlan } from '../../services/ai/imagePlanSchema';
-import { friendlyExtensionError } from '../../services/matching/autoMatching';
 
 interface Props {
   folder: LessonFolder;
@@ -165,71 +164,44 @@ export const ListeningTableEditor: React.FC<Props> = ({ folder, editingExercise,
   const moveQuestion = (from: number, to: number) => update({ questions: moveListItem(data.questions, from, to) });
   const dragRef = useRef<number | null>(null);
 
-  // ── Ảnh / bản đồ
-  const handleImageFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
+  // ── Ảnh / bản đồ (khối Image Manager và hàm tạo ảnh dùng chung)
+  const readImage = async (file: File): Promise<{ url: string; ratio: number }> => {
+    const url = await fileToSmallDataUrl(file, 1200, 'image/jpeg');
+    const ratio = await new Promise<number>((resolve) => {
+      const im = new Image();
+      im.onload = () => resolve(im.naturalWidth && im.naturalHeight ? Math.round((im.naturalWidth / im.naturalHeight) * 100) / 100 : 16 / 9);
+      im.onerror = () => resolve(16 / 9);
+      im.src = url;
+    });
+    return { url, ratio };
+  };
+  const handleImageSlot = async (idx: number, file: File) => {
     try {
-      const url = await fileToSmallDataUrl(file, 1200, 'image/jpeg');
-      const ratio = await new Promise<number>((resolve) => {
-        const im = new Image();
-        im.onload = () => resolve(im.naturalWidth && im.naturalHeight ? Math.round((im.naturalWidth / im.naturalHeight) * 100) / 100 : 16 / 10);
-        im.onerror = () => resolve(16 / 10);
-        im.src = url;
-      });
-      update({ image: { ...data.image, url, ratio } });
-      updateSettings({ showImage: true });
+      const { url, ratio } = await readImage(file);
+      if (idx === 0) {
+        update({ image: { ...dataRef.current.image, url, ratio } });
+        updateSettings({ showImage: true });
+      } else {
+        const extra = [...(dataRef.current.image.extra || [])];
+        extra[idx - 1] = { url, ratio };
+        update({ image: { ...dataRef.current.image, extra } });
+      }
     } catch {
       window.alert('Không đọc được ảnh này.');
     }
   };
-
-  const handleExtraImage = async (idx: number, ev: React.ChangeEvent<HTMLInputElement>) => {
-    const file = ev.target.files?.[0];
-    ev.target.value = '';
-    if (!file) return;
-    try {
-      const url = await fileToSmallDataUrl(file, 1200, 'image/jpeg');
-      const ratio = await new Promise<number>((resolve) => {
-        const im = new Image();
-        im.onload = () => resolve(im.naturalWidth && im.naturalHeight ? Math.round((im.naturalWidth / im.naturalHeight) * 100) / 100 : 16 / 9);
-        im.onerror = () => resolve(16 / 9);
-        im.src = url;
-      });
-      const extra = [...(dataRef.current.image.extra || [])];
-      extra[idx - 1] = { url, ratio };
-      update({ image: { ...dataRef.current.image, extra } });
-    } catch {
-      window.alert('Không đọc được ảnh này.');
-    }
+  const removeImageSlot = (idx: number) => {
+    if (idx === 0) update({ image: { ...data.image, url: undefined, ratio: undefined } });
+    else update({ image: { ...data.image, extra: (data.image.extra || []).map((x, k) => (k === idx - 1 ? {} : x)) } });
   };
   const imageCount = Math.min(4, Math.max(1, data.settings.imageCount ?? 1));
-
-  const [gen, setGen] = useState<{ busy: boolean; msg: string }>({ busy: false, msg: '' });
-  const probeExtension = async (): Promise<{ present: boolean; ready: boolean; note: string }> => {
-    try {
-      const res = await askExtension<{ status?: string; message?: string }>('GET_FLOW_STATUS', {}, 5000);
-      const st = res.payload?.status;
-      if (st === 'CONNECTED' || st === 'FLOW_TAB_NOT_FOUND' || st === 'PROJECT_NOT_OPEN') return { present: true, ready: true, note: '' };
-      return { present: true, ready: false, note: friendlyExtensionError(res.payload?.message || res.error?.message || 'Extension chưa sẵn sàng tạo ảnh.') };
-    } catch {
-      return { present: false, ready: false, note: 'Không kết nối được extension Flow Bridge. Hãy bật extension rồi tải lại trang (F5).' };
-    }
-  };
-  const generateImage = async (prompt?: string) => {
-    const p = (prompt || dataRef.current.image.prompt || buildTableImagePrompt(dataRef.current)).trim();
-    setGen({ busy: true, msg: 'Đang tạo ảnh…' });
-    const probe = await probeExtension();
-    if (!probe.ready) { setGen({ busy: false, msg: probe.note }); setData((d) => ({ ...d, image: { ...d.image, prompt: p } })); return; }
-    try {
-      const res = await generateImageViaExtension({ prompt: buildFinalPrompt(p, MAP_STYLE), aspectRatio: '16:9' });
-      setData((d) => ({ ...d, image: { ...d.image, url: res.imageUrl, ratio: 16 / 9, prompt: p }, settings: { ...d.settings, showImage: true } }));
-      setGen({ busy: false, msg: 'Đã tạo và gắn ảnh vào bài.' });
-    } catch (e) {
-      setGen({ busy: false, msg: friendlyExtensionError(e instanceof Error ? e.message : 'Không tạo được ảnh') });
-    }
-  };
+  const { gen, generate: generateImage } = useAiImage({
+    getPrompt: () => dataRef.current.image.prompt || buildTableImagePrompt(dataRef.current),
+    style: MAP_STYLE,
+    aspectRatio: '16:9',
+    onPrompt: (p) => setData((d) => ({ ...d, image: { ...d.image, prompt: p } })),
+    onImage: (url, p) => setData((d) => ({ ...d, image: { ...d.image, url, ratio: 16 / 9, prompt: p }, settings: { ...d.settings, showImage: true } })),
+  });
 
   // ── Smart AI / Smart Paste
   const [modal, setModal] = useState<ModalMode | null>(null);
@@ -475,7 +447,7 @@ export const ListeningTableEditor: React.FC<Props> = ({ folder, editingExercise,
         onSmartAI={() => openModal('ai')}
         onSmartPaste={() => openModal('smart')}
         onInsertExercise={() => handleSave('return')}
-        onImageFile={(e) => { void handleImageFile(e); }}
+        onImageFile={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void handleImageSlot(0, f); }}
         onGenerateImage={() => { void generateImage(); }}
         generating={gen.busy}
         onDuplicate={() => handleSave('add_another')}
@@ -526,38 +498,19 @@ export const ListeningTableEditor: React.FC<Props> = ({ folder, editingExercise,
           </section>
 
           <section className="shrink-0 bg-white/60 border border-slate-100 rounded-2xl p-4 shadow-xs space-y-2.5">
-            <SectionHead n={3} title="Image Manager" help="Ảnh / bản đồ phía trên bảng. Có thể tải ảnh hoặc tạo bằng AI qua extension từ prompt bên dưới." right={
-              <button type="button" onClick={() => { void generateImage(); }} disabled={gen.busy} className={smallBtn}><ImagePlus size={12} /> {data.image.url ? 'Tạo lại ảnh' : 'Tạo ảnh AI'}</button>
-            } />
-            <div className="flex items-center gap-3">
-              {data.image.url ? (
-                <img src={data.image.url} alt="" className="w-28 h-[70px] object-cover rounded-lg border border-slate-200" />
-              ) : (
-                <div className="w-28 h-[70px] rounded-lg border border-dashed border-slate-300 bg-slate-50 text-slate-400 text-[11px] flex items-center justify-center">Chưa có ảnh</div>
-              )}
-              <div className="flex flex-col gap-1.5">
-                <label className={`${smallBtn} cursor-pointer`}><ImagePlus size={12} /> Tải ảnh từ máy<input type="file" accept="image/*" hidden onChange={(e) => { void handleImageFile(e); }} /></label>
-                {data.image.url && <button type="button" onClick={() => update({ image: { ...data.image, url: undefined, ratio: undefined } })} className="text-[11px] font-semibold text-rose-600 hover:underline text-left">Xóa ảnh</button>}
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600">Số ảnh
-                <select value={imageCount} onChange={(ev) => updateSettings({ imageCount: Number(ev.target.value) })} className={`${fieldCls} !w-16 !py-1`}>
-                  {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}
-                </select>
-              </label>
-              {Array.from({ length: imageCount - 1 }).map((_, k) => {
-                const slot = data.image.extra?.[k];
-                return (
-                  <span key={k} className="flex items-center gap-1.5">
-                    {slot?.url ? <img src={slot.url} alt="" className="w-14 h-[40px] object-cover rounded-md border border-slate-200" /> : <span className="w-14 h-[40px] rounded-md border border-dashed border-slate-300 bg-slate-50 text-[10px] text-slate-400 flex items-center justify-center">Ảnh {k + 2}</span>}
-                    <label className={`${smallBtn} cursor-pointer`}>Ảnh {k + 2}<input type="file" accept="image/*" hidden onChange={(ev) => { void handleExtraImage(k + 1, ev); }} /></label>
-                  </span>
-                );
-              })}
-            </div>
-            <AutoTextarea value={data.image.prompt || ''} onChange={(e) => update({ image: { ...data.image, prompt: e.target.value } })} placeholder="Prompt tạo ảnh (tự sinh từ nội dung, có thể sửa)" className={`${fieldCls} resize-none min-h-[34px] text-[11px]`} />
-            {gen.msg && <p className={`text-[11.5px] rounded-md px-2 py-1 border ${gen.busy ? 'text-blue-700 bg-blue-50 border-blue-100' : 'text-amber-700 bg-amber-50 border-amber-100'}`}>{gen.msg}</p>}
+            <SectionHead n={3} title="Image Manager" help="Ảnh / bản đồ phía trên bảng. Có thể tải ảnh hoặc tạo bằng AI qua extension từ prompt bên dưới." />
+            <ImageManagerBody
+              slots={Array.from({ length: imageCount }, (_, k) => ({ url: k === 0 ? data.image.url : data.image.extra?.[k - 1]?.url }))}
+              maxImages={4}
+              onCountChange={(n) => updateSettings({ imageCount: n })}
+              onFile={(idx, f) => { void handleImageSlot(idx, f); }}
+              onRemove={removeImageSlot}
+              onGenerate={() => { void generateImage(); }}
+              generating={gen.busy}
+              prompt={data.image.prompt || ''}
+              onPromptChange={(v) => update({ image: { ...data.image, prompt: v } })}
+              message={gen.msg}
+            />
           </section>
 
           <section className="shrink-0 bg-white/60 border border-slate-100 rounded-2xl p-4 shadow-xs space-y-2.5">

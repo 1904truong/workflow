@@ -1514,3 +1514,47 @@ body[data-platform="chatgpt"] .tb-params { grid-template-columns: 1fr 1fr; }
 body[data-platform="chatgpt"] .tb-params .tb-field:last-child { grid-column: auto; }
 body[data-platform="grok"] .tb-params, body[data-platform="gemini"] .tb-params { grid-template-columns: 1fr; }
 body[data-platform="grok"] .tb-params .tb-field:last-child, body[data-platform="gemini"] .tb-params .tb-field:last-child { grid-column: auto; }
+/* Magnific / Pexels: giữ ô Số lượng (số ảnh lấy về mỗi prompt); Pexels coi prompt là từ khóa tìm ảnh */
+body[data-platform="magnific"] .tb-field.count-field, body[data-platform="pexels"] .tb-field.count-field { display: flex !important; }
+body[data-platform="magnific"] .tb-params, body[data-platform="pexels"] .tb-params { grid-template-columns: 1fr 1fr; }
+body[data-platform="magnific"] .tb-params .tb-field:last-child, body[data-platform="pexels"] .tb-params .tb-field:last-child { grid-column: auto; }
+.platform-logo-img { width: 18px; height: 18px; border-radius: 5px; object-fit: contain; flex: none; }
+/* Cấu hình tìm ảnh Magnific (cùng bộ lọc với bảng "Confirm run" trên web) */
+.magnific-only { display: none; }
+body[data-platform="magnific"] .magnific-only { display: block; }
+.mg-config { display: none; margin: 8px 0; }
+body[data-platform="magnific"] .mg-config { display: flex; flex-direction: column; gap: 8px; }
+.mg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.mg-field { background: #131316; border: 1px solid #26262c; border-radius: 10px; padding: 8px 10px 8px 10px; display: flex; flex-direction: column; gap: 5px; min-width: 0; overflow: visible; }
+.mg-label { font-size: 11px; font-weight: 700; color: #cbd5e1; white-space: nowrap; overflow: visible; }
+.mg-select { height: 30px; font-size: 12px; width: 100%; }
+.mg-static { font-size: 12px; color: #64748b; height: 30px; display: flex; align-items: center; }
+.mg-off { opacity: .5; }
+.mg-people-head { display: flex; align-items: center; justify-content: space-between; }
+.mg-collapse { background: #26262c; border: 0; color: #cbd5e1; width: 22px; height: 22px; border-radius: 6px; cursor: pointer; }
+.mg-people-toggle { display: flex; align-items: center; justify-content: space-between; height: 30px; padding: 0 10px; background: #1b1b20; border: 1px solid #2e2e35; border-radius: 8px; color: #e2e8f0; font-size: 12px; cursor: pointer; }
+.mg-people-panel { display: flex; flex-direction: column; gap: 8px; }
+.mg-seg { display: inline-flex; background: #1b1b20; border: 1px solid #2e2e35; border-radius: 8px; padding: 2px; width: fit-content; }
+.mg-seg button { background: transparent; border: 0; color: #cbd5e1; font-size: 12px; padding: 5px 10px; border-radius: 6px; cursor: pointer; }
+.mg-seg button.active { background: #c4f135; color: #111; font-weight: 700; }
+
+/* ── Color swatch button (trigger) ── */
+.mg-color-field { position: relative; }
+.mg-color-btn { display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px; background: #1b1b20; border: 1px solid #2e2e35; border-radius: 8px; color: #e2e8f0; font-size: 12px; cursor: pointer; width: 100%; text-align: left; }
+.mg-color-btn:hover { border-color: #4a4a55; }
+.mg-color-arrow { margin-left: auto; font-size: 10px; color: #64748b; }
+.mg-color-swatch { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
+.mg-swatch-auto { background: conic-gradient(#ef4444 0deg 60deg,#f97316 60deg 120deg,#eab308 120deg 180deg,#22c55e 180deg 240deg,#3b82f6 240deg 300deg,#8b5cf6 300deg 360deg); }
+
+/* ── Color popup panel ── */
+.mg-color-popup { position: absolute; z-index: 9999; background: #18181b; border: 1px solid #2e2e35; border-radius: 12px; padding: 10px; box-shadow: 0 8px 32px rgba(0,0,0,.6); width: 200px; }
+.mg-color-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+
+/* ── Individual color swatch ── */
+.mg-cp-swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; transition: transform .15s, border-color .15s; position: relative; }
+.mg-cp-swatch:hover { transform: scale(1.18); }
+.mg-cp-swatch.active { border-color: #c4f135; box-shadow: 0 0 0 1px #c4f13560; }
+.mg-cp-swatch.mg-swatch-auto { background: conic-gradient(#ef4444 0deg 60deg,#f97316 60deg 120deg,#eab308 120deg 180deg,#22c55e 180deg 240deg,#3b82f6 240deg 300deg,#8b5cf6 300deg 360deg); }
+.mg-cp-title { grid-column: 1 / -1; font-size: 11px; color: #94a3b8; padding: 4px 2px 0; }
+.pexels-only { display: none; }
+body[data-platform="pexels"] .pexels-only { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; }

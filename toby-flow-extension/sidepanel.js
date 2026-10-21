@@ -389,9 +389,175 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // Nền tảng đang chọn (flow | chatgpt | grok | gemini)
+  // ── Cấu hình tìm ảnh Magnific (cùng bộ lọc với web); nhớ lại ở storage.stockFilters.magnific để background dùng làm mặc định ──
+  const mg = {
+    ai: document.getElementById("mgAi"), fileType: document.getElementById("mgFileType"),
+    color: document.getElementById("mgColor"), detail: document.getElementById("mgDetail"), scenery: document.getElementById("mgScenery"),
+    range: document.getElementById("mgPeopleRange"), gender: document.getElementById("mgPeopleGender"),
+    age: document.getElementById("mgPeopleAge"), ethnicity: document.getElementById("mgPeopleEthnicity"),
+    toggle: document.getElementById("mgPeopleToggle"), collapse: document.getElementById("mgPeopleCollapse"),
+    panel: document.getElementById("mgPeoplePanel"), mode: document.getElementById("mgPeopleMode"),
+    sub: document.getElementById("mgPeopleSub"), summary: document.getElementById("mgPeopleSummary"),
+  };
+  let mgPeopleMode = "";
+  const pxSize = document.getElementById("pxSize"), pxColor = document.getElementById("pxColor");
+  function pexelsFilters() {
+    const f = { orientation: "auto" };
+    if (pxSize.value) f.size = pxSize.value;
+    if (pxColor.value) f.pexelsColor = pxColor.value;
+    return f;
+  }
+  [pxSize, pxColor].forEach((el) => el.addEventListener("change", () => {
+    chrome.storage.local.get("stockFilters").then((r) => {
+      const all = (r && r.stockFilters) || {};
+      all.pexels = pexelsFilters();
+      chrome.storage.local.set({ stockFilters: all });
+    }).catch(() => {});
+  }));
+  chrome.storage.local.get("stockFilters").then((r) => {
+    const m = (r && r.stockFilters && r.stockFilters.pexels) || {};
+    pxSize.value = m.size || ""; pxColor.value = m.pexelsColor || "";
+  }).catch(() => {});
+  function magnificFilters() {
+    const f = { orientation: "auto", fileType: mg.fileType.value || "" };
+    if (mg.ai.value) f.ai = mg.ai.value;
+    if (mg.color.value) f.color = mg.color.value;
+    if (mg.scenery.value) f.scenery = mg.scenery.value;
+    f.detail = mg.detail.value || "high";
+    if (mgPeopleMode) f.people = mgPeopleMode;
+    if (mgPeopleMode === "include") {
+      if (mg.range.value) f.peopleRange = mg.range.value;
+      if (mg.gender.value) f.peopleGender = mg.gender.value;
+      if (mg.age.value) f.peopleAge = mg.age.value;
+      if (mg.ethnicity.value) f.peopleEthnicity = mg.ethnicity.value;
+    }
+    return f;
+  }
+  function renderPeople() {
+    mg.mode.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.v === mgPeopleMode));
+    mg.sub.style.display = mgPeopleMode === "include" ? "grid" : "none";
+    const f = magnificFilters();
+    const parts = mgPeopleMode === "exclude" ? ["No people"] : mgPeopleMode === "include"
+      ? ["With people", f.peopleRange && `${f.peopleRange === "4" ? "4+" : f.peopleRange} person(s)`, f.peopleGender, f.peopleAge, f.peopleEthnicity].filter(Boolean) : ["All"];
+    mg.summary.textContent = parts.join(" · ");
+  }
+  function saveMagnific() {
+    renderPeople();
+    chrome.storage.local.get("stockFilters").then((r) => {
+      const all = (r && r.stockFilters) || {};
+      all.magnific = { ...magnificFilters(), mode: mgPeopleMode };
+      chrome.storage.local.set({ stockFilters: all });
+    }).catch(() => {});
+  }
+  [mg.ai, mg.fileType, mg.color, mg.detail, mg.scenery, mg.range, mg.gender, mg.age, mg.ethnicity].forEach((el) => el.addEventListener("change", saveMagnific));
+  mg.mode.addEventListener("click", (e) => {
+    const b = e.target.closest("button");
+    if (!b) return;
+    mgPeopleMode = b.dataset.v;
+    if (mgPeopleMode !== "include") { mg.range.value = ""; mg.gender.value = ""; mg.age.value = ""; mg.ethnicity.value = ""; }
+    saveMagnific();
+  });
+  const setPeopleOpen = (open) => {
+    document.getElementById("mgPeople").classList.toggle("open", open);
+    mg.panel.style.display = open ? "flex" : "none";
+    mg.toggle.style.display = open ? "none" : "flex";
+    mg.collapse.style.display = open ? "" : "none";
+  };
+  mg.toggle.addEventListener("click", () => setPeopleOpen(true));
+  mg.collapse.addEventListener("click", () => setPeopleOpen(false));
+  chrome.storage.local.get("stockFilters").then((r) => {
+    const m = (r && r.stockFilters && r.stockFilters.magnific) || {};
+    mg.ai.value = m.ai || "";
+    mg.fileType.value = m.fileType || "";
+    mg.color.value = m.color || "";
+    mg.detail.value = m.detail || "high";
+    mg.scenery.value = m.scenery || "";
+    mgPeopleMode = m.mode || m.people || "";
+    mg.range.value = m.peopleRange || "";
+    mg.gender.value = m.peopleGender || "";
+    mg.age.value = m.peopleAge || "";
+    mg.ethnicity.value = m.peopleEthnicity || "";
+    renderPeople();
+    syncColorBtn(m.color || "");
+  }).catch(() => {});
+
+  // ── Color swatch picker ──
+  const COLOR_META = {
+    "": { label: "Auto", cls: "mg-swatch-auto", bg: "" },
+    black:  { label: "Black",  cls: "", bg: "#111827" },
+    white:  { label: "White",  cls: "", bg: "#f1f5f9" },
+    green:  { label: "Green",  cls: "", bg: "#14b8a6" },
+    cyan:   { label: "Cyan",   cls: "", bg: "#22d3ee" },
+    blue:   { label: "Blue",   cls: "", bg: "#3b82f6" },
+    purple: { label: "Purple", cls: "", bg: "#8b5cf6" },
+    pink:   { label: "Pink",   cls: "", bg: "#ec4899" },
+    red:    { label: "Red",    cls: "", bg: "#ef4444" },
+    orange: { label: "Orange", cls: "", bg: "#f97316" },
+    yellow: { label: "Yellow", cls: "", bg: "#eab308" },
+    gray:   { label: "Gray",   cls: "", bg: "#64748b" },
+    "white-black": { label: "White & Black", cls: "", bg: "linear-gradient(135deg, white 50%, rgb(13, 13, 13) 50%)" },
+    "gray-black": { label: "Gray & Black", cls: "", bg: "linear-gradient(135deg, rgb(200, 200, 200) 50%, rgb(13, 13, 13) 50%)" },
+    "blue-green": { label: "Blue & Green", cls: "", bg: "linear-gradient(135deg, rgb(51, 106, 234) 50%, rgb(23, 209, 198) 50%)" },
+    "red-blue": { label: "Red & Blue", cls: "", bg: "linear-gradient(135deg, rgb(235, 100, 76) 50%, rgb(31, 64, 140) 50%)" },
+    "yellow-blue": { label: "Yellow & Blue", cls: "", bg: "linear-gradient(135deg, rgb(254, 182, 2) 50%, rgb(51, 106, 234) 50%)" },
+    "green-yellow": { label: "Green & Yellow", cls: "", bg: "linear-gradient(135deg, rgb(23, 209, 198) 50%, rgb(254, 182, 2) 50%)" },
+    "orange-red": { label: "Orange & Red", cls: "", bg: "linear-gradient(135deg, rgb(234, 126, 17) 50%, rgb(211, 72, 43) 50%)" },
+    "yellow-red": { label: "Yellow & Red", cls: "", bg: "linear-gradient(135deg, rgb(254, 182, 2) 50%, rgb(211, 72, 43) 50%)" },
+    "pink-blue": { label: "Pink & Blue", cls: "", bg: "linear-gradient(135deg, rgb(255, 216, 210) 50%, rgb(100, 142, 239) 50%)" },
+    "pink-yellow": { label: "Pink & Yellow", cls: "", bg: "linear-gradient(135deg, rgb(255, 216, 210) 50%, rgb(254, 182, 2) 50%)" },
+    "purple-blue": { label: "Purple & Blue", cls: "", bg: "linear-gradient(135deg, rgb(76, 80, 174) 50%, rgb(184, 203, 248) 50%)" },
+    "gray-blue": { label: "Gray & Blue", cls: "", bg: "linear-gradient(135deg, rgb(200, 200, 200) 50%, rgb(100, 142, 239) 50%)" },
+  };
+  const colorPopup = document.getElementById("mgColorPopup");
+  const colorBtn   = document.getElementById("mgColorBtn");
+  const colorSwatch = document.getElementById("mgColorSwatch");
+  const colorLabel  = document.getElementById("mgColorLabel");
+
+  function syncColorBtn(val) {
+    const meta = COLOR_META[val] || COLOR_META[""];
+    colorLabel.textContent = meta.label;
+    colorSwatch.className = "mg-color-swatch" + (meta.cls ? " " + meta.cls : "");
+    colorSwatch.style.background = meta.bg || "";
+    // highlight active swatch in popup
+    colorPopup.querySelectorAll(".mg-cp-swatch").forEach((s) =>
+      s.classList.toggle("active", s.dataset.color === val));
+  }
+
+  function positionColorPopup() {
+    const field = document.getElementById("mgColorField");
+    if (!field) return;
+    const fr = field.getBoundingClientRect();
+    const pr = colorPopup.parentElement.getBoundingClientRect();
+    colorPopup.style.left = (fr.left - pr.left) + "px";
+    colorPopup.style.top  = (fr.bottom - pr.top + 4) + "px";
+  }
+
+  colorBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const isOpen = colorPopup.style.display !== "none";
+    colorPopup.style.display = isOpen ? "none" : "block";
+    if (!isOpen) positionColorPopup();
+  });
+
+  colorPopup.addEventListener("click", (e) => {
+    const s = e.target.closest(".mg-cp-swatch");
+    if (!s) return;
+    const val = s.dataset.color;
+    mg.color.value = val;
+    syncColorBtn(val);
+    colorPopup.style.display = "none";
+    saveMagnific();
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!colorPopup.contains(e.target) && e.target !== colorBtn) {
+      colorPopup.style.display = "none";
+    }
+  });
+
+  // Nền tảng đang chọn (flow | chatgpt | grok | gemini | magnific | pexels)
   let currentPlatform = "flow";
-  const PLATFORM_NAMES = { flow: "Google Flow", chatgpt: "ChatGPT", grok: "Grok", gemini: "Gemini" };
+  const PLATFORM_NAMES = { flow: "Google Flow", chatgpt: "ChatGPT", grok: "Grok", gemini: "Gemini", magnific: "Magnific", pexels: "Pexels" };
 
   // Đổi giao diện theo nền tảng: ẩn mục chỉ của Flow (model, số lượng, video, Max Speed...), đổi chữ nút Tạo
   function applyPlatformUI() {
@@ -457,6 +623,35 @@ document.addEventListener("DOMContentLoaded", () => {
     openPlatformTab();
   });
 
+  // Cửa sổ nhắc đăng nhập nền tảng: mở trang đăng nhập, rồi kiểm tra lại khi bạn đăng nhập xong
+  const platformLoginModal = document.getElementById("platformLoginModal");
+  const platformLoginText = document.getElementById("platformLoginText");
+  const platformLoginTitle = document.getElementById("platformLoginTitle");
+  let platformLoginFor = null;
+  function showPlatformLogin(platform, reason) {
+    if (!platformLoginModal || !PLATFORM_NAMES[platform]) return;
+    platformLoginFor = platform;
+    const name = PLATFORM_NAMES[platform];
+    platformLoginTitle.textContent = `Chưa đăng nhập ${name}`;
+    platformLoginText.textContent = `${reason ? reason + ". " : ""}Hãy đăng nhập ${name} ở tab vừa mở, rồi bấm "Tôi đã đăng nhập" để tiếp tục.`;
+    platformLoginModal.style.display = "flex";
+  }
+  function hidePlatformLogin() { if (platformLoginModal) platformLoginModal.style.display = "none"; platformLoginFor = null; }
+  document.getElementById("platformLoginCloseBtn")?.addEventListener("click", hidePlatformLogin);
+  document.getElementById("platformLoginOpenBtn")?.addEventListener("click", () => {
+    if (!platformLoginFor) return;
+    chrome.runtime.sendMessage({ type: "OPEN_LOGIN", payload: { platform: platformLoginFor } }, () => {});
+  });
+  document.getElementById("platformLoginRecheckBtn")?.addEventListener("click", () => {
+    const asked = platformLoginFor;
+    if (!asked) return;
+    chrome.runtime.sendMessage({ type: "CHECK_PLATFORM", payload: { platform: asked } }, (st) => {
+      if (chrome.runtime.lastError || !st || !st.loggedIn) { showPlatformLogin(asked, (st && st.reason) || "Vẫn chưa thấy đăng nhập"); return; }
+      hidePlatformLogin();
+      if (asked === currentPlatform) renderPlatformStatus(st);
+    });
+  });
+
   // Chuyển sang (hoặc mở) tab của nền tảng đang chọn; chưa đăng nhập thì hiện yêu cầu đăng nhập
   function openPlatformTab() {
     const asked = currentPlatform;
@@ -464,7 +659,9 @@ document.addEventListener("DOMContentLoaded", () => {
     flowStatusTitle.textContent = `Đang mở ${PLATFORM_NAMES[asked]}...`;
     chrome.runtime.sendMessage({ type: "OPEN_PLATFORM", payload: { platform: asked } }, (st) => {
       if (asked !== currentPlatform) return;
-      renderPlatformStatus(chrome.runtime.lastError ? null : st);
+      const stOk = chrome.runtime.lastError ? null : st;
+      renderPlatformStatus(stOk);
+      if (stOk && stOk.hasTab && !stOk.loggedIn) showPlatformLogin(asked, stOk.reason);
     });
   }
 
@@ -564,6 +761,7 @@ document.addEventListener("DOMContentLoaded", () => {
       autoSubmit: submitMode === "auto",
       referenceImages: refImages.slice(),
       platform: document.querySelector(".platform-chip.active")?.dataset.platform || "flow",
+      filters: document.body.dataset.platform === "pexels" ? pexelsFilters() : magnificFilters(),
       chatgptEffort: Number(document.getElementById("chatgptEffort")?.value || 1),
       autoDownload: autoDownloadToggle ? autoDownloadToggle.checked : true,
     };
@@ -582,7 +780,7 @@ document.addEventListener("DOMContentLoaded", () => {
         flowStatusTitle.textContent = `Chưa đăng nhập ${resp.platformName || ""}`;
         flowStatusSub.textContent = "Hãy đăng nhập ở tab vừa mở rồi bấm Tạo lại";
         flowLiveStatus.classList.add("offline");
-        alert(`Chưa đăng nhập ${resp.platformName || "nền tảng"} (${resp.reason || ""}).` + String.fromCharCode(10) + "Đã chuyển sang tab đó — hãy đăng nhập rồi bấm Tạo lại.");
+        showPlatformLogin(payload.platform, resp.reason);
       } else if (resp && resp.success === false && resp.error) {
         alert(resp.error);
       }

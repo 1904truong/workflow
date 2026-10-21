@@ -36,6 +36,44 @@ export type ScreenState =
   | { type: 'settings' }
   | { type: 'guide' };
 
+// Nhớ màn hình đang mở để bấm F5 vẫn quay lại đúng trang đó (chỉ lưu mã thư mục / bài, không lưu cả nội dung)
+const SCREEN_KEY = 'fb_active_screen_v1';
+
+const screenToSaved = (s: ScreenState): Record<string, unknown> => {
+  if (s.type === 'create_folder') return { type: s.type, editingFolderId: s.editingFolder?.id };
+  if (s.type === 'add_exercise') return { type: s.type, folderId: s.folderId, editingExerciseId: s.editingExercise?.id, initialType: s.initialType };
+  return { ...s };
+};
+
+/** Dựng lại màn hình từ bản đã lưu; mã thư mục / bài không còn thì trả null để dùng màn hình mặc định */
+const screenFromSaved = (raw: string | null, list: LessonFolder[]): ScreenState | null => {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw) as Record<string, any>;
+    const folder = typeof v.folderId === 'string' ? list.find((f) => f.id === v.folderId) : undefined;
+    switch (v.type) {
+      case 'folders': case 'history': case 'gallery': case 'settings': case 'guide':
+        return { type: v.type };
+      case 'create_folder': {
+        const ef = v.editingFolderId ? list.find((f) => f.id === v.editingFolderId) : null;
+        if (v.editingFolderId && !ef) return null;
+        return { type: 'create_folder', editingFolder: ef || undefined };
+      }
+      case 'folder_detail': case 'smart_paste': case 'export':
+        return folder ? { type: v.type, folderId: folder.id } : null;
+      case 'images':
+        return { type: 'images', folderId: folder ? folder.id : undefined };
+      case 'add_exercise': {
+        if (!folder) return null;
+        const ex = v.editingExerciseId ? folder.exercises.find((e) => e.id === v.editingExerciseId) : undefined;
+        if (v.editingExerciseId && !ex) return { type: 'folder_detail', folderId: folder.id };
+        return { type: 'add_exercise', folderId: folder.id, editingExercise: ex, initialType: v.initialType };
+      }
+    }
+  } catch { /* bản lưu hỏng: bỏ qua */ }
+  return null;
+};
+
 export default function App() {
   const [folders, setFolders] = useState<LessonFolder[]>([]);
   const [activeScreen, setActiveScreen] = useState<ScreenState>({ type: 'folders' });
@@ -48,11 +86,27 @@ export default function App() {
   const [extensionConnected, setExtensionConnected] = useState<boolean>(false);
   const [flowStatus, setFlowStatus] = useState<string>('UNKNOWN');
 
-  // Load folders on mount and default to Listening Gap Fill worksheet
+  // Đã khôi phục màn hình đã lưu chưa (chưa xong thì không ghi đè bản lưu bằng màn hình mặc định)
+  const [screenReady, setScreenReady] = useState(false);
+  useEffect(() => {
+    if (!screenReady) return;
+    try { localStorage.setItem(SCREEN_KEY, JSON.stringify(screenToSaved(activeScreen))); } catch { /* không có localStorage */ }
+  }, [activeScreen, screenReady]);
+
+  // Load folders on mount: quay lại đúng màn hình đang mở trước khi tải lại trang; chưa có thì mở bài Listening Gap Fill mặc định
   useEffect(() => {
     const load = async () => {
       const list = await folderStorage.listFolders();
       setFolders(list);
+
+      let saved: string | null = null;
+      try { saved = localStorage.getItem(SCREEN_KEY); } catch { /* bỏ qua */ }
+      const restored = screenFromSaved(saved, list);
+      if (restored) {
+        setActiveScreen(restored);
+        setScreenReady(true);
+        return;
+      }
 
       const london = list.find((f) => f.id === 'folder_unit_2_london');
       if (london && london.exercises.length > 0) {
@@ -65,6 +119,7 @@ export default function App() {
           editingExercise: matchingPicturesEx,
         });
       }
+      setScreenReady(true);
     };
     load();
   }, []);

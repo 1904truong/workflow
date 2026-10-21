@@ -11,9 +11,9 @@ import {
   type McqQuestion,
 } from '../../services/grammar-mcq/grammarMcqCore';
 import { bumpReadingSize as bumpMcqSize, createReadingMcq, parseReadingFull, setReadingStyle as setMcqStyle, splitParagraphs, validateReadingMcq, type ReadingMcqData, type ReadingStyleKey as McqStyleKey } from '../../services/reading-mcq/readingMcqCore';
-import { askExtension, generateImageViaExtension } from '../../services/ai/extensionBridge';
-import { buildFinalPrompt } from '../../services/ai/imagePlanCompare';
-import { PHOTO_STYLE, friendlyExtensionError } from '../../services/matching/autoMatching';
+import { useAiImage } from '../../services/ai/useAiImage';
+import { ImageManagerBody } from '../shared/ImageManagerBody';
+import { PHOTO_STYLE } from '../../services/matching/autoMatching';
 import { fileToSmallDataUrl } from '../../types/branding';
 import { ReadingMcqRenderer } from './ReadingMcqRenderer';
 import { ReadingMcqToolbar, type McqMoreKey } from './ReadingMcqToolbar';
@@ -212,45 +212,45 @@ export const ReadingMcqEditor: React.FC<Props> = ({ folder, editingExercise, onS
     update({ passage: paras.join('\n\n') });
   };
   const [aiPrompt, setAiPrompt] = useState('');
-  const [imgMsg, setImgMsg] = useState('');
-  const [imgBusy, setImgBusy] = useState(false);
   const defaultAiPrompt = () => {
     const d = dataRef.current;
     const first = splitParagraphs(d.passage)[0] || '';
     return `Realistic documentary photo to illustrate a reading article titled "${d.passageTitle || d.exerciseTitle}". ${first.slice(0, 220)}`.trim();
   };
-  const generateArticleImage = async () => {
-    const prompt = aiPrompt.trim() || defaultAiPrompt();
-    setImgBusy(true);
-    setImgMsg('Đang tạo ảnh…');
-    try {
-      const probe = await askExtension<{ status?: string; message?: string }>('GET_FLOW_STATUS', {}, 5000);
-      const st = probe.payload?.status;
-      if (!(st === 'CONNECTED' || st === 'FLOW_TAB_NOT_FOUND' || st === 'PROJECT_NOT_OPEN')) throw new Error(probe.payload?.message || probe.error?.message || 'Extension chưa sẵn sàng tạo ảnh.');
-      const res = await generateImageViaExtension({ prompt: buildFinalPrompt(prompt, PHOTO_STYLE), aspectRatio: '4:3' });
-      update({ imageUrl: res.imageUrl, settings: { ...dataRef.current.settings, showPassageImage: true } });
-      setImgMsg('Đã tạo và gắn ảnh.');
-    } catch (err) {
-      setImgMsg(friendlyExtensionError(err instanceof Error ? err.message : 'Không kết nối được extension Flow Bridge. Hãy bật extension rồi tải lại trang (F5).'));
-    } finally {
-      setImgBusy(false);
-    }
-  };
+  const { gen, generate: generateArticleImage } = useAiImage({
+    getPrompt: () => aiPrompt.trim() || defaultAiPrompt(),
+    style: PHOTO_STYLE,
+    aspectRatio: '4:3',
+    onPrompt: (p) => setAiPrompt(p),
+    onImage: (url, p) => {
+      setAiPrompt(p);
+      update({ imageUrl: url, settings: { ...dataRef.current.settings, showPassageImage: true } });
+    },
+  });
   const uploadArticleImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
     try { update({ imageUrl: await fileToSmallDataUrl(file, 900, 'image/jpeg') }); } catch { window.alert('Không đọc được file ảnh.'); }
   };
-
-  const uploadExtraImages = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    e.target.value = '';
-    if (!files.length) return;
+  // Khối Image Manager dùng chung: khung 0 = ảnh chính, khung 1.. = ảnh phụ (extraImages, '' = khung còn trống)
+  const handleImageSlot = async (idx: number, file: File) => {
     try {
-      const urls = await Promise.all(files.map((f) => fileToSmallDataUrl(f, 900, 'image/jpeg')));
-      update({ extraImages: [...(dataRef.current.extraImages || []), ...urls] });
+      const url = await fileToSmallDataUrl(file, 900, 'image/jpeg');
+      if (idx === 0) { update({ imageUrl: url }); return; }
+      const extra = [...(dataRef.current.extraImages || [])];
+      extra[idx - 1] = url;
+      update({ extraImages: extra });
     } catch { window.alert('Không đọc được file ảnh.'); }
+  };
+  const removeImageSlot = (idx: number) => {
+    if (idx === 0) update({ imageUrl: undefined });
+    else update({ extraImages: (data.extraImages || []).map((x, k) => (k === idx - 1 ? '' : x)) });
+  };
+  const setImageCount = (n: number) => {
+    const extra = [...(data.extraImages || [])].slice(0, n - 1);
+    while (extra.length < n - 1) extra.push('');
+    update({ extraImages: extra });
   };
 
   const editOptionText = (qid: string, oid: string, text: string) => patchQuestion(qid, (q) => ({ ...q, options: q.options.map((o) => (o.id === oid ? { ...o, text } : o)) }));
@@ -530,38 +530,30 @@ export const ReadingMcqEditor: React.FC<Props> = ({ folder, editingExercise, onS
           </section>
 
           <section className={`shrink-0 bg-white/60 border border-slate-100 rounded-2xl p-4 shadow-xs space-y-2.5${col[3] ? ' [&>*:not(:first-child)]:hidden' : ''}`}>
-            <SectionHead n={3} collapsed={!!col[3]} onToggle={() => toggleCol(3)} title="Article Image" help="Ảnh bài báo nằm góc phải trên bài đọc. Tải từ máy hoặc nhờ AI tạo tự động." />
-            <div className="flex items-start gap-3">
-              {data.imageUrl ? <img src={data.imageUrl} alt="" className="w-28 aspect-[4/3] object-cover rounded-lg border border-slate-200 shrink-0" /> : <div className="w-28 aspect-[4/3] rounded-lg border border-dashed border-slate-300 bg-slate-50 text-[10.5px] text-slate-400 flex items-center justify-center shrink-0">Chưa có ảnh</div>}
-              <div className="flex-1 min-w-0 space-y-2">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <label className={`${smallBtn} cursor-pointer`}>Upload từ máy<input type="file" accept="image/*" hidden onChange={(ev) => { void uploadArticleImage(ev); }} /></label>
-                  <button type="button" disabled={imgBusy} onClick={() => { void generateArticleImage(); }} className="px-2.5 h-7 rounded-lg bg-blue-600 text-white text-[11px] font-bold hover:bg-blue-700 disabled:opacity-40">{imgBusy ? 'Đang tạo…' : 'Tạo ảnh bằng AI'}</button>
-                  {data.imageUrl && <button type="button" className={`${iconBtn} hover:!text-rose-600`} title="Xóa ảnh" onClick={() => update({ imageUrl: undefined })}><Trash2 size={13} /></button>}
-                </div>
-                <label className="flex items-center gap-1.5 text-[11px] text-slate-600">Rộng
-                  <input type="range" min={40} max={90} value={data.settings.imageWidthMm} onChange={(e) => updateSettings({ imageWidthMm: Number(e.target.value) })} />
-                  <span className="w-9 text-right">{data.settings.imageWidthMm}mm</span>
-                </label>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {(data.extraImages || []).map((src, i) => (
-                <span key={i} className="relative group">
-                  <img src={src} alt="" className="w-16 aspect-[4/3] object-cover rounded-md border border-slate-200" />
-                  <button type="button" title="Xóa ảnh phụ" onClick={() => update({ extraImages: (data.extraImages || []).filter((_, k) => k !== i) })} className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-rose-600 text-white text-[10px] leading-none opacity-0 group-hover:opacity-100">×</button>
-                </span>
-              ))}
-              <label className={`${smallBtn} cursor-pointer`}>+ Ảnh phụ (xếp dọc dưới ảnh chính)<input type="file" accept="image/*" multiple hidden onChange={(ev) => { void uploadExtraImages(ev); }} /></label>
-            </div>
+            <SectionHead n={3} collapsed={!!col[3]} onToggle={() => toggleCol(3)} title="Image Manager" help="Ảnh bài báo nằm góc phải trên bài đọc. Tải từ máy hoặc nhờ AI tạo tự động." />
+            <ImageManagerBody
+              slots={Array.from({ length: 1 + (data.extraImages || []).length }, (_, k) => ({ url: k === 0 ? data.imageUrl : (data.extraImages || [])[k - 1] || undefined }))}
+              maxImages={4}
+              previewRatio={4 / 3}
+              onCountChange={setImageCount}
+              onFile={(idx, f) => { void handleImageSlot(idx, f); }}
+              onRemove={removeImageSlot}
+              onGenerate={() => { void generateArticleImage(); }}
+              generating={gen.busy}
+              prompt={aiPrompt}
+              onPromptChange={setAiPrompt}
+              message={gen.msg}
+            />
+            <label className="flex items-center gap-1.5 text-[11px] text-slate-600">Rộng
+              <input type="range" min={40} max={90} value={data.settings.imageWidthMm} onChange={(e) => updateSettings({ imageWidthMm: Number(e.target.value) })} />
+              <span className="w-9 text-right">{data.settings.imageWidthMm}mm</span>
+            </label>
             {data.shortAnswer && (
               <label className="flex items-center gap-1.5 text-[11px] text-slate-600">Dòng kẻ trả lời
                 <input type="range" min={0} max={90} step={2} value={data.settings.answerLineWidthMm ?? 68} onChange={(ev) => updateSettings({ answerLineWidthMm: Number(ev.target.value) })} />
                 <span className="w-9 text-right">{data.settings.answerLineWidthMm === 0 ? 'ẩn' : `${data.settings.answerLineWidthMm ?? 68}mm`}</span>
               </label>
             )}
-            <AutoTextarea value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} placeholder="Mô tả ảnh cho AI (để trống: tự lấy từ tiêu đề và đoạn đầu bài đọc)" className={`${fieldCls} resize-none min-h-[34px]`} />
-            {imgMsg && <p className="text-[11.5px] rounded-md px-2 py-1 border text-amber-700 bg-amber-50 border-amber-100">{imgMsg}</p>}
           </section>
 
           <section className={`shrink-0 bg-white/60 border border-slate-100 rounded-2xl p-4 shadow-xs space-y-2.5${col[4] ? ' [&>*:not(:first-child)]:hidden' : ''}`}>

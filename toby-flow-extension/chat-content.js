@@ -611,6 +611,19 @@
       try { await chatgptSaveToCloud(before, prompt, opts); }
       catch (e) { console.warn("[Flow Bridge][Chat] Lưu Supabase thất bại:", e.message); say("Ảnh đã tạo nhưng chưa lưu được lên Supabase: " + e.message, true); await sleep(2500); }
     }
+    // Nếu có yêu cầu từ web Studio: gửi URL ảnh về web
+    if (opts._webReq) {
+      try {
+        const fresh = [...bigImgs()].filter((im) => !before.has(im) && visible(im)).sort((a, b) => b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom)[0];
+        const src = fresh ? (fresh.currentSrc || fresh.src) : "";
+        chrome.runtime.sendMessage({
+          type: "WEB_GEN_DONE",
+          payload: { reqId: opts._webReq, ok: true, imageUrl: src, source: "chatgpt" }
+        }).catch(() => {});
+      } catch (e) {
+        console.warn("[Flow Bridge][Chat] Báo web kết quả thất bại:", e);
+      }
+    }
     return done.length;
   }
 
@@ -625,7 +638,7 @@
     const ratio = payload.aspectRatio
       ? (isGptPlatform ? ` Generate the image in ${ratioLabel} aspect ratio.` : `, tỉ lệ khung hình ${payload.aspectRatio}`)
       : "";
-    const opts = { prefix: "Hãy tạo ảnh: ", suffix: ratio, timeoutMs: 240000, autoDownload: payload.autoDownload !== false, effort: Math.min(3, Math.max(1, +payload.chatgptEffort || 1)), aspectRatio: payload.aspectRatio };
+    const opts = { prefix: "Hãy tạo ảnh: ", suffix: ratio, timeoutMs: 240000, autoDownload: payload.autoDownload !== false, effort: Math.min(3, Math.max(1, +payload.chatgptEffort || 1)), aspectRatio: payload.aspectRatio, _webReq: payload._webReq };
     try {
       for (let i = 0; i < prompts.length; i++) {
         if (stopped) break;

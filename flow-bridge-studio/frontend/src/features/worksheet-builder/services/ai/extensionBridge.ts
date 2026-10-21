@@ -45,12 +45,20 @@ export async function generateImageViaExtension(opts: {
   referenceImages?: string[];
   aspectRatio?: string;
   timeoutMs?: number;
+  /** Nguồn ảnh: Google Flow, ChatGPT, Magnific, Pexels */
+  provider?: 'flow' | 'chatgpt' | 'magnific' | 'pexels';
+  /** Mức suy luận ChatGPT */
+  chatgptEffort?: number;
+  /** Từ khóa tìm ảnh cho Magnific/Pexels */
+  keyword?: string;
+  /** Bộ lọc trang tìm ảnh (orientation, fileType, ai) */
+  filters?: Record<string, string>;
 }): Promise<GenerateResult> {
   let res: BridgeResponse;
   try {
     res = await askExtension(
       'TRIGGER_GENERATE',
-      { prompt: opts.prompt, referenceImages: opts.referenceImages || [], options: { aspectRatio: opts.aspectRatio } },
+      { prompt: opts.prompt, referenceImages: opts.referenceImages || [], options: { aspectRatio: opts.aspectRatio, provider: opts.provider, chatgptEffort: opts.chatgptEffort, keyword: opts.keyword, filters: opts.filters } },
       opts.timeoutMs ?? 300000,
     );
   } catch (e: any) {

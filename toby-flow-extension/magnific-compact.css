@@ -1,0 +1,91 @@
+﻿/* Flow Bridge: Compact Magnific search filter sidebar */
+
+/* Outer section spacing */
+aside section,
+aside [class*="Section"],
+[class*="FiltersPanel"] section {
+  margin-bottom: 4px !important;
+}
+
+/* Each filter card/group */
+aside [class*="group"],
+aside [class*="Group"],
+aside [class*="card"],
+aside [class*="Card"],
+aside [class*="item"],
+aside [class*="Item"],
+[class*="FilterItem"],
+[class*="filter-item"] {
+  padding: 5px 8px !important;
+  gap: 3px !important;
+  border-radius: 7px !important;
+}
+
+/* Section titles: People, Style, Scenery... */
+aside h3,
+aside h4,
+aside [class*="title"],
+aside [class*="Title"],
+aside [class*="heading"],
+aside [class*="Heading"],
+[class*="FilterItem"] label,
+[class*="filter-item"] label {
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.04em !important;
+  text-transform: uppercase !important;
+  margin-bottom: 2px !important;
+  line-height: 1.2 !important;
+}
+
+/* Select / combobox trigger buttons */
+aside [role="combobox"],
+aside button[class*="trigger"],
+aside button[class*="Trigger"],
+aside button[class*="select"],
+aside button[class*="Select"],
+aside [class*="SelectTrigger"],
+aside [class*="select-trigger"],
+aside [data-radix-select-trigger] {
+  height: 26px !important;
+  min-height: 26px !important;
+  max-height: 26px !important;
+  padding: 0 7px !important;
+  font-size: 11px !important;
+  border-radius: 6px !important;
+  line-height: 26px !important;
+}
+
+/* Icons inside triggers */
+aside [role="combobox"] svg,
+aside button[class*="trigger"] svg,
+aside [class*="SelectTrigger"] svg,
+aside [data-radix-select-trigger] svg {
+  width: 12px !important;
+  height: 12px !important;
+  flex-shrink: 0 !important;
+}
+
+/* Text + icon row inside trigger */
+aside [role="combobox"] > span,
+aside [class*="SelectTrigger"] > span {
+  gap: 4px !important;
+  font-size: 11px !important;
+  align-items: center !important;
+}
+
+/* Small inline icons */
+aside svg[class*="icon"],
+aside svg[class*="Icon"] {
+  width: 13px !important;
+  height: 13px !important;
+}
+
+/* Scrollable filter list gaps */
+aside [class*="overflow-y"],
+aside [class*="scroll"],
+aside [class*="Scroll"],
+aside [class*="list"],
+aside [class*="List"] {
+  gap: 3px !important;
+}
