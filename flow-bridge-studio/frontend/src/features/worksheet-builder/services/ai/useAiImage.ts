@@ -6,6 +6,7 @@ import { buildFinalPrompt } from './imagePlanCompare';
 import { friendlyExtensionError } from '../matching/autoMatching';
 import { getImageSource, keywordFromPrompt, PROVIDER_SHORT, setImageSource } from './imageSource';
 import { analyzeWorksheetWithAI } from './aiAnalyzer';
+import { presetText } from './stylePresets';
 
 export interface ExtensionProbe {
   /** Có extension trả lời */
@@ -77,8 +78,9 @@ export const useAiImage = (opts: UseAiImageOptions) => {
       }
       try {
         const res = await generateImageViaExtension({
-          prompt: buildFinalPrompt(p, opts.style),
+          prompt: buildFinalPrompt([getImageSource().chatgptMode === 'edit' ? `Edit the attached reference image(s): ${p}` : p, getImageSource().chatgptStyle, presetText(getImageSource().chatgptPreset) ? `\n\n${presetText(getImageSource().chatgptPreset)}\n` : '', getImageSource().chatgptStyleRef ? 'The LAST attached image is a STYLE reference only: copy its art style (colors, line work, rendering), not its content' : '', ({ transparent: 'transparent background', white: 'plain white background', black: 'plain black background' } as Record<string, string>)[getImageSource().chatgptBg] || ''].filter(Boolean).join(', '), opts.style),
           aspectRatio: getImageSource().flowRatio || opts.aspectRatio,
+          referenceImages: [...getImageSource().chatgptRefs.slice(0, getImageSource().chatgptStyleRef ? 2 : 3), ...(getImageSource().chatgptStyleRef ? [getImageSource().chatgptStyleRef] : [])],
           provider: 'chatgpt',
           chatgptEffort: getImageSource().chatgptEffort || 1,
         });

@@ -176,6 +176,15 @@
             <span class="select-arrow">▾</span>
           </div>
         </div>
+        <div class="tb-field tb-style no-stock" id="styleSection">
+          <span class="tb-flabel">Style</span>
+          <button type="button" id="styleBtn" class="style-btn">
+            <span class="style-thumb style-thumb-empty">✦</span>
+            <span class="style-label">No style preset</span>
+            <span class="select-arrow">▾</span>
+          </button>
+          <div id="stylePopup" class="style-popup" style="display:none"></div>
+        </div>
         <div class="tb-field flow-only count-field">
           <span class="tb-flabel">Số lượng</span>
           <div class="stepper-box tb-stepper">
@@ -565,6 +574,7 @@
     </div>
   </div>
 
+  <script src="style-presets.js"></script>
   <script src="sidepanel.js"></script>
 </body>
 </html>
