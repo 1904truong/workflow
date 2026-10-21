@@ -73,6 +73,16 @@
         "web-bridge.js"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.magnific.com/search*",
+        "https://magnific.com/search*"
+      ],
+      "css": [
+        "magnific-compact.css"
+      ],
+      "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [

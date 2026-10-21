@@ -6,6 +6,86 @@
   if (window.__fbMagnificLoaded) return;
   window.__fbMagnificLoaded = true;
 
+  // ── Compact filter sidebar CSS ──
+  function injectCompactStyles() {
+    if (document.getElementById('fb-magnific-compact')) return;
+    const style = document.createElement('style');
+    style.id = 'fb-magnific-compact';
+    style.textContent = `
+      /* ── Flow Bridge: Compact Magnific filter panel ── */
+
+      /* Shrink each filter card / group container */
+      [class*="FilterGroup"],
+      [class*="filter-group"],
+      [class*="filterGroup"],
+      [data-testid*="filter"] > div,
+      aside [class*="Card"],
+      aside [class*="card"] {
+        padding: 6px 8px !important;
+        margin-bottom: 4px !important;
+        border-radius: 8px !important;
+      }
+
+      /* Shrink labels above each dropdown */
+      [class*="FilterGroup"] label,
+      [class*="filter-group"] label,
+      [class*="filterGroup"] label,
+      aside label {
+        font-size: 10px !important;
+        font-weight: 600 !important;
+        margin-bottom: 2px !important;
+        letter-spacing: 0.03em !important;
+        text-transform: uppercase !important;
+      }
+
+      /* Shrink the Select/dropdown triggers */
+      [class*="FilterGroup"] button,
+      [class*="filter-group"] button,
+      [class*="filterGroup"] button,
+      aside [role="combobox"],
+      aside button[class*="Select"],
+      aside button[class*="select"],
+      aside button[class*="trigger"],
+      aside button[class*="Trigger"] {
+        height: 28px !important;
+        min-height: 28px !important;
+        padding: 0 8px !important;
+        font-size: 12px !important;
+        border-radius: 6px !important;
+      }
+
+      /* Shrink icons inside dropdowns */
+      [class*="FilterGroup"] button svg,
+      [class*="filter-group"] button svg,
+      aside [role="combobox"] svg,
+      aside button[class*="trigger"] svg {
+        width: 14px !important;
+        height: 14px !important;
+      }
+
+      /* Shrink the sidebar scrollable area overall */
+      aside [class*="overflow"],
+      aside [class*="scroll"],
+      aside [class*="Scroll"] {
+        gap: 4px !important;
+      }
+
+      /* Tighten the icon + text inside each select trigger */
+      [class*="FilterGroup"] button > span,
+      aside [role="combobox"] > span {
+        gap: 4px !important;
+        font-size: 12px !important;
+      }
+    `;
+    document.documentElement.appendChild(style);
+  }
+
+  // Inject immediately + retry after DOM ready (for SPAs)
+  injectCompactStyles();
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', injectCompactStyles);
+  }
+
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const visible = (el) => !!el && el.getBoundingClientRect().width > 0 && el.getBoundingClientRect().height > 0;
   let stopped = false;
