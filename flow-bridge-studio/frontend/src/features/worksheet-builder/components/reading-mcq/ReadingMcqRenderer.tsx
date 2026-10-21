@@ -126,7 +126,7 @@ export const ReadingMcqRenderer: React.FC<Props> = ({ data, exerciseIndex = 1, h
       )}
       {showImage && (
         <div style={{ float: 'right', width: `${settings.imageWidthMm}mm`, margin: '1mm 0 2mm 4mm', display: 'flex', flexDirection: 'column', gap: '2mm', textIndent: 0 }}>
-          {[data.imageUrl!, ...(data.extraImages || [])].map((src, i) => (
+          {[data.imageUrl!, ...(data.extraImages || [])].filter(Boolean).map((src, i) => (
             <img key={i} src={src} alt="" style={{ width: '100%', borderRadius: '2mm', border: '0.75pt solid #cbd5e1', objectFit: 'cover', display: 'block' }} />
           ))}
         </div>

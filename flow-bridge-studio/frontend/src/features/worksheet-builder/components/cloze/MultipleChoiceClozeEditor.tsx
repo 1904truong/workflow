@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  ArrowLeft, Check, Plus, Trash2, Copy, ImagePlus, X, ClipboardPaste, GripVertical,
+  ArrowLeft, Check, Plus, Trash2, Copy, X, ClipboardPaste, GripVertical,
   Maximize2, Minimize, Minus, Eye, Save, Printer, ChevronLeft, ChevronRight,
-  MoreHorizontal, FileDown, Undo2, Redo2, AlertTriangle, Sparkles,
+  MoreHorizontal, FileDown, Undo2, Redo2, AlertTriangle,
 } from 'lucide-react';
 import type { LessonFolder, Exercise, Worksheet } from '../../types';
 import type { ClozeData, ClozeLayoutId, ClozeQuestion } from '../../services/cloze/clozeCore';
@@ -14,9 +14,9 @@ import {
 } from '../../services/cloze/clozeCore';
 import type { ClozeParseResult } from '../../services/cloze/clozeCore';
 import { ClozeRenderer } from './ClozeRenderer';
-import { askExtension, generateImageViaExtension } from '../../services/ai/extensionBridge';
-import { buildFinalPrompt } from '../../services/ai/imagePlanCompare';
-import { PHOTO_STYLE, friendlyExtensionError } from '../../services/matching/autoMatching';
+import { useAiImage } from '../../services/ai/useAiImage';
+import { ImageManagerBody } from '../shared/ImageManagerBody';
+import { PHOTO_STYLE } from '../../services/matching/autoMatching';
 import { ClozeToolbar, type ClozeMoreKey } from './ClozeToolbar';
 import { useAppHeaderSlot } from '../shared/hooks/useAppHeaderSlot';
 import { useSplitPane } from '../shared/hooks/useSplitPane';
@@ -234,7 +234,6 @@ export const MultipleChoiceClozeEditor: React.FC<Props> = ({
   const [selectedQuestionId, setSelectedQuestionId] = useState<string | null>(null);
   const dragIdx = useRef<number | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
   const questionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const menuRef = useRef<HTMLDivElement>(null);
   const slot = useAppHeaderSlot();
@@ -310,33 +309,31 @@ export const MultipleChoiceClozeEditor: React.FC<Props> = ({
 
   // ── Ảnh tạo bằng AI (extension Flow Bridge) ──
   const [imgPrompt, setImgPrompt] = useState('');
-  const [imgGen, setImgGen] = useState<{ busy: boolean; msg: string }>({ busy: false, msg: '' });
   const buildImagePrompt = (): string => {
     const d = dataRef.current;
     const title = d.passageTitle.trim();
     const first = d.passage.replace(/\(\d+\)\s*_{2,}/g, '').replace(/[*+]{1,2}/g, '').replace(/\s+/g, ' ').trim().slice(0, 260);
     return `Photo illustrating a reading passage${title ? ` titled "${title}"` : ''}. ${first ? `Scene based on: ${first}` : ''}`.trim();
   };
-  const generateImage = async () => {
-    const prompt = (imgPrompt.trim() || buildImagePrompt()).trim();
-    setImgPrompt(prompt);
-    setImgGen({ busy: true, msg: 'Đang tạo ảnh…' });
-    let probeNote = '';
-    try {
-      const res = await askExtension<{ status?: string; message?: string }>('GET_FLOW_STATUS', {}, 5000);
-      const st = res.payload?.status;
-      if (!(st === 'CONNECTED' || st === 'FLOW_TAB_NOT_FOUND' || st === 'PROJECT_NOT_OPEN')) probeNote = friendlyExtensionError(res.payload?.message || res.error?.message || 'Extension chưa sẵn sàng tạo ảnh.');
-    } catch {
-      probeNote = 'Không kết nối được extension Flow Bridge. Hãy bật extension rồi tải lại trang (F5).';
-    }
-    if (probeNote) { setImgGen({ busy: false, msg: probeNote }); return; }
-    try {
-      const res = await generateImageViaExtension({ prompt: buildFinalPrompt(prompt, PHOTO_STYLE), aspectRatio: '4:3' });
+  const { gen: imgGen, generate: generateImage } = useAiImage({
+    getPrompt: () => imgPrompt.trim() || buildImagePrompt(),
+    style: PHOTO_STYLE,
+    aspectRatio: '4:3',
+    onPrompt: (p) => setImgPrompt(p),
+    onImage: (url, p) => {
+      setImgPrompt(p);
       const d = dataRef.current;
-      commit({ ...d, settings: { ...d.settings, imageUrl: res.imageUrl, imagePosition: d.settings.imagePosition === 'none' ? 'right' : d.settings.imagePosition } });
-      setImgGen({ busy: false, msg: 'Đã tạo và gắn ảnh vào bài.' });
-    } catch (err) {
-      setImgGen({ busy: false, msg: friendlyExtensionError(err instanceof Error ? err.message : 'Không tạo được ảnh') });
+      commit({ ...d, settings: { ...d.settings, imageUrl: url, imagePosition: d.settings.imagePosition === 'none' ? 'right' : d.settings.imagePosition } });
+    },
+  });
+  const handleImageSlot = async (_idx: number, file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    try {
+      const url = await fileToSmallDataUrl(file, 900, 'image/jpeg');
+      const d = dataRef.current;
+      commit({ ...d, settings: { ...d.settings, imageUrl: url, imagePosition: d.settings.imagePosition === 'none' ? 'right' : d.settings.imagePosition } });
+    } catch {
+      window.alert('Không đọc được ảnh này.');
     }
   };
 
@@ -668,39 +665,14 @@ export const MultipleChoiceClozeEditor: React.FC<Props> = ({
                 <button type="button" onClick={() => setShowSmartPaste(true)} className={smallBtn}><ClipboardPaste size={12} /> Smart Paste</button>
               </>
             ))}
-            <div className="flex gap-3">
-              <textarea
-                ref={textareaRef}
-                rows={9}
-                value={data.passage}
-                onChange={(e) => commit({ ...data, passage: e.target.value }, 'passage')}
-                placeholder={"Nhập hoặc dán đoạn văn. Bấm 'Add Blank' để tạo (1) ________, (2) ________..."}
-                className="flex-1 min-w-0 p-3 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-y"
-              />
-              <div className="w-28 shrink-0 space-y-2">
-                <input ref={imageInputRef} type="file" accept="image/*" hidden onChange={onPickImage} />
-                {data.settings.imageUrl && data.settings.imagePosition !== 'none' ? (
-                  <>
-                    <img src={data.settings.imageUrl} alt="" className="w-full h-20 object-cover rounded-lg border border-slate-200 bg-white" />
-                    <button type="button" onClick={() => imageInputRef.current?.click()} className="w-full py-1 text-[11px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg">Change Image</button>
-                    <button type="button" onClick={() => setSettings({ imageUrl: undefined, imagePosition: 'none' })} className="w-full py-1 text-[11px] font-bold text-rose-600 border border-rose-200 hover:bg-rose-50 rounded-lg">Remove</button>
-                  </>
-                ) : (
-                  <button type="button" onClick={() => imageInputRef.current?.click()} className="w-full h-20 border-2 border-dashed border-slate-300 rounded-lg text-[11px] font-semibold text-slate-500 hover:border-blue-400 hover:text-blue-600 flex flex-col items-center justify-center gap-1">
-                    <ImagePlus size={16} /> Thêm ảnh
-                  </button>
-                )}
-                <button type="button" onClick={() => { void generateImage(); }} disabled={imgGen.busy} className="w-full py-1 text-[11px] font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-40 rounded-lg flex items-center justify-center gap-1"><Sparkles size={11} /> {data.settings.imageUrl ? 'Tạo lại AI' : 'Tạo ảnh AI'}</button>
-              </div>
-            </div>
             <textarea
-              rows={2}
-              value={imgPrompt}
-              onChange={(e) => setImgPrompt(e.target.value)}
-              placeholder="Prompt tạo ảnh AI (để trống: tự sinh từ tiêu đề và nội dung đoạn văn)"
-              className="w-full p-2 border border-slate-200 rounded-lg text-[11px] focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+              ref={textareaRef}
+              rows={9}
+              value={data.passage}
+              onChange={(e) => commit({ ...data, passage: e.target.value }, 'passage')}
+              placeholder={"Nhập hoặc dán đoạn văn. Bấm 'Add Blank' để tạo (1) ________, (2) ________..."}
+              className="w-full min-w-0 p-3 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 leading-relaxed focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-y"
             />
-            {imgGen.msg && <p className={`text-[11.5px] rounded-md px-2 py-1 border ${imgGen.busy ? 'text-blue-700 bg-blue-50 border-blue-100' : 'text-amber-700 bg-amber-50 border-amber-100'}`}>{imgGen.msg}</p>}
             <p className="text-[10.5px] text-slate-400">Chọn chữ rồi bấm B / I / U trên thanh công cụ để định dạng. Dấu được lưu dạng **đậm**, *nghiêng*, ++gạch chân++.</p>
             {orphans.length > 0 && (
               <div className="flex items-start gap-2 p-2 rounded-xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900">
@@ -712,7 +684,22 @@ export const MultipleChoiceClozeEditor: React.FC<Props> = ({
           </section>
 
           <section className="shrink-0 bg-white/60 border border-slate-100 rounded-2xl p-4 shadow-xs space-y-2.5">
-            {secHead(3, `Questions & Options (${data.questions.length})`, (
+            {secHead(3, 'Image Manager')}
+            <ImageManagerBody
+              slots={[{ url: data.settings.imagePosition !== 'none' ? data.settings.imageUrl : undefined }]}
+              previewRatio={4 / 3}
+              onFile={(idx, f) => { void handleImageSlot(idx, f); }}
+              onRemove={() => setSettings({ imageUrl: undefined, imagePosition: 'none' })}
+              onGenerate={() => { void generateImage(); }}
+              generating={imgGen.busy}
+              prompt={imgPrompt}
+              onPromptChange={setImgPrompt}
+              message={imgGen.msg}
+            />
+          </section>
+
+          <section className="shrink-0 bg-white/60 border border-slate-100 rounded-2xl p-4 shadow-xs space-y-2.5">
+            {secHead(4, `Questions & Options (${data.questions.length})`, (
               <>
                 <label className="flex items-center gap-1.5 text-[11px] text-slate-600">Tự đánh số
                   <Switch checked={data.settings.autoNumberQuestions} onChange={(v) => setSettings({ autoNumberQuestions: v })} label="Tự động đánh số" />

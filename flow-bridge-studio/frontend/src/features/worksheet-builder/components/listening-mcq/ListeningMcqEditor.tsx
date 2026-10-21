@@ -13,7 +13,8 @@ import {
 } from '../../services/grammar-mcq/grammarMcqCore';
 import { createListeningMcq, validateListeningMcq, type ListeningMcqData } from '../../services/listening-mcq/listeningMcqCore';
 import { AudioQrPanel } from '../shared/AudioQrPanel';
-import { askExtension, generateImageViaExtension } from '../../services/ai/extensionBridge';
+import { generateImageViaExtension } from '../../services/ai/extensionBridge';
+import { probeExtension } from '../../services/ai/useAiImage';
 import { buildFinalPrompt } from '../../services/ai/imagePlanCompare';
 import { PHOTO_STYLE, friendlyExtensionError } from '../../services/matching/autoMatching';
 import { fileToSmallDataUrl } from '../../types/branding';
@@ -206,14 +207,8 @@ export const ListeningMcqEditor: React.FC<Props> = ({ folder, editingExercise, o
     const desc = o.text.trim();
     if (!desc) { setOptGen({ oid: null, msg: 'Nhập mô tả ảnh (ví dụ: bread and cheese) trước khi tạo ảnh.' }); return; }
     setOptGen({ oid: o.id, msg: 'Đang tạo ảnh…' });
-    try {
-      const probe = await askExtension<{ status?: string; message?: string }>('GET_FLOW_STATUS', {}, 5000);
-      const st = probe.payload?.status;
-      if (!(st === 'CONNECTED' || st === 'FLOW_TAB_NOT_FOUND' || st === 'PROJECT_NOT_OPEN')) throw new Error(probe.payload?.message || probe.error?.message || 'Extension chưa sẵn sàng tạo ảnh.');
-    } catch (err) {
-      setOptGen({ oid: null, msg: friendlyExtensionError(err instanceof Error ? err.message : 'Không kết nối được extension Flow Bridge. Hãy bật extension rồi tải lại trang (F5).') });
-      return;
-    }
+    const probe = await probeExtension();
+    if (!probe.ready) { setOptGen({ oid: null, msg: probe.note }); return; }
     try {
       const prompt = `Simple, clear photo for a listening exercise picture choice. Question: "${q.text}". Show: ${desc}.`;
       const res = await generateImageViaExtension({ prompt: buildFinalPrompt(prompt, PHOTO_STYLE), aspectRatio: '4:3' });

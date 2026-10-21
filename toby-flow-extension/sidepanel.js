@@ -389,9 +389,9 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // Nền tảng đang chọn (flow | chatgpt | grok | gemini)
+  // Nền tảng đang chọn (flow | chatgpt | grok | gemini | magnific | pexels)
   let currentPlatform = "flow";
-  const PLATFORM_NAMES = { flow: "Google Flow", chatgpt: "ChatGPT", grok: "Grok", gemini: "Gemini" };
+  const PLATFORM_NAMES = { flow: "Google Flow", chatgpt: "ChatGPT", grok: "Grok", gemini: "Gemini", magnific: "Magnific", pexels: "Pexels" };
 
   // Đổi giao diện theo nền tảng: ẩn mục chỉ của Flow (model, số lượng, video, Max Speed...), đổi chữ nút Tạo
   function applyPlatformUI() {
@@ -457,6 +457,35 @@ document.addEventListener("DOMContentLoaded", () => {
     openPlatformTab();
   });
 
+  // Cửa sổ nhắc đăng nhập nền tảng: mở trang đăng nhập, rồi kiểm tra lại khi bạn đăng nhập xong
+  const platformLoginModal = document.getElementById("platformLoginModal");
+  const platformLoginText = document.getElementById("platformLoginText");
+  const platformLoginTitle = document.getElementById("platformLoginTitle");
+  let platformLoginFor = null;
+  function showPlatformLogin(platform, reason) {
+    if (!platformLoginModal || !PLATFORM_NAMES[platform]) return;
+    platformLoginFor = platform;
+    const name = PLATFORM_NAMES[platform];
+    platformLoginTitle.textContent = `Chưa đăng nhập ${name}`;
+    platformLoginText.textContent = `${reason ? reason + ". " : ""}Hãy đăng nhập ${name} ở tab vừa mở, rồi bấm "Tôi đã đăng nhập" để tiếp tục.`;
+    platformLoginModal.style.display = "flex";
+  }
+  function hidePlatformLogin() { if (platformLoginModal) platformLoginModal.style.display = "none"; platformLoginFor = null; }
+  document.getElementById("platformLoginCloseBtn")?.addEventListener("click", hidePlatformLogin);
+  document.getElementById("platformLoginOpenBtn")?.addEventListener("click", () => {
+    if (!platformLoginFor) return;
+    chrome.runtime.sendMessage({ type: "OPEN_LOGIN", payload: { platform: platformLoginFor } }, () => {});
+  });
+  document.getElementById("platformLoginRecheckBtn")?.addEventListener("click", () => {
+    const asked = platformLoginFor;
+    if (!asked) return;
+    chrome.runtime.sendMessage({ type: "CHECK_PLATFORM", payload: { platform: asked } }, (st) => {
+      if (chrome.runtime.lastError || !st || !st.loggedIn) { showPlatformLogin(asked, (st && st.reason) || "Vẫn chưa thấy đăng nhập"); return; }
+      hidePlatformLogin();
+      if (asked === currentPlatform) renderPlatformStatus(st);
+    });
+  });
+
   // Chuyển sang (hoặc mở) tab của nền tảng đang chọn; chưa đăng nhập thì hiện yêu cầu đăng nhập
   function openPlatformTab() {
     const asked = currentPlatform;
@@ -464,7 +493,9 @@ document.addEventListener("DOMContentLoaded", () => {
     flowStatusTitle.textContent = `Đang mở ${PLATFORM_NAMES[asked]}...`;
     chrome.runtime.sendMessage({ type: "OPEN_PLATFORM", payload: { platform: asked } }, (st) => {
       if (asked !== currentPlatform) return;
-      renderPlatformStatus(chrome.runtime.lastError ? null : st);
+      const stOk = chrome.runtime.lastError ? null : st;
+      renderPlatformStatus(stOk);
+      if (stOk && stOk.hasTab && !stOk.loggedIn) showPlatformLogin(asked, stOk.reason);
     });
   }
 
@@ -582,7 +613,7 @@ document.addEventListener("DOMContentLoaded", () => {
         flowStatusTitle.textContent = `Chưa đăng nhập ${resp.platformName || ""}`;
         flowStatusSub.textContent = "Hãy đăng nhập ở tab vừa mở rồi bấm Tạo lại";
         flowLiveStatus.classList.add("offline");
-        alert(`Chưa đăng nhập ${resp.platformName || "nền tảng"} (${resp.reason || ""}).` + String.fromCharCode(10) + "Đã chuyển sang tab đó — hãy đăng nhập rồi bấm Tạo lại.");
+        showPlatformLogin(payload.platform, resp.reason);
       } else if (resp && resp.success === false && resp.error) {
         alert(resp.error);
       }

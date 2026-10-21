@@ -1514,3 +1514,7 @@ body[data-platform="chatgpt"] .tb-params { grid-template-columns: 1fr 1fr; }
 body[data-platform="chatgpt"] .tb-params .tb-field:last-child { grid-column: auto; }
 body[data-platform="grok"] .tb-params, body[data-platform="gemini"] .tb-params { grid-template-columns: 1fr; }
 body[data-platform="grok"] .tb-params .tb-field:last-child, body[data-platform="gemini"] .tb-params .tb-field:last-child { grid-column: auto; }
+/* Magnific / Pexels: giữ ô Số lượng (số ảnh lấy về mỗi prompt); Pexels coi prompt là từ khóa tìm ảnh */
+body[data-platform="magnific"] .tb-field.count-field, body[data-platform="pexels"] .tb-field.count-field { display: flex !important; }
+body[data-platform="magnific"] .tb-params, body[data-platform="pexels"] .tb-params { grid-template-columns: 1fr 1fr; }
+body[data-platform="magnific"] .tb-params .tb-field:last-child, body[data-platform="pexels"] .tb-params .tb-field:last-child { grid-column: auto; }

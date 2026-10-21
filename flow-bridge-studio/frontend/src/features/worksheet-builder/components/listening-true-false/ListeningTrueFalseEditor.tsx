@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { createPortal } from 'react-dom';
 import {
   ArrowLeft, Check, Copy, Eye, FileDown, GripVertical, Maximize2, Minimize, Minus, Plus, Printer, X, MoreHorizontal,
-  RotateCcw, RotateCw, Save, Trash2, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, HelpCircle, Sparkles, ImagePlus,
+  RotateCcw, RotateCw, Save, Trash2, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, HelpCircle, Sparkles,
 } from 'lucide-react';
 import { PageZoomOverlay } from '../shared/PageZoomOverlay';
 import type { Exercise, LessonFolder, Worksheet } from '../../types';
@@ -22,10 +22,10 @@ import { exportWorksheetToDocx } from '../../services/docxExportService';
 import { useAppHeaderSlot } from '../shared/hooks/useAppHeaderSlot';
 import { useSplitPane } from '../shared/hooks/useSplitPane';
 import { analyzeWorksheetWithAI } from '../../services/ai/aiAnalyzer';
-import { askExtension, generateImageViaExtension } from '../../services/ai/extensionBridge';
-import { buildFinalPrompt } from '../../services/ai/imagePlanCompare';
+import { probeExtension, useAiImage } from '../../services/ai/useAiImage';
+import { ImageManagerBody } from '../shared/ImageManagerBody';
 import type { AiImagePlan } from '../../services/ai/imagePlanSchema';
-import { PHOTO_STYLE, friendlyExtensionError } from '../../services/matching/autoMatching';
+import { PHOTO_STYLE } from '../../services/matching/autoMatching';
 
 interface Props {
   folder: LessonFolder;
@@ -157,11 +157,8 @@ export const ListeningTrueFalseEditor: React.FC<Props> = ({ folder, editingExerc
   const moveStatement = (from: number, to: number) => update({ statements: moveTfItem(data.statements, from, to) });
   const dragRef = useRef<number | null>(null);
 
-  // ── Ảnh minh họa
-  const handleImageFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
+  // ── Ảnh minh họa (khối Image Manager và hàm tạo ảnh dùng chung)
+  const handleImageSlot = async (_idx: number, file: File) => {
     try {
       const url = await fileToSmallDataUrl(file, 900, 'image/jpeg');
       const ratio = await new Promise<number>((resolve) => {
@@ -170,37 +167,19 @@ export const ListeningTrueFalseEditor: React.FC<Props> = ({ folder, editingExerc
         im.onerror = () => resolve(4 / 3);
         im.src = url;
       });
-      update({ image: { ...data.image, url, ratio } });
+      update({ image: { ...dataRef.current.image, url, ratio } });
       updateSettings({ showImage: true });
     } catch {
       window.alert('Không đọc được ảnh này.');
     }
   };
-
-  const [gen, setGen] = useState<{ busy: boolean; msg: string }>({ busy: false, msg: '' });
-  const probeExtension = async (): Promise<{ present: boolean; ready: boolean; note: string }> => {
-    try {
-      const res = await askExtension<{ status?: string; message?: string }>('GET_FLOW_STATUS', {}, 5000);
-      const st = res.payload?.status;
-      if (st === 'CONNECTED' || st === 'FLOW_TAB_NOT_FOUND' || st === 'PROJECT_NOT_OPEN') return { present: true, ready: true, note: '' };
-      return { present: true, ready: false, note: friendlyExtensionError(res.payload?.message || res.error?.message || 'Extension chưa sẵn sàng tạo ảnh.') };
-    } catch {
-      return { present: false, ready: false, note: 'Không kết nối được extension Flow Bridge. Hãy bật extension rồi tải lại trang (F5).' };
-    }
-  };
-  const generateImage = async (prompt?: string) => {
-    const p = (prompt || dataRef.current.image.prompt || buildTfImagePrompt(dataRef.current)).trim();
-    setGen({ busy: true, msg: 'Đang tạo ảnh…' });
-    const probe = await probeExtension();
-    if (!probe.ready) { setGen({ busy: false, msg: probe.note }); setData((d) => ({ ...d, image: { ...d.image, prompt: p } })); return; }
-    try {
-      const res = await generateImageViaExtension({ prompt: buildFinalPrompt(p, PHOTO_STYLE), aspectRatio: '4:3' });
-      setData((d) => ({ ...d, image: { url: res.imageUrl, ratio: 4 / 3, prompt: p }, settings: { ...d.settings, showImage: true } }));
-      setGen({ busy: false, msg: 'Đã tạo và gắn ảnh vào bài.' });
-    } catch (e) {
-      setGen({ busy: false, msg: friendlyExtensionError(e instanceof Error ? e.message : 'Không tạo được ảnh') });
-    }
-  };
+  const { gen, generate: generateImage } = useAiImage({
+    getPrompt: () => dataRef.current.image.prompt || buildTfImagePrompt(dataRef.current),
+    style: PHOTO_STYLE,
+    aspectRatio: '4:3',
+    onPrompt: (p) => setData((d) => ({ ...d, image: { ...d.image, prompt: p } })),
+    onImage: (url, p) => setData((d) => ({ ...d, image: { ...d.image, url, ratio: 4 / 3, prompt: p }, settings: { ...d.settings, showImage: true } })),
+  });
 
   // ── Smart AI / Smart Paste
   const [modal, setModal] = useState<ModalMode | null>(null);
@@ -435,7 +414,7 @@ export const ListeningTrueFalseEditor: React.FC<Props> = ({ folder, editingExerc
         onSmartAI={() => openModal('ai')}
         onSmartPaste={() => openModal('smart')}
         onInsertExercise={() => handleSave('return')}
-        onImageFile={(e) => { void handleImageFile(e); }}
+        onImageFile={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void handleImageSlot(0, f); }}
         onGenerateImage={() => { void generateImage(); }}
         generating={gen.busy}
         onDuplicate={() => handleSave('add_another')}
@@ -486,27 +465,18 @@ export const ListeningTrueFalseEditor: React.FC<Props> = ({ folder, editingExerc
           </section>
 
           <section className="shrink-0 bg-white/60 border border-slate-100 rounded-2xl p-4 shadow-xs space-y-2.5">
-            <SectionHead n={3} title="Illustration" help="Ảnh minh họa cạnh tiêu đề. Có thể tải ảnh hoặc tạo bằng AI qua extension từ prompt bên dưới." right={
-              <button type="button" onClick={() => { void generateImage(); }} disabled={gen.busy} className={smallBtn}><ImagePlus size={12} /> {data.image.url ? 'Tạo lại ảnh' : 'Tạo ảnh'}</button>
-            } />
-            <div className="flex items-center gap-3">
-              {data.image.url ? (
-                <img src={data.image.url} alt="" className="w-24 h-[72px] object-cover rounded-lg border border-slate-200" />
-              ) : (
-                <div className="w-24 h-[72px] rounded-lg border border-dashed border-slate-300 bg-slate-50 text-slate-400 text-[11px] flex items-center justify-center">Chưa có ảnh</div>
-              )}
-              <div className="flex flex-col gap-1.5">
-                <label className={`${smallBtn} cursor-pointer`}><ImagePlus size={12} /> Tải ảnh từ máy<input type="file" accept="image/*" hidden onChange={(e) => { void handleImageFile(e); }} /></label>
-                {data.image.url && <button type="button" onClick={() => update({ image: { ...data.image, url: undefined, ratio: undefined } })} className="text-[11px] font-semibold text-rose-600 hover:underline text-left">Xóa ảnh</button>}
-              </div>
-            </div>
-            <AutoTextarea
-              value={data.image.prompt || ''}
-              onChange={(e) => update({ image: { ...data.image, prompt: e.target.value } })}
-              placeholder="Prompt tạo ảnh (tự sinh từ nội dung, có thể sửa)"
-              className={`${fieldCls} resize-none min-h-[34px] text-[11px]`}
+            <SectionHead n={3} title="Image Manager" help="Ảnh minh họa cạnh tiêu đề. Có thể tải ảnh hoặc tạo bằng AI qua extension từ prompt bên dưới." />
+            <ImageManagerBody
+              slots={[{ url: data.image.url }]}
+              previewRatio={4 / 3}
+              onFile={(idx, f) => { void handleImageSlot(idx, f); }}
+              onRemove={() => update({ image: { ...data.image, url: undefined, ratio: undefined } })}
+              onGenerate={() => { void generateImage(); }}
+              generating={gen.busy}
+              prompt={data.image.prompt || ''}
+              onPromptChange={(v) => update({ image: { ...data.image, prompt: v } })}
+              message={gen.msg}
             />
-            {gen.msg && <p className={`text-[11.5px] rounded-md px-2 py-1 border ${gen.busy ? 'text-blue-700 bg-blue-50 border-blue-100' : 'text-amber-700 bg-amber-50 border-amber-100'}`}>{gen.msg}</p>}
           </section>
 
           <section className="shrink-0 bg-white/60 border border-slate-100 rounded-2xl p-4 shadow-xs space-y-2.5">

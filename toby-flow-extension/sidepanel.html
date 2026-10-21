@@ -131,6 +131,8 @@
         <button class="platform-chip" data-platform="chatgpt"><span class="platform-logo">◎</span><span>ChatGPT</span></button>
         <button class="platform-chip" data-platform="grok"><span class="platform-logo">⟳</span><span>Grok</span></button>
         <button class="platform-chip" data-platform="gemini"><span class="platform-logo">✧</span><span>Gemini</span></button>
+        <button class="platform-chip" data-platform="magnific"><span class="platform-logo">❖</span><span>Magnific</span></button>
+        <button class="platform-chip" data-platform="pexels"><span class="platform-logo">▣</span><span>Pexels</span></button>
       </div>
 
       <!-- LOẠI + MODEL + TỶ LỆ + SỐ LƯỢNG -->
@@ -174,7 +176,7 @@
             <span class="select-arrow">▾</span>
           </div>
         </div>
-        <div class="tb-field flow-only">
+        <div class="tb-field flow-only count-field">
           <span class="tb-flabel">Số lượng</span>
           <div class="stepper-box tb-stepper">
             <button class="step-btn" id="stepDec">−</button>
@@ -402,6 +404,26 @@
           <span class="play-icon">▶</span>
           <span>Chạy</span>
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: CHƯA ĐĂNG NHẬP NỀN TẢNG (Magnific, ChatGPT, Grok, Gemini) -->
+  <div class="modal-backdrop" id="platformLoginModal" style="display:none;">
+    <div class="modal-dialog" style="max-width: 360px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="platformLoginTitle">Chưa đăng nhập</h3>
+        <button class="modal-close-btn" id="platformLoginCloseBtn">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 18px 16px;">
+        <div style="display:flex; gap:10px; margin-bottom:14px;">
+          <span style="font-size:20px;">🔐</span>
+          <div id="platformLoginText" style="color:#cbd5e1; font-size:12px; line-height:1.5;"></div>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          <button class="primary-login-btn" id="platformLoginOpenBtn" style="width:100%; padding:10px; background:linear-gradient(135deg,#c4f135 0%,#8fcf17 100%); color:#111; border:none; border-radius:8px; font-weight:700; cursor:pointer;">Mở trang đăng nhập</button>
+          <button id="platformLoginRecheckBtn" style="width:100%; padding:10px; background:#18181b; color:#e8ffb0; border:1px solid #3f3f46; border-radius:8px; font-weight:600; cursor:pointer;">Tôi đã đăng nhập — kiểm tra lại</button>
+        </div>
       </div>
     </div>
   </div>
