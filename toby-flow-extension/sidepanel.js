@@ -555,6 +555,54 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  // ── Style preset: chọn phong cách, nối vào cuối mỗi prompt khi tạo ──
+  const STYLE_KEY = "fb_style_preset";
+  const stylePresets = window.FB_STYLE_PRESETS || [];
+  const styleBtn = document.getElementById("styleBtn");
+  const stylePopup = document.getElementById("stylePopup");
+  let styleId = "";
+  try { styleId = localStorage.getItem(STYLE_KEY) || ""; } catch (_) {}
+  function styleThumbEl(p) {
+    if (p && p.thumb) { const i = document.createElement("img"); i.className = "style-thumb"; i.src = p.thumb; i.alt = ""; return i; }
+    const sp = document.createElement("span"); sp.className = "style-thumb style-thumb-empty"; sp.textContent = "✦"; return sp;
+  }
+  function renderStyleBtn() {
+    const cur = stylePresets.find((p) => p.id === styleId);
+    if (!cur) styleId = "";
+    styleBtn.replaceChildren(styleThumbEl(cur), Object.assign(document.createElement("span"), { className: "style-label", textContent: cur ? cur.name : "No style preset" }), Object.assign(document.createElement("span"), { className: "select-arrow", textContent: "▾" }));
+  }
+  function pickStyle(id) {
+    styleId = id;
+    try { localStorage.setItem(STYLE_KEY, id); } catch (_) {}
+    renderStyleBtn();
+    stylePopup.style.display = "none";
+  }
+  function renderStylePopup() {
+    stylePopup.replaceChildren();
+    [{ id: "", name: "No style preset" }, ...stylePresets].forEach((p) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "style-item" + (p.id === styleId ? " active" : "");
+      b.append(styleThumbEl(p), Object.assign(document.createElement("span"), { className: "n", textContent: p.name }));
+      if (p.id === styleId) b.append("✓");
+      b.addEventListener("click", () => pickStyle(p.id));
+      stylePopup.append(b);
+    });
+  }
+  renderStyleBtn();
+  styleBtn.addEventListener("click", () => {
+    if (stylePopup.style.display === "none") { renderStylePopup(); stylePopup.style.display = "block"; }
+    else stylePopup.style.display = "none";
+  });
+  document.addEventListener("click", (e) => {
+    if (!stylePopup.contains(e.target) && !styleBtn.contains(e.target)) stylePopup.style.display = "none";
+  });
+  function currentStyleText() {
+    const platform = document.querySelector(".platform-chip.active")?.dataset.platform || "flow";
+    if (platform === "magnific" || platform === "pexels") return "";
+    return (stylePresets.find((p) => p.id === styleId) || {}).text || "";
+  }
+
   // Nền tảng đang chọn (flow | chatgpt | grok | gemini | magnific | pexels)
   let currentPlatform = "flow";
   const PLATFORM_NAMES = { flow: "Google Flow", chatgpt: "ChatGPT", grok: "Grok", gemini: "Gemini", magnific: "Magnific", pexels: "Pexels" };
@@ -752,6 +800,11 @@ document.addEventListener("DOMContentLoaded", () => {
       prompts = [rawText];
     }
 
+    const styleText = currentStyleText();
+    if (styleText) prompts = prompts.map((p) => `${p}
+
+${styleText}`);
+
     const payload = {
       prompts,
       aspectRatio: ratioSelect.value,
@@ -761,7 +814,7 @@ document.addEventListener("DOMContentLoaded", () => {
       autoSubmit: submitMode === "auto",
       referenceImages: refImages.slice(),
       platform: document.querySelector(".platform-chip.active")?.dataset.platform || "flow",
-      filters: document.body.dataset.platform === "pexels" ? pexelsFilters() : magnificFilters(),
+      filters: magnificFilters(),
       chatgptEffort: Number(document.getElementById("chatgptEffort")?.value || 1),
       autoDownload: autoDownloadToggle ? autoDownloadToggle.checked : true,
     };
@@ -772,10 +825,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     generateMainBtn.style.opacity = "0.7";
     generateMainBtn.disabled = true;
+    document.body.classList.add("is-generating");
 
     chrome.runtime.sendMessage({ type: "DISPATCH_GENERATE", payload }, (resp) => {
       generateMainBtn.disabled = false;
       generateMainBtn.style.opacity = "1";
+      document.body.classList.remove("is-generating");
       if (resp && resp.error === "NOT_LOGGED_IN") {
         flowStatusTitle.textContent = `Chưa đăng nhập ${resp.platformName || ""}`;
         flowStatusSub.textContent = "Hãy đăng nhập ở tab vừa mở rồi bấm Tạo lại";

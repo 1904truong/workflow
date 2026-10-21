@@ -64,6 +64,15 @@ interface ImageSourceState {
   stockRatio: '' | '1:1' | '4:3' | '3:4' | '16:9' | '9:16';
   /** Mức suy luận ChatGPT (1 = Instant, 2 = Medium, 3 = High) */
   chatgptEffort: number;
+  /** ChatGPT: phong cách ảnh (nối vào prompt) và ảnh tham chiếu (data URL, tối đa 3; không lưu qua lần tải lại) */
+  chatgptStyle: string;
+  /** id preset phong cách (xem stylePresets.ts); '' = không dùng */
+  chatgptPreset: string;
+  chatgptMode: 'create' | 'edit';
+  /** Ảnh mẫu phong cách (data URL): chỉ lấy phong cách, không lấy nội dung */
+  chatgptStyleRef: string;
+  chatgptBg: 'auto' | 'transparent' | 'white' | 'black';
+  chatgptRefs: string[];
 }
 
 const DEFAULT_FILTERS: StockFilters = { orientation: 'auto', fileType: 'jpg', ai: '', people: '', peopleRange: '', peopleGender: '', peopleAge: '', peopleEthnicity: '', color: '', scenery: '', size: '', pexelsColor: '', detail: 'high', count: '1' };
@@ -84,7 +93,7 @@ const loadPrefs = (): Pick<ImageSourceState, 'filters' | 'flowRatio' | 'stockRat
   return { filters: { ...DEFAULT_FILTERS }, flowRatio: '', stockRatio: '', chatgptEffort: 1 };
 };
 
-let state: ImageSourceState = { provider: loadProvider(), keyword: '', ...loadPrefs() };
+let state: ImageSourceState = { provider: loadProvider(), keyword: '', chatgptStyle: '', chatgptPreset: (() => { try { return localStorage.getItem('fb_chatgpt_preset') || ''; } catch { return ''; } })(), chatgptMode: 'create', chatgptStyleRef: '', chatgptBg: 'auto', chatgptRefs: [], ...loadPrefs() };
 try { const saved = JSON.parse(localStorage.getItem('fb_image_prov_prefs') || '{}')[state.provider]; if (saved) state = { ...state, ...saved }; } catch { /* bỏ qua */ }
 const listeners = new Set<() => void>();
 
@@ -97,7 +106,8 @@ const perProv: Record<string, ProvSlice> = (() => { try { return JSON.parse(loca
 
 export const setImageSource = (patch: Partial<ImageSourceState>): void => {
   if (patch.provider && patch.provider !== state.provider) {
-    perProv[state.provider] = { keyword: state.keyword, filters: state.filters, stockRatio: state.stockRatio };
+    if (patch.chatgptPreset !== undefined) { try { localStorage.setItem('fb_chatgpt_preset', patch.chatgptPreset); } catch { /* bỏ qua */ } }
+  perProv[state.provider] = { keyword: state.keyword, filters: state.filters, stockRatio: state.stockRatio };
     const next = perProv[patch.provider] || { keyword: '', filters: { ...DEFAULT_FILTERS }, stockRatio: '' };
     state = { ...state, ...next };
   }
