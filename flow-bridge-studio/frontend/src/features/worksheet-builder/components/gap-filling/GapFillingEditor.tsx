@@ -66,7 +66,7 @@ type ModalMode = 'smart' | 'words';
 const MODAL_INFO: Record<ModalMode, { title: string; hint: string; placeholder: string }> = {
   smart: {
     title: 'Smart Paste – dán cả bài',
-    hint: 'Dán tiêu đề (viết hoa), dòng khung từ (cách nhau bằng 2 dấu cách, dấu phẩy hoặc “/”) rồi đoạn văn có chỗ trống dạng (a) ______.',
+    hint: 'Dán tiêu đề (viết hoa), dòng khung từ (cách nhau bằng 2 dấu cách, dấu phẩy hoặc “/”) rồi đoạn văn có chỗ trống dạng (a) ______. Bài hai cột: mỗi cột là một khối cách nhau dòng trống, dòng đầu khối là tiêu đề cột (ví dụ Positive ✓ / Negative ✗), các dòng sau là câu có chỗ trống.',
     placeholder: 'COMPLETE THE PARAGRAPH WITH THE WORDS AND PHRASES FROM THE BOX\ncitizens   election   pay a fine   required   vote\n\nWhen a country holds a(n) (a) __________, it is an opportunity for (b) __________ to (c) __________ …',
   },
   words: {

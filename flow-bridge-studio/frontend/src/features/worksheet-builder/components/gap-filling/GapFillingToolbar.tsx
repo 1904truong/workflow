@@ -116,7 +116,9 @@ export const GapFillingToolbar: React.FC<Props> = ({
               <div className="w-full h-14 p-1.5 bg-slate-50 border border-slate-300 rounded flex flex-col gap-1">
                 <div className="flex gap-1"><span className="h-0.5 flex-1 bg-slate-500 rounded mt-0.5" /><span className="w-3 h-3 bg-slate-700 rounded-xs" /></div>
                 <span className="mx-auto w-3/4 h-2.5 border border-slate-600 rounded-md" />
-                {l.id === 'numbered_list'
+                {l.id === 'two_columns'
+                  ? [0, 1, 2].map((i) => <div key={i} className="flex items-center gap-1.5"><span className="h-0.5 w-1/2 bg-slate-400 rounded" /><span className="h-0.5 w-1/2 bg-slate-400 rounded" /></div>)
+                  : l.id === 'numbered_list'
                   ? [0, 1, 2].map((i) => <div key={i} className="flex items-center gap-1"><span className="w-1 h-0.5 bg-slate-700 rounded" /><span className="h-0.5 w-4/5 bg-slate-400 rounded" /></div>)
                   : [0, 1, 2].map((i) => <span key={i} className="block h-0.5 bg-slate-400 rounded" />)}
               </div>

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseGapFillingText, passageSentences, splitPassage, insertBlankAt, nextBlankLabel, countBlanks, parseWordLines, createGapFilling, validateGapFilling } from '../gapFillingCore.ts';
+import { passageColumns, looksTwoColumns, parseGapFillingText, passageSentences, splitPassage, insertBlankAt, nextBlankLabel, countBlanks, parseWordLines, createGapFilling, validateGapFilling } from '../gapFillingCore.ts';
 
 const TEXT = `COMPLETE THE PARAGRAPH WITH THE WORDS AND PHRASES FROM THE BOX
 citizens   election   pay a fine   required   vote
@@ -57,4 +57,36 @@ get around x2  grow up x2   look forward to
   assert.deepEqual(p.words, ['meet up with', 'look for', 'hang out with', 'get around', 'grow up', 'look forward to']);
   assert.equal(p.layout, 'numbered_list');
   assert.equal(passageSentences(p.passage).length, 3);
+});
+
+const TWO_COL = `CHOOSE AND WRITE
+like   eat   play   buy   take   drink
+
+Positive ✓
+Vicky __________ chocolate cake.
+The cat __________ milk.
+Brian __________ books.
+
+Negative ✗
+She __________ spinach.
+It __________ orange juice.
+He __________ comics.`;
+
+test('hai cột Positive / Negative: tự chọn layout two_columns, giữ tiêu đề cột và từng câu', () => {
+  const p = parseGapFillingText(TWO_COL);
+  assert.equal(p.title, 'CHOOSE AND WRITE');
+  assert.deepEqual(p.words, ['like', 'eat', 'play', 'buy', 'take', 'drink']);
+  assert.equal(p.layout, 'two_columns');
+  const cols = passageColumns(p.passage);
+  assert.equal(cols.length, 2);
+  assert.equal(cols[0].heading, 'Positive ✓');
+  assert.equal(cols[1].heading, 'Negative ✗');
+  assert.equal(cols[0].lines.length, 3);
+  assert.equal(cols[1].lines[2], 'He __________ comics.');
+});
+
+test('đoạn văn thường và danh sách đánh số không bị nhận nhầm là hai cột', () => {
+  assert.equal(looksTwoColumns('First (a) ______ paragraph here.\n\nSecond (b) ______ paragraph here.'), false);
+  assert.equal(looksTwoColumns('1. I ______ here.\n2. You ______ there.'), false);
+  assert.equal(parseGapFillingText(TEXT).layout, 'box_paragraph');
 });

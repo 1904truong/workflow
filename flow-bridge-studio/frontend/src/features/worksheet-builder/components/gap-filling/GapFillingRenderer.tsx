@@ -1,6 +1,6 @@
 import React from 'react';
 import type { GapFillingData, GapStyleKey } from '../../services/gap-filling/gapFillingCore';
-import { passageParagraphs, passageSentences, splitPassage } from '../../services/gap-filling/gapFillingCore';
+import { passageColumns, passageParagraphs, passageSentences, splitPassage } from '../../services/gap-filling/gapFillingCore';
 import { textStyleToCss } from '../../services/matching-pictures/matchingPicturesCore';
 import { getAudioQrCodeUrl } from '../../services/listening/listeningGapFillCore';
 
@@ -77,7 +77,9 @@ export const GapFillingRenderer: React.FC<Props> = ({ data, exerciseIndex = 1, h
   ) : null;
 
   const numbered = settings.layout === 'numbered_list';
-  const paragraphs = numbered ? passageSentences(data.passage) : passageParagraphs(data.passage);
+  const twoCols = settings.layout === 'two_columns';
+  const paragraphs = twoCols ? [] : numbered ? passageSentences(data.passage) : passageParagraphs(data.passage);
+  const columns = twoCols ? passageColumns(data.passage) : [];
   const blankW = `${settings.blankWidthMm}mm`;
 
   return (
@@ -108,7 +110,9 @@ export const GapFillingRenderer: React.FC<Props> = ({ data, exerciseIndex = 1, h
 
       {settings.showWordBank && words.length > 0 && (
         <div
-          style={numbered
+          style={twoCols
+            ? { margin: '0 0 5mm', width: '100%', border: '1pt solid #111', borderRadius: '2.5mm', padding: '2mm 6mm', display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', columnGap: '6mm', rowGap: '1mm', fontWeight: 400, ...css('wordBank') }
+            : numbered
             ? { margin: '0 auto 6mm', width: '78%', border: '1pt solid #111', borderRadius: '3mm', padding: '2.5mm 6mm', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', columnGap: '6mm', rowGap: '2mm', textAlign: 'center', fontWeight: 700, ...css('wordBank') }
             : { margin: '0 auto 6mm', width: 'fit-content', maxWidth: '100%', border: '1pt solid #111', borderRadius: '2.5mm', padding: '2mm 7mm', display: 'flex', flexWrap: 'wrap', justifyContent: 'center', columnGap: '9mm', rowGap: '1mm', fontWeight: 700, ...css('wordBank') }}
         >
@@ -116,6 +120,33 @@ export const GapFillingRenderer: React.FC<Props> = ({ data, exerciseIndex = 1, h
             <span key={w.id}>
               <EditableText value={w.text} onCommit={editable?.onWord ? (v) => editable.onWord!(w.id, v) : undefined} css={css('wordBank')} selected={sel('wordBank')} onSelect={pick('wordBank')} />
             </span>
+          ))}
+        </div>
+      )}
+
+      {twoCols && (
+        <div
+          style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.max(1, columns.length)}, 1fr)`, columnGap: '10mm', lineHeight: 1.9, ...css('passage') }}
+          onClick={pick('passage')}
+        >
+          {columns.map((col, ci) => (
+            <div key={ci}>
+              {col.heading && <div style={{ marginBottom: '1mm' }}>{col.heading}</div>}
+              {col.lines.map((line, li) => (
+                <div key={li} style={{ breakInside: 'avoid' }}>
+                  {splitPassage(line).map((part, i) =>
+                    part.kind === 'text' ? (
+                      <span key={i}>{part.text}</span>
+                    ) : (
+                      <span key={i} style={{ whiteSpace: 'nowrap' }}>
+                        {part.label && <strong style={{ fontWeight: 800 }}>({part.label}) </strong>}
+                        <span style={{ display: 'inline-block', width: `${settings.blankWidthMm * 0.7}mm`, borderBottom: '1pt solid #1e293b', verticalAlign: 'baseline', height: '1em' }} />
+                      </span>
+                    ),
+                  )}
+                </div>
+              ))}
+            </div>
           ))}
         </div>
       )}

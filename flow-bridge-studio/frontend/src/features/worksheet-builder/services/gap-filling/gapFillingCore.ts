@@ -5,7 +5,7 @@
 import type { ListeningAudio } from '../listening/listeningGapFillCore.ts';
 import type { TextStyle } from '../matching-pictures/matchingPicturesCore.ts';
 
-export type GapLayoutId = 'box_paragraph' | 'numbered_list';
+export type GapLayoutId = 'box_paragraph' | 'numbered_list' | 'two_columns';
 
 export interface GapLayoutMeta {
   id: GapLayoutId;
@@ -16,6 +16,7 @@ export interface GapLayoutMeta {
 export const GAP_LAYOUTS: GapLayoutMeta[] = [
   { id: 'box_paragraph', label: '1. Khung từ + đoạn văn', desc: 'Khung từ có viền bo tròn ở trên, đoạn văn giãn dòng rộng bên dưới, mã QR góc phải tiêu đề' },
   { id: 'numbered_list', label: '2. Khung từ + câu đánh số', desc: 'Khung từ xếp lưới ba cột, bên dưới là các câu 1., 2., … mỗi câu một chỗ trống, tự tách đoạn theo từng dòng' },
+  { id: 'two_columns', label: '3. Khung từ + hai cột', desc: 'Khung từ trải ngang, bên dưới hai cột có tiêu đề (ví dụ Positive ✓ / Negative ✗), mỗi dòng một câu không đánh số, chỗ trống là đường kẻ ngắn' },
 ];
 
 export interface GapWord {
@@ -124,6 +125,30 @@ export const passageSentences = (passage: string): string[] =>
 export const looksNumberedList = (passage: string): boolean =>
   passage.split('\n').filter((l) => /^\s*\d{1,3}\s*[.)]\s*\S/.test(l)).length >= 2;
 
+export interface PassageColumn {
+  heading: string;
+  lines: string[];
+}
+
+const hasBlankLine = (l: string) => new RegExp(BLANK_RE.source).test(l);
+
+/**
+ * Bài hai cột: mỗi cột là một khối cách nhau bằng dòng trống; dòng đầu của khối (không có chỗ trống) là tiêu đề cột,
+ * các dòng sau là câu có chỗ trống. Khối không có tiêu đề thì heading để trống.
+ */
+export const passageColumns = (passage: string): PassageColumn[] =>
+  passage.replace(/\r\n?/g, '\n').split(/\n\s*\n/).map((block) => block.split('\n').map((l) => l.trim()).filter(Boolean)).filter((b) => b.length > 0).map((b) => {
+    const heading = !hasBlankLine(b[0]) ? b[0] : '';
+    return { heading, lines: heading ? b.slice(1) : b };
+  });
+
+/** Văn bản gồm 2–3 khối, mỗi khối có tiêu đề ngắn (không chỗ trống, không đánh số) và ít nhất 2 câu có chỗ trống */
+export const looksTwoColumns = (passage: string): boolean => {
+  const cols = passageColumns(passage);
+  if (cols.length < 2 || cols.length > 3) return false;
+  return cols.every((c) => c.heading.length > 0 && c.heading.length <= 30 && !/^\d{1,3}\s*[.)]/.test(c.heading) && !/[.!?]$/.test(c.heading) && c.lines.length >= 2 && c.lines.every(hasBlankLine));
+};
+
 export const passageParagraphs = (passage: string): string[] =>
   passage.replace(/\r\n?/g, '\n').split(/\n\s*\n/).map((p) => p.replace(/\s*\n\s*/g, ' ').trim()).filter(Boolean);
 
@@ -216,7 +241,7 @@ export const parseGapFillingText = (raw: string): ParsedGapFilling => {
   const passage = lines.slice(i).join('\n').replace(/\n{3,}/g, '\n\n').trim();
   if (countBlanks(passage) === 0) warnings.push('Không thấy chỗ trống nào dạng "(a) ______".');
   if (words.length === 0) warnings.push('Không thấy dòng khung từ – nhập thêm trong mục Word Bank.');
-  return { ok: passage.length > 0, title, words, passage, layout: looksNumberedList(passage) ? 'numbered_list' : 'box_paragraph', warnings };
+  return { ok: passage.length > 0, title, words, passage, layout: looksTwoColumns(passage) ? 'two_columns' : looksNumberedList(passage) ? 'numbered_list' : 'box_paragraph', warnings };
 };
 
 /** Import khung từ: mỗi dòng một từ/cụm, hoặc cả danh sách trên một dòng */
