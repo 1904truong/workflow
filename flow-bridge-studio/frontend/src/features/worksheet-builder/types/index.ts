@@ -225,7 +225,7 @@ export function folderToWorksheet(folder: LessonFolder): Worksheet {
     lesson: folder.lessonTitle || 'LESSON 1',
     gradeLevel: folder.gradeLevel || 'General',
     subject: folder.subject || 'English',
-    schoolName: folder.schoolName || 'Cambridge International Academy',
+    schoolName: folder.schoolName || 'Pinta English',
     teacherName: folder.teacherName || 'English Teacher',
     totalTimeMinutes: folder.estimatedDuration || 45,
     totalPoints: folder.totalPoints || folder.exercises.reduce((s, e) => s + (e.pointsTotal || 0), 0) || 20,

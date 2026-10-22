@@ -2,9 +2,15 @@ import React, { useState, useRef } from 'react';
 import { ImageJobQueuePanel } from './ImageJobQueuePanel';
 import { 
   ArrowLeft, Wand2, Image as ImageIcon, Upload, Trash2, Sparkles, 
-  Check, ArrowRight, Loader2
+  Check, ArrowRight, Loader2, Play, Settings2, Square, AlertTriangle, CheckCircle2
 } from 'lucide-react';
 import type { LessonFolder, Exercise } from '../../types';
+import { ImageRunConfigDialog } from '../shared/ImageManagerBody';
+import { adapterFor, analyzeImagePrompt, findBatchCandidates } from '../../services/ai/batchImages';
+import { runAiImage } from '../../services/ai/useAiImage';
+import { PROVIDER_SHORT, useImageSource } from '../../services/ai/imageSource';
+
+type BatchStep = 'queued' | 'analyzing' | 'generating' | 'done' | 'failed' | 'skipped';
 
 interface ImageStudioScreenProps {
   folder: LessonFolder;
@@ -33,6 +39,62 @@ export const ImageStudioScreen: React.FC<ImageStudioScreenProps> = ({
   // Kết quả lần tạo gần nhất: nguồn ảnh (Supabase / Flow) + ô ảnh nào
   const [genResult, setGenResult] = useState<{ source: string; label: string; warning?: string } | null>(null);
   const [activeFilter, setActiveFilter] = useState<'all' | 'empty' | 'assigned'>('all');
+
+  // ── Generate all: gen lần lượt ảnh cho mọi bài còn thiếu ảnh, tự phân tích prompt, dùng cấu hình nguồn ảnh đang chọn
+  const source = useImageSource();
+  const exercisesRef = useRef(folder.exercises);
+  exercisesRef.current = folder.exercises;
+  const stopRef = useRef(false);
+  const [batchRunning, setBatchRunning] = useState(false);
+  const [batchCfgOpen, setBatchCfgOpen] = useState(false);
+  const [batchSteps, setBatchSteps] = useState<Record<string, { step: BatchStep; msg?: string }>>({});
+  const batchCandidates = findBatchCandidates(folder.exercises);
+  const setStep = (id: string, step: BatchStep, msg?: string) => setBatchSteps((m) => ({ ...m, [id]: { step, msg } }));
+
+  const runBatch = async () => {
+    const todo = findBatchCandidates(exercisesRef.current);
+    if (todo.length === 0 || batchRunning) return;
+    stopRef.current = false;
+    setBatchRunning(true);
+    setBatchSteps(Object.fromEntries(todo.map((c) => [c.exerciseId, { step: 'queued' as BatchStep }])));
+    let failedInRow = 0;
+    for (const c of todo) {
+      if (stopRef.current) { setStep(c.exerciseId, 'skipped', 'Đã dừng'); continue; }
+      const ex = exercisesRef.current.find((e) => e.id === c.exerciseId);
+      const adapter = ex && adapterFor(ex);
+      if (!ex || !adapter) { setStep(c.exerciseId, 'skipped'); continue; }
+      setStep(c.exerciseId, 'analyzing');
+      const { prompt } = await analyzeImagePrompt(adapter.basePrompt(ex));
+      if (stopRef.current) { setStep(c.exerciseId, 'skipped', 'Đã dừng'); continue; }
+      setStep(c.exerciseId, 'generating');
+      let lastMsg = '';
+      const ok = await runAiImage(
+        {
+          getPrompt: () => prompt,
+          style: adapter.style,
+          aspectRatio: adapter.aspectRatio,
+          onPrompt: () => undefined,
+          // Gắn vào bản mới nhất của bài (người dùng có thể đã sửa trong lúc chờ)
+          onImage: (url, p) => {
+            const list = exercisesRef.current;
+            const idx = list.findIndex((e) => e.id === c.exerciseId);
+            if (idx < 0) return;
+            const next = [...list];
+            next[idx] = adapter.apply(list[idx], url, p);
+            exercisesRef.current = next;
+            onUpdateFolderExercises(next);
+          },
+        },
+        (st) => { lastMsg = st.msg; setBatchSteps((m) => ({ ...m, [c.exerciseId]: { step: 'generating', msg: st.msg } })); },
+        prompt,
+        true,
+      );
+      setStep(c.exerciseId, ok ? 'done' : 'failed', ok ? undefined : lastMsg);
+      failedInRow = ok ? 0 : failedInRow + 1;
+      if (failedInRow >= 2) stopRef.current = true; // lỗi liên tiếp (thường do extension/Flow): dừng thay vì thử hết
+    }
+    setBatchRunning(false);
+  };
 
   // Gather all slots across all exercises in folder
   const allSlots = folder.exercises.flatMap((ex, exIdx) =>
@@ -319,6 +381,85 @@ export const ImageStudioScreen: React.FC<ImageStudioScreenProps> = ({
             )}
           </div>
         </div>
+
+        {/* Generate all: một nút gen lần lượt mọi bài còn thiếu ảnh; Edit chỉnh cấu hình như ở từng bài */}
+        {(batchCandidates.length > 0 || Object.keys(batchSteps).length > 0) && (
+          <section className="bg-white border border-violet-200 rounded-3xl p-5 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  Generate all
+                  {batchRunning && <Loader2 size={14} className="animate-spin text-violet-600" />}
+                </h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  {batchRunning
+                    ? 'Đang tạo lần lượt từng ảnh. Prompt được AI phân tích tự động cho từng bài.'
+                    : `${batchCandidates.length} bài còn thiếu ảnh · nguồn ${PROVIDER_SHORT[source.provider]}. Bấm Generate all để tự phân tích prompt và tạo lần lượt.`}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setBatchCfgOpen(true)}
+                  disabled={batchRunning}
+                  className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 disabled:opacity-40"
+                  title="Chỉnh nguồn ảnh, model, tỉ lệ, preset cho cả lượt gen"
+                >
+                  <Settings2 size={12} /> Edit
+                </button>
+                {batchRunning ? (
+                  <button
+                    type="button"
+                    onClick={() => { stopRef.current = true; }}
+                    className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl bg-rose-600 text-white hover:bg-rose-700"
+                  >
+                    <Square size={12} /> Dừng
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void runBatch()}
+                    disabled={batchCandidates.length === 0}
+                    className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-40"
+                  >
+                    <Play size={12} /> Generate all ({batchCandidates.length})
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {Object.keys(batchSteps).length > 0 && (
+              <ul className="divide-y divide-slate-100">
+                {folder.exercises.filter((e) => batchSteps[e.id]).map((e) => {
+                  const st = batchSteps[e.id];
+                  const label = { queued: 'Đang chờ', analyzing: 'Đang phân tích prompt…', generating: 'Đang tạo ảnh…', done: 'Xong', failed: 'Lỗi', skipped: 'Bỏ qua' }[st.step];
+                  const tone = { queued: 'bg-slate-100 text-slate-600', analyzing: 'bg-amber-100 text-amber-800', generating: 'bg-blue-100 text-blue-700', done: 'bg-emerald-100 text-emerald-700', failed: 'bg-rose-100 text-rose-700', skipped: 'bg-slate-100 text-slate-400' }[st.step];
+                  return (
+                    <li key={e.id} className="py-2.5 flex flex-wrap items-center gap-3 text-xs">
+                      <span className="flex-1 min-w-[10rem] font-semibold text-slate-800 truncate">{e.title}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 ${tone}`}>
+                        {(st.step === 'analyzing' || st.step === 'generating') && <Loader2 size={10} className="animate-spin" />}
+                        {st.step === 'done' && <CheckCircle2 size={10} />}
+                        {st.step === 'failed' && <AlertTriangle size={10} />}
+                        {label}
+                      </span>
+                      {st.msg && st.step !== 'done' && <span className="basis-full text-[10px] text-slate-500">{st.msg}</span>}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        )}
+
+        <ImageRunConfigDialog
+          open={batchCfgOpen}
+          onClose={() => setBatchCfgOpen(false)}
+          generating={batchRunning}
+          prompt=""
+          onPromptChange={() => undefined}
+          onRun={() => void runBatch()}
+        />
 
         <ImageJobQueuePanel worksheetId={folder.id} />
 

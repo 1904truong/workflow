@@ -1,3 +1,4 @@
+import { remapMarks, marksAfterTextChange, applyMarkPatch, markAttrs, type TextMark, type TextEdit, type TextMarkAttrs } from './textMarks.ts';
 // Core data models, sample data, and helpers for Listening Fill in the Gap worksheets.
 
 export type ListeningLayoutId =
@@ -62,6 +63,8 @@ export interface ListeningParagraph {
   imageAssetUrl?: string; // Optional image for this paragraph
   imageCaption?: string;
   format?: ListeningParagraphFormat;
+  /** Định dạng từng từ/cụm từ (vị trí theo `text`). Không có = chỉ dùng `format` cả đoạn như bài cũ. */
+  marks?: TextMark[];
 }
 
 export interface ListeningAudio {
@@ -411,6 +414,7 @@ export const resequenceListeningBlanks = (data: ListeningGapFillData): Listening
 
     let updatedText = '';
     let lastIndex = 0;
+    const edits: TextEdit[] = [];
 
     for (const match of matches) {
       updatedText += para.text.slice(lastIndex, match.index);
@@ -447,13 +451,15 @@ export const resequenceListeningBlanks = (data: ListeningGapFillData): Listening
         teacherNote: existingBlank?.teacherNote,
       });
 
-      updatedText += `(${newLabel}) ${match.underline}`;
+      const replacement = `(${newLabel}) ${match.underline}`;
+      edits.push({ at: match.index, oldLen: match.fullMatch.length, newLen: replacement.length });
+      updatedText += replacement;
       lastIndex = match.index + match.fullMatch.length;
       blankCounter++;
     }
 
     updatedText += para.text.slice(lastIndex);
-    newParas[pIdx] = { ...para, text: updatedText };
+    newParas[pIdx] = { ...para, text: updatedText, marks: remapMarks(para.marks, edits, updatedText.length) };
   }
 
   return {
@@ -468,7 +474,9 @@ export const resequenceListeningBlanks = (data: ListeningGapFillData): Listening
 export const insertBlankInParagraph = (
   data: ListeningGapFillData,
   paragraphIndex: number,
-  cursorPos?: number
+  cursorPos?: number,
+  /** Có giá trị khi đang bôi đen: vùng [cursorPos, selectionEnd) được thay bằng chỗ trống */
+  selectionEnd?: number
 ): ListeningGapFillData => {
   const paras = [...data.paragraphs];
   const targetPara = paras[paragraphIndex];
@@ -479,7 +487,7 @@ export const insertBlankInParagraph = (
   let newText = targetPara.text;
   if (typeof cursorPos === 'number' && cursorPos >= 0 && cursorPos <= newText.length) {
     const before = newText.slice(0, cursorPos);
-    const after = newText.slice(cursorPos);
+    const after = newText.slice(typeof selectionEnd === 'number' && selectionEnd > cursorPos ? Math.min(selectionEnd, newText.length) : cursorPos);
     const padLeft = before.length > 0 && !/\s$/.test(before) ? ' ' : '';
     const padRight = after.length > 0 && !/^\s/.test(after) ? ' ' : '';
     newText = before + padLeft + blankMarker + padRight + after;
@@ -490,6 +498,7 @@ export const insertBlankInParagraph = (
   paras[paragraphIndex] = {
     ...targetPara,
     text: newText,
+    marks: marksAfterTextChange(targetPara.text, newText, targetPara.marks),
   };
 
   const updatedData = {
@@ -511,10 +520,8 @@ export const removeBlank = (data: ListeningGapFillData, blankId: string): Listen
 
   const paras = data.paragraphs.map((p) => {
     if (p.id === target.paragraphId) {
-      return {
-        ...p,
-        text: p.text.replace(regex, '').replace(/\s{2,}/g, ' ').trim(),
-      };
+      const text = p.text.replace(regex, '').replace(/\s{2,}/g, ' ').trim();
+      return { ...p, text, marks: marksAfterTextChange(p.text, text, p.marks) };
     }
     return p;
   });
@@ -712,3 +719,22 @@ export const formatAudioDuration = (seconds: number): string => {
 export const LISTENING_IMAGE_LAYOUTS: ListeningLayoutId[] = ['original', 'numbered', 'two_columns', 'illustrated'];
 export const layoutSupportsImages = (layout: ListeningLayoutId): boolean =>
   LISTENING_IMAGE_LAYOUTS.includes(layout);
+
+// ── Định dạng chữ (đậm/nghiêng/gạch chân/màu/tô nền) giờ lưu theo từng từ trong `marks`.
+// Bài cũ lưu các thuộc tính này ở mức cả đoạn (`format`): đổi chúng thành marks phủ cả đoạn, kết quả hiển thị y hệt. ──
+export const bakeParagraphFormat = (p: ListeningParagraph): ListeningParagraph => {
+  const f = p.format;
+  if (!f || !(f.bold || f.italic || f.underline || f.color || f.highlight)) return p;
+  const len = p.text.length;
+  const base: TextMarkAttrs = { bold: f.bold, italic: f.italic, underline: f.underline, color: f.color, highlight: f.highlight };
+  let marks = applyMarkPatch(undefined, len, 0, len, markAttrs(base));
+  for (const m of p.marks ?? []) marks = applyMarkPatch(marks, len, m.start, m.end, markAttrs(m));
+  return { ...p, marks, format: { ...f, bold: undefined, italic: undefined, underline: undefined, color: undefined, highlight: undefined } };
+};
+
+/** Áp một định dạng chữ lên cả đoạn (khi chưa chọn vùng nào trong ô soạn). */
+export const applyMarksToParagraph = (p: ListeningParagraph, patch: TextMarkAttrs): ListeningParagraph => {
+  const baked = bakeParagraphFormat(p);
+  const len = baked.text.length;
+  return { ...baked, marks: applyMarkPatch(baked.marks, len, 0, len, patch) };
+};

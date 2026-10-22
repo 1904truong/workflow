@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Cloud, RefreshCw, Search, Copy, Check, AlertTriangle } from 'lucide-react';
+import { Cloud, Folder, ArrowLeft, RefreshCw, Search, Copy, Check, AlertTriangle } from 'lucide-react';
 
 // Ảnh đã lưu trên Supabase (qua extension Flow Bridge): web hỏi extension bằng postMessage,
 // extension đọc thư viện cloud của tài khoản đang đăng nhập và trả về danh sách + link xem có chữ ký.
@@ -50,6 +50,15 @@ export const SupabaseLibrary: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  const [openDay, setOpenDay] = useState<string | null>(null);
+  // Gom ảnh theo ngày tạo, ngày mới nhất lên đầu
+  const dayMap = new Map<string, CloudImage[]>();
+  for (const im of images) {
+    const day = describePath(im.storagePath).day || im.createdAt?.slice(0, 10) || 'Không rõ ngày';
+    dayMap.set(day, [...(dayMap.get(day) || []), im]);
+  }
+  const dayFolders = [...dayMap.entries()].sort((a, b) => b[0].localeCompare(a[0]));
 
   const load = useCallback(async (q: string) => {
     setLoading(true);
@@ -135,9 +144,40 @@ export const SupabaseLibrary: React.FC = () => {
         </p>
       )}
 
-      {images.length > 0 && (
+      {images.length > 0 && openDay === null && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-          {images.map((img) => {
+          {dayFolders.map(([day, list]) => (
+            <button
+              key={day}
+              onClick={() => setOpenDay(day)}
+              className="border border-slate-200 rounded-2xl overflow-hidden bg-white hover:border-blue-400 text-left transition-colors"
+            >
+              <div className="h-28 bg-slate-50 grid grid-cols-2 gap-0.5 p-1">
+                {list.slice(0, 4).map((im) => (
+                  <div key={im.id} className="bg-slate-100 rounded overflow-hidden">
+                    {im.url && <img src={im.url} alt="" className="w-full h-full object-cover" loading="lazy" />}
+                  </div>
+                ))}
+              </div>
+              <div className="p-3 border-t border-slate-100 flex items-center gap-2">
+                <Folder size={14} className="text-amber-500 shrink-0" />
+                <span className="text-xs font-bold text-slate-800">{day}</span>
+                <span className="ml-auto text-[10px] text-slate-400">{list.length} ảnh</span>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {images.length > 0 && openDay !== null && (
+        <button onClick={() => setOpenDay(null)} className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-700">
+          <ArrowLeft size={12} /> Tất cả thư mục · {openDay}
+        </button>
+      )}
+
+      {images.length > 0 && openDay !== null && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+          {(dayMap.get(openDay) || []).map((img) => {
             const { platform, day } = describePath(img.storagePath);
             return (
               <div key={img.id} className="border border-slate-200 rounded-2xl overflow-hidden bg-white flex flex-col">

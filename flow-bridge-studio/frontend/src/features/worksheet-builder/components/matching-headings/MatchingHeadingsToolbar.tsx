@@ -7,7 +7,8 @@ import {
 import type { TextStyle } from '../../services/matching-pictures/matchingPicturesCore';
 import type { MatchingHeadingsData, HeadingStyleKey } from '../../services/matching-headings/matchingHeadingsCore';
 import { HEADINGS_LAYOUTS, HEADING_STYLE_LABELS } from '../../services/matching-headings/matchingHeadingsCore';
-import { EditorToolbar, type ToolbarGroup } from '../shared/toolbar/EditorToolbar';
+import { type ToolbarGroup } from '../shared/toolbar/EditorToolbar';
+import { RibbonToolbar, type RibbonShell } from '../shared/toolbar/RibbonToolbar';
 
 export type HeadingsMoreKey = 'typography' | 'advanced';
 const MORE_SETTINGS: { key: HeadingsMoreKey; label: string }[] = [
@@ -43,6 +44,8 @@ interface Props {
   onDuplicate: () => void;
   onDelete?: () => void;
   renderMoreSection: (key: HeadingsMoreKey) => React.ReactNode;
+  /** Lưu / xuất Word / in / zoom / undo của editor, dùng cho các menu File, Edit, View của thanh công cụ */
+  shell?: RibbonShell;
   locked?: boolean;
 }
 
@@ -50,7 +53,7 @@ interface Props {
 export const MatchingHeadingsToolbar: React.FC<Props> = ({
   data, selKey, onSelKey, curStyle, defaults, onFlag, onSizeDelta, onPatchStyle, onClearStyle, onSettings,
   onAddParagraph, onAddIdea, onImportIdeas, onSmartPaste, onShuffleIdeas, onImageFile, onClearImage, onGenerateImage, generatingImage, onInsertExercise, onDuplicate, onDelete,
-  renderMoreSection, locked = false,
+  renderMoreSection, locked = false, shell,
 }) => {
   const { settings } = data;
   const bold = curStyle?.bold ?? defaults.bold;
@@ -157,5 +160,5 @@ export const MatchingHeadingsToolbar: React.FC<Props> = ({
     },
   ];
 
-  return <EditorToolbar groups={groups} dense locked={locked} />;
+  return <RibbonToolbar groups={groups} locked={locked} shell={shell} />;
 };

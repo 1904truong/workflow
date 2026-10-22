@@ -353,6 +353,38 @@ class FlowFloatingMonitor {
 const monitor = new FlowFloatingMonitor();
 
 // Tải ảnh qua background; blob: URL chỉ đọc được trong trang nên đổi sang data URL trước.
+// Tải ảnh bằng menu chuột phải của Flow: Tải xuống → 1K (kích thước gốc). Trả false nếu không làm được để dùng cách tải theo địa chỉ ảnh.
+// Tìm mục theo chữ (.label) trong menu nổi, không dùng tọa độ cố định; chỉ tọa độ tâm phần tử vừa tìm để gửi click thật.
+async function flowMenuDownload(img, quality = "1K") {
+  const labelOf = (b) => (b.querySelector(".label")?.textContent || "").trim();
+  const items = () => [...document.querySelectorAll('.cdk-overlay-container button[role="menuitem"]')].filter(visible);
+  const byLabel = (re) => items().find((b) => re.test(labelOf(b)) && !b.disabled && b.getAttribute("aria-disabled") !== "true");
+  try {
+    if (!img || !img.isConnected) return false;
+    img.scrollIntoView({ block: "center" });
+    await sleep(300);
+    const r = img.getBoundingClientRect();
+    const x = Math.round(r.left + r.width / 2), y = Math.round(r.top + r.height / 2);
+    await FBGuard.send({ type: "TRUSTED_CLICK", payload: { x, y, rightClick: true } });
+    let dl = await waitFor(() => byLabel(/^(tải xuống|download)$/i), 3000, 150);
+    if (!dl) { // dự phòng: sự kiện contextmenu giả lập
+      img.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, composed: true, clientX: x, clientY: y, button: 2 }));
+      dl = await waitFor(() => byLabel(/^(tải xuống|download)$/i), 3000, 150);
+    }
+    if (!dl) { await FBGuard.send({ type: "TRUSTED_CLICK", payload: { pressEscape: true } }).catch(() => {}); return false; }
+    const started = chrome.runtime.sendMessage({ type: "WAIT_DOWNLOAD", payload: { timeoutMs: 20000 } }).catch(() => null);
+    await trustedClick(dl);
+    const q = await waitFor(() => byLabel(new RegExp(`^${quality}$`, "i")), 3000, 150);
+    if (!q) { await FBGuard.send({ type: "TRUSTED_CLICK", payload: { pressEscape: true } }).catch(() => {}); return false; }
+    await trustedClick(q);
+    const res = await started;
+    return !!(res && res.started);
+  } catch (e) {
+    console.warn("[Flow Bridge] Tải qua menu lỗi:", e && e.message);
+    return false;
+  }
+}
+
 async function downloadResult(url, filename) {
   try {
     let finalUrl = url;
@@ -384,6 +416,16 @@ function normalizeText(text) {
 // ════════════════════════════════════════════════════════════
 // 3. GENERATE BUTTON CONTROLLER (Scored & Ambiguity-Safe)
 // ════════════════════════════════════════════════════════════
+// ── Bộ chọn chính xác theo DOM hiện tại của Flow (ô soạn = .base-prompt-box); hàm dò theo điểm/tọa độ chỉ là dự phòng ──
+const FlowSel = {
+  composer: () => [...document.querySelectorAll("flow-base-prompt-box .base-prompt-box, .base-prompt-box")].find(visible) || null,
+  input: (root) => (root || document).querySelector('.ProseMirror[contenteditable="true"], [role="textbox"][contenteditable="true"]'),
+  addBtn: (root) => (root || document).querySelector('button.add-menu-trigger, flow-add-menu button[aria-haspopup], button[aria-label*="Thêm thành phần" i]'),
+  agentChip: (root) => (root || document).querySelector("flow-agent-mode-toggle-chip .agent-mode-chip, button.agent-mode-chip"),
+  settingsBtn: (root) => (root || document).querySelector('button.settings-trigger-button, button[aria-label*="cài đặt" i]'),
+  generateBtn: (root) => (root || document).querySelector('flow-generate-icon-button button, button.generate-icon-button, button[aria-label="Bắt đầu tạo"], button[type="submit"][aria-label*="tạo" i]'),
+};
+
 const GenerateButtonController = {
   /**
    * Scored, scoped detection of the Generate button inside composerBox.
@@ -397,6 +439,8 @@ const GenerateButtonController = {
     if (!box || !box.isConnected) {
       return { status: "NOT_FOUND", reason: "Khung soạn thảo không tồn tại trong DOM", btn: null };
     }
+    const exact = FlowSel.generateBtn(box);
+    if (exact && exact.isConnected) return { status: "FOUND", btn: exact, confidence: 100, candidates: [] };
 
     const cRect = box.getBoundingClientRect();
     const inputEl = Flow.findInput(box);
@@ -757,7 +801,10 @@ async function verifyGenerationStarted(baseline, timeoutMs = 7000) {
 // ════════════════════════════════════════════════════════════
 const ERROR_TEXT_RE = /(không thể tạo|tạo không thành công|không thành công|đã xảy ra lỗi|something went wrong|failed to generate|unable to generate|vi phạm|violat)/i;
 
-async function waitForNewImages(baselineEls, expectedCount, { timeoutMs = 240000, shouldStop = () => false } = {}) {
+// Khóa so sánh ảnh: bỏ query và hậu tố kích thước (=s512, =w256-h256) để nhận ra cùng một ảnh ở kích thước khác
+const imgKey = (src) => String(src || "").split("#")[0].split("?")[0].replace(/=(?:[swh]\d+[^/]*)$/i, "");
+
+async function waitForNewImages(baselineEls, expectedCount, { timeoutMs = 240000, shouldStop = () => false, refKeys = new Set() } = {}) {
   const start = Date.now();
   const seen = new Map(); // img -> { src, since }
   const baselineHasError = ERROR_TEXT_RE.test(document.body.innerText || "");
@@ -772,10 +819,13 @@ async function waitForNewImages(baselineEls, expectedCount, { timeoutMs = 240000
     const now = Date.now();
     const ready = [];
     const readyImgs = new Map(); // src -> img
+    const areaOf = new Map(); // src -> diện tích hiển thị lớn nhất
     for (const img of document.querySelectorAll("img")) {
       if (baselineEls.has(img) || img.closest("[id^='flowbridge-']")) continue;
       const src = img.currentSrc || img.src || "";
       if (!src) continue;
+      // Ảnh tham chiếu: nằm trong ô soạn, hoặc là chính ảnh đã đính (Flow dựng lại chúng cạnh kết quả)
+      if (img.closest(".base-prompt-box, flow-base-prompt-box") || refKeys.has(imgKey(src))) continue;
       const rec = seen.get(img);
       if (!rec || rec.src !== src) seen.set(img, { src, since: now });
       const r = img.getBoundingClientRect();
@@ -783,9 +833,10 @@ async function waitForNewImages(baselineEls, expectedCount, { timeoutMs = 240000
       if (now - seen.get(img).since < STABLE_MS) continue;
       ready.push(src);
       if (!readyImgs.has(src)) readyImgs.set(src, img);
+      areaOf.set(src, Math.max(areaOf.get(src) || 0, r.width * r.height));
     }
 
-    const urls = [...new Set(ready)];
+    const urls = [...new Set(ready)].sort((a, b) => (areaOf.get(b) || 0) - (areaOf.get(a) || 0));
     if (urls.length !== lastReadyCount) {
       lastReadyCount = urls.length;
       lastChange = now;
@@ -894,6 +945,8 @@ async function saveImagesToCloud(task, jobId, imgs, meta) {
 // ════════════════════════════════════════════════════════════
 const Flow = {
   findComposerBox() {
+    const exactBox = FlowSel.composer();
+    if (exactBox) return exactBox;
     // 1. Quét tìm card thanh công cụ ở nửa dưới màn hình (chiều cao top > 35% viewport)
     const allDivs = Array.from(document.querySelectorAll("div, section, footer, form, main"));
     const bottomCandidates = allDivs.filter((el) => {
@@ -948,6 +1001,8 @@ const Flow = {
 
   findInput(composerBox) {
     const root = composerBox || Flow.findComposerBox() || document;
+    const exactInput = FlowSel.input(root);
+    if (exactInput) return exactInput;
     
     // Lọc phần tử hợp lệ ở nửa dưới màn hình
     const filterValid = (el) => {
@@ -998,6 +1053,8 @@ const Flow = {
   },
 
   findSettingsPill() {
+    const exactPill = FlowSel.settingsBtn(Flow.findComposerBox() || document);
+    if (exactPill) return exactPill;
     const all = Array.from(document.querySelectorAll("button, div[role='button'], div, span"));
     for (const el of all) {
       const txt = (el.textContent || "").toLowerCase();
@@ -1132,6 +1189,8 @@ async function pushFileToFlow(file, composerBox, inputEl) {
 
 // Nút "+" ở góc trái composer (mở danh sách ảnh đã tải lên)
 function findComposerAddButton(composerBox) {
+  const exactAdd = FlowSel.addBtn(composerBox);
+  if (exactAdd) return exactAdd;
   const btns = [...composerBox.querySelectorAll("button, [role='button']")].filter(visible);
   const byIcon = btns.find((b) => (b.textContent || "").trim().toLowerCase() === "add" || /^[+＋]$/.test((b.textContent || "").trim()));
   return byIcon || btns.sort((x, y) => x.getBoundingClientRect().left - y.getBoundingClientRect().left)[0] || null;
@@ -1184,6 +1243,14 @@ async function openPicker(composerBox) {
   if (findPickerSearch()) return true;
   const box = Flow.findComposerBox() || composerBox;
   const btns = [...box.querySelectorAll("button, [role='button']")].filter(visible);
+  const exactPlus = FlowSel.addBtn(box);
+  if (exactPlus && visible(exactPlus)) {
+    const r = exactPlus.getBoundingClientRect();
+    try { await FBGuard.send({ type: "TRUSTED_CLICK", payload: { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) } }); } catch (_) {}
+    if (await waitFor(findPickerSearch, 2500, 150)) return true;
+    realClick(exactPlus);
+    if (await waitFor(findPickerSearch, 2000, 150)) return true;
+  }
   const desc = (b) => `${(b.textContent || "").trim().slice(0, 20)}|${b.getAttribute("aria-label") || ""}@${Math.round(b.getBoundingClientRect().left)}`;
   console.log("[Flow Bridge] Nút trong composer:", btns.map(desc));
   // Ưu tiên nút "+"/add, sau đó các nút còn lại từ trái sang phải (bỏ nút ngoài cùng bên phải = gửi)
@@ -1613,6 +1680,7 @@ async function runFlowGeneration(payload) {
     // Snapshot DOM baseline BEFORE click — prevents false positives
     const genBaseline = snapshotGenerationBaseline(composerBox);
     const baselineImgEls = new Set(document.querySelectorAll("img"));
+    const refKeys = new Set([...(composerBox || document).querySelectorAll("img")].map((im) => imgKey(im.currentSrc || im.src)).filter(Boolean));
     console.log("[Flow Bridge] Baseline snapshot:", { loading: genBaseline.loadingCount, cards: genBaseline.cardCount, imgs: genBaseline.imgCount, text: genBaseline.inputText.substring(0, 20) });
 
     if (sendBtn) {
@@ -1682,6 +1750,7 @@ async function runFlowGeneration(payload) {
     // ── PHASE 7: Chờ kết quả (phát hiện ảnh mới thật sự, không đoán) ──
     monitor.setState(GEN_STATE.PROCESSING, "Flow đang tạo ảnh...");
     const waitResult = await waitForNewImages(baselineImgEls, batchCount, {
+      refKeys,
       timeoutMs: 240000,
       shouldStop: () => monitor.isStopped
     });
@@ -1708,7 +1777,11 @@ async function runFlowGeneration(payload) {
           platform: "Flow", prompt, model, aspectRatio, expected: batchCount
         });
       } else if (autoDownload) {
-        waitResult.urls.forEach((u, i) => downloadResult(u, FBGuard.fileName(prompt, i, waitResult.urls.length)));
+        for (let i = 0; i < waitResult.urls.length; i++) {
+          const viaMenu = await flowMenuDownload(waitResult.imgs && waitResult.imgs[i], "1K");
+          if (!viaMenu) downloadResult(waitResult.urls[i], FBGuard.fileName(prompt, i, waitResult.urls.length));
+          await sleep(600);
+        }
       }
     } else if (waitResult.status === "error") {
       monitor.setState(GEN_STATE.FAILED, "Flow báo lỗi");

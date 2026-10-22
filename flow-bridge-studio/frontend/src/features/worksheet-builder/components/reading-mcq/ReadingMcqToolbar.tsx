@@ -8,7 +8,8 @@ import type { TextStyle } from '../../services/matching-pictures/matchingPicture
 import type { McqLayoutId } from '../../services/grammar-mcq/grammarMcqCore';
 import type { ReadingMcqData } from '../../services/reading-mcq/readingMcqCore';
 import { READING_MCQ_LAYOUTS, READING_STYLE_LABELS as MCQ_STYLE_LABELS, type ReadingStyleKey as McqStyleKey } from '../../services/reading-mcq/readingMcqCore';
-import { EditorToolbar, type ToolbarGroup } from '../shared/toolbar/EditorToolbar';
+import { type ToolbarGroup } from '../shared/toolbar/EditorToolbar';
+import { RibbonToolbar, type RibbonShell } from '../shared/toolbar/RibbonToolbar';
 
 export type McqMoreKey = 'typography' | 'advanced';
 const MORE_SETTINGS: { key: McqMoreKey; label: string }[] = [
@@ -71,6 +72,8 @@ interface Props {
   onDuplicate: () => void;
   onDelete?: () => void;
   renderMoreSection: (key: McqMoreKey) => React.ReactNode;
+  /** Lưu / xuất Word / in / zoom / undo của editor, dùng cho các menu File, Edit, View của thanh công cụ */
+  shell?: RibbonShell;
   locked?: boolean;
 }
 
@@ -78,7 +81,7 @@ interface Props {
 export const ReadingMcqToolbar: React.FC<Props> = ({
   data, selKey, onSelKey, curStyle, defaults, onFlag, onSizeDelta, onPatchStyle, onClearStyle, onSettings,
   hasSelectedQuestion, onAddQuestion, onAddOption, onImport, onSmartPaste, onShuffleOptions, onInsertExercise,
-  onDuplicate, onDelete, renderMoreSection, locked = false,
+  onDuplicate, onDelete, renderMoreSection, locked = false, shell,
 }) => {
   const { settings } = data;
   const bold = curStyle?.bold ?? defaults.bold;
@@ -175,5 +178,5 @@ export const ReadingMcqToolbar: React.FC<Props> = ({
     },
   ];
 
-  return <EditorToolbar groups={groups} dense locked={locked} />;
+  return <RibbonToolbar groups={groups} locked={locked} shell={shell} />;
 };

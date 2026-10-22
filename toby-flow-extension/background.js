@@ -137,7 +137,7 @@ async function ensureActiveFlowTab() {
 
 // Gửi click/phím "thật" (isTrusted = true) qua Chrome DevTools Protocol.
 // Google Flow bỏ qua các sự kiện click do script tự tạo.
-async function trustedInput(tabId, { x, y, pressEnter, pressEscape, pressKeys, pressCombo, pressText }) {
+async function trustedInput(tabId, { x, y, rightClick, pressEnter, pressEscape, pressKeys, pressCombo, pressText }) {
   const target = { tabId };
   await chrome.debugger.attach(target, "1.3");
   try {
@@ -149,8 +149,9 @@ async function trustedInput(tabId, { x, y, pressEnter, pressEscape, pressKeys, p
     }
     if (typeof x === "number" && typeof y === "number") {
       await send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
-      await send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", buttons: 1, clickCount: 1 });
-      await send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", buttons: 0, clickCount: 1 });
+      const btn = rightClick ? "right" : "left";
+      await send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: btn, buttons: rightClick ? 2 : 1, clickCount: 1 });
+      await send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: btn, buttons: 0, clickCount: 1 });
     }
     if (typeof pressText === "string" && pressText) { // gõ ký tự thật vào phần tử đang focus (vd "@")
       await send("Input.insertText", { text: pressText });
@@ -183,7 +184,24 @@ async function trustedInput(tabId, { x, y, pressEnter, pressEscape, pressKeys, p
 
 // ChatGPT / Grok / Gemini: tìm tab đang mở (hoặc mở mới), tiêm chat-content.js rồi gửi lệnh chạy
 // reqId (từ web Studio) -> tab web đã gửi lệnh
+// reqId -> { webTabId, startedAt }. Service worker MV3 tự ngủ khi chờ ảnh lâu (ChatGPT ~1 phút+): lưu vào storage để kết quả về vẫn tìm được tab web
 const webRequests = new Map();
+const webReqArea = chrome.storage.session || chrome.storage.local;
+let webReqLoaded = null;
+const ensureWebReqLoaded = () => {
+  if (!webReqLoaded) {
+    webReqLoaded = webReqArea.get("webRequests").then((r) => {
+      Object.entries((r && r.webRequests) || {}).forEach(([id, v]) => { if (!webRequests.has(id) && Date.now() - v.startedAt < 30 * 60 * 1000) webRequests.set(id, v); });
+    }).catch(() => {});
+  }
+  return webReqLoaded;
+};
+const persistWebReq = () => webReqArea.set({ webRequests: Object.fromEntries(webRequests) }).catch(() => {});
+{
+  const rawSet = webRequests.set.bind(webRequests), rawDelete = webRequests.delete.bind(webRequests);
+  webRequests.set = (k, v) => { const r = rawSet(k, v); persistWebReq(); return r; };
+  webRequests.delete = (k) => { const r = rawDelete(k); persistWebReq(); return r; };
+}
 
 const CHAT_PLATFORMS = {
   chatgpt: { match: ["https://chatgpt.com/*", "https://chat.openai.com/*"], open: "https://chatgpt.com/", login: "https://chatgpt.com/auth/login", name: "ChatGPT" },
@@ -482,6 +500,7 @@ const showStockFrame = (tabId, on) => chrome.scripting.executeScript({ target: {
 
 async function replyToWebTab(reqId, data) {
   await ensureStockLoaded();
+  await ensureWebReqLoaded();
   const pend = stockPending.get(reqId);
   const req = webRequests.get(reqId);
   const webTabId = pend ? pend.webTabId : req ? req.webTabId : null;
@@ -713,13 +732,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
         // Nguồn ChatGPT: tạo ảnh bằng ChatGPT
         if (options.provider === "chatgpt") {
+          // Đổ cấu hình sang side panel để extension tự chạy (tạo ảnh ChatGPT); side panel đóng thì chạy thẳng
+          const gptFill = { prompt, platform: "chatgpt", aspectRatio: options.aspectRatio || "1:1", chatgptEffort: options.chatgptEffort || 1, ui: options.ui || null, referenceImages: Array.isArray(options.referenceImages) ? options.referenceImages.slice(0, 3) : [], autoRun: true, reqId, at: Date.now() };
+          const handedOff = await chrome.runtime.sendMessage({ type: "WEB_FILL", payload: gptFill }).then(() => true).catch(() => false);
+          if (handedOff) {
+            webRequests.set(reqId, { webTabId: sender.tab ? sender.tab.id : null, startedAt: Date.now() });
+            return sendResponse({ ok: true, started: true });
+          }
           webRequests.set(reqId, { webTabId: sender.tab ? sender.tab.id : null, startedAt: Date.now() });
           const chatPayload = {
             prompts: [prompt],
             aspectRatio: options.aspectRatio || "1:1",
             platform: "chatgpt",
             chatgptEffort: options.chatgptEffort || 1,
-            autoDownload: false,
+            autoDownload: true,
             _webReq: reqId,
             referenceImages: Array.isArray(options.referenceImages) ? options.referenceImages.slice(0, 3) : [],
           };
@@ -729,6 +755,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             return sendResponse({ ok: false, code: (res && res.error) || "CHATGPT_FAILED", message: (res && (res.reason || res.error)) || "Không thể chạy ChatGPT" });
           }
           return sendResponse({ ok: true, started: true });
+        }
+        // Google Flow: đổ cấu hình sang side panel để extension tự chạy; side panel đóng thì chạy thẳng như cũ
+        if (!options.provider || options.provider === "flow") {
+          const flowFill = { prompt, platform: "flow", aspectRatio: options.aspectRatio || "16:9", model: options.model || "", batchCount: options.batchCount || 1, ui: options.ui || null, referenceImages: Array.isArray(options.referenceImages) ? options.referenceImages.slice(0, 3) : [], autoRun: true, reqId, at: Date.now() };
+          const handedOff = await chrome.runtime.sendMessage({ type: "WEB_FILL", payload: flowFill }).then(() => true).catch(() => false);
+          if (handedOff) {
+            webRequests.set(reqId, { webTabId: sender.tab ? sender.tab.id : null, startedAt: Date.now() });
+            return sendResponse({ ok: true, started: true });
+          }
         }
         // Hiện prompt + ảnh từ web vào side panel (nếu đang mở) và nhớ lại để lần mở side panel sau vẫn thấy
         const fill = { prompt, referenceImages: Array.isArray(options.referenceImages) ? options.referenceImages.slice(0, 3) : [], at: Date.now() };
@@ -816,13 +851,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     case "WEB_GEN_DONE": {
       // content.js (tab Flow) báo kết quả -> chuyển tiếp về tab web đã gửi lệnh
       const { reqId } = payload || {};
-      const req = webRequests.get(reqId);
-      webRequests.delete(reqId);
-      if (req && req.webTabId != null) {
-        chrome.tabs.sendMessage(req.webTabId, { type: "WEB_GEN_RESULT", reqId, ...(payload || {}) }).catch(() => {});
-      }
-      sendResponse({ ok: true });
-      return;
+      ensureWebReqLoaded().then(() => {
+        const req = webRequests.get(reqId);
+        webRequests.delete(reqId);
+        if (req && req.webTabId != null) {
+          chrome.tabs.sendMessage(req.webTabId, { type: "WEB_GEN_RESULT", reqId, ...(payload || {}) }).catch(() => {});
+        } else {
+          console.warn("[Flow Bridge] Không tìm thấy tab web cho lệnh", reqId);
+        }
+        sendResponse({ ok: true });
+      });
+      return true;
     }
 
     case "DISPATCH_GENERATE": {
@@ -836,7 +875,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
       }
       if (payload && payload.platform && payload.platform !== "flow" && CHAT_PLATFORMS[payload.platform]) {
-        dispatchToChatPlatform(payload).then(sendResponse);
+        dispatchToChatPlatform(payload).then((res) => {
+          // Lệnh đến từ web mà không chạy được (chưa đăng nhập, không mở được tab...): báo về web để web không chờ mãi
+          if (payload._webReq && (!res || res.success === false)) {
+            const why = res && res.error === "NOT_LOGGED_IN" ? `Chưa đăng nhập ${res.platformName || CHAT_PLATFORMS[payload.platform].name}. Hãy đăng nhập ở tab vừa mở rồi tạo lại.` : (res && (res.reason || res.error)) || "Không chạy được trên nền tảng này";
+            replyToWebTab(payload._webReq, { ok: false, code: (res && res.error) || "FAILED", message: why });
+          }
+          sendResponse(res);
+        });
         return true;
       }
       ensureActiveFlowTab().then(async (tab) => {

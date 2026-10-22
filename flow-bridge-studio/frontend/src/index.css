@@ -63,3 +63,19 @@ code, pre, kbd, samp {
 @media print {
   .edit-field { outline: none !important; background: none !important; }
 }
+
+/* In từ màn soạn Listening Gap Fill: chỉ in trang A4, ẩn mọi thứ khác (class do editor bật khi beforeprint) */
+@media print {
+  body.print-a4-only * { visibility: hidden !important; }
+  body.print-a4-only .a4-print-area,
+  body.print-a4-only .a4-print-area * { visibility: visible !important; }
+  body.print-a4-only .a4-print-area {
+    position: fixed !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 210mm !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    zoom: 1 !important;
+  }
+}

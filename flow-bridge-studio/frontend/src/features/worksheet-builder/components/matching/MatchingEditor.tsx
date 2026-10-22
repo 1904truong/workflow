@@ -1,8 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ArrowUp, ArrowDown, Copy, Trash2, Plus, Minus, ImagePlus, X, Check, ClipboardPaste, AlertTriangle, GripVertical,
-  ChevronUp, ChevronDown, Maximize2, FileText, LayoutGrid, Printer, Eye, ArrowDownUp, Sparkles, RefreshCw,
+  ChevronUp, ChevronDown, Maximize2, FileText, LayoutGrid, Printer, Eye, ArrowDownUp, Sparkles, RefreshCw, ListOrdered, Square, Contrast,
 } from 'lucide-react';
+import { RibbonToolbar, type RibbonShell } from '../shared/toolbar/RibbonToolbar';
+import type { ToolbarGroup } from '../shared/toolbar/EditorToolbar';
 import type { MatchingData, MatchingLayoutId, MatchingSettings } from '../../services/matching/matchingCore';
 import {
   MATCHING_LAYOUTS, newId, solutionLabel, parseMatchingText, matchingFromParsed, removeProblem, removeSolution,
@@ -26,6 +29,9 @@ interface Props {
   setTitle: (v: string) => void;
   instructions: string;
   setInstructions: (v: string) => void;
+  /** Phần tử trên màn hình soạn để đặt thanh công cụ (portal); lưu/quay lại do màn hình soạn cung cấp */
+  ribbonSlot?: HTMLElement | null;
+  shell?: RibbonShell;
 }
 
 const inputCls = 'w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500';
@@ -115,7 +121,7 @@ const AutoTextarea = (props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) 
   return <textarea ref={ref} rows={1} {...props} />;
 };
 
-export const MatchingEditor: React.FC<Props> = ({ value, onChange, onTitleDetected, title, setTitle, instructions, setInstructions }) => {
+export const MatchingEditor: React.FC<Props> = ({ value, onChange, onTitleDetected, title, setTitle, instructions, setInstructions, ribbonSlot, shell }) => {
   const [pasteText, setPasteText] = useState('');
   const [parsed, setParsed] = useState<ParsedMatching | null>(null);
   const [showPaste, setShowPaste] = useState(false);
@@ -396,7 +402,69 @@ export const MatchingEditor: React.FC<Props> = ({ value, onChange, onTitleDetect
     { id: 'preview', label: 'Preview', icon: <Eye size={15} /> },
   ];
 
+  // ── Thanh công cụ (kiểu Casual Docs): các nút gọi đúng hàm sẵn có của trình soạn này ──
+  const st = value.settings;
+  const openPaste = () => { setQaOpen(true); setShowPaste(true); };
+  const addProblem = () => { setQaOpen(true); set({ problems: [...value.problems, { id: newId('p'), text: '' }] }); };
+  const addSolution = () => { setQaOpen(true); set({ solutions: [...value.solutions, { id: newId('s'), text: '' }] }); };
+  const addReading = () => setBlocks([...readingBlocks, newReadingBlock()]);
+  const ribbonGroups: ToolbarGroup[] = [
+    {
+      id: 'text', label: 'Text',
+      items: [
+        { type: 'button', id: 'fs-', icon: Minus, label: 'Giảm cỡ chữ', disabled: st.fontSizePt <= 10, onClick: () => setSettings({ fontSizePt: Math.max(10, st.fontSizePt - 0.5) }) },
+        { type: 'text', id: 'fs', text: `${st.fontSizePt}pt`, title: 'Cỡ chữ (10–16pt)' },
+        { type: 'button', id: 'fs+', icon: Plus, label: 'Tăng cỡ chữ', disabled: st.fontSizePt >= 16, onClick: () => setSettings({ fontSizePt: Math.min(16, st.fontSizePt + 0.5) }) },
+      ],
+    },
+    {
+      id: 'paragraph', label: 'Paragraph',
+      items: [
+        { type: 'options', id: 'spacing', icon: ArrowDownUp, label: 'Line spacing – giãn dòng', sections: [{ value: st.lineSpacing, options: [{ value: 'compact', label: 'Compact' }, { value: 'normal', label: 'Normal' }, { value: 'spacious', label: 'Spacious' }], onChange: (v) => setSettings({ lineSpacing: v as MatchingSettings['lineSpacing'] }) }] },
+        { type: 'options', id: 'gap', icon: LayoutGrid, label: 'Column gap – khoảng cách cột', sections: [{ value: st.columnGapMm, options: [4, 8, 12, 16, 20, 30].map((n) => ({ value: n, label: `${n} mm` })), onChange: (v) => setSettings({ columnGapMm: v as number }) }] },
+        { type: 'divider' },
+        { type: 'button', id: 'numbering', icon: ListOrdered, label: 'Hiện số / chữ cái', active: st.showNumbering, onClick: () => setSettings({ showNumbering: !st.showNumbering }) },
+        { type: 'button', id: 'boxes', icon: Square, label: 'Hiện ô trả lời', active: st.showAnswerBoxes, onClick: () => setSettings({ showAnswerBoxes: !st.showAnswerBoxes }) },
+        { type: 'button', id: 'gray', icon: Contrast, label: 'In trắng đen (ảnh)', active: st.grayscale, onClick: () => setSettings({ grayscale: !st.grayscale }) },
+        ...(value.layout === 'cut_paste'
+          ? [{ type: 'options' as const, id: 'cutmode', icon: FileText, label: 'Cut & Paste mode', sections: [{ value: st.cutMode, options: [{ value: 'cut', label: 'Cắt và dán thẻ' }, { value: 'write', label: 'Viết chữ cái' }], onChange: (v: unknown) => setSettings({ cutMode: v as MatchingSettings['cutMode'] }) }] }]
+          : []),
+      ],
+    },
+    {
+      id: 'insert', label: 'Insert',
+      items: [
+        { type: 'button', id: 'ins-problem', icon: Plus, label: 'Add Problem – thêm một problem', onClick: addProblem },
+        { type: 'button', id: 'ins-solution', icon: Plus, label: 'Add Solution – thêm một solution', onClick: addSolution },
+        ...(value.layout === 'reading_images' ? [{ type: 'button' as const, id: 'ins-reading', icon: ImagePlus, label: 'Add reading block – thêm đoạn đọc có ảnh', onClick: addReading }] : []),
+      ],
+    },
+    {
+      id: 'layout', label: 'Page & Layout',
+      items: [
+        { type: 'layout', id: 'layout', value: value.layout, onChange: (id) => set({ layout: id as MatchingLayoutId }), options: MATCHING_LAYOUTS.map((l) => ({ id: l.id, label: l.label, thumb: <div className="h-11 flex items-center px-0.5"><Thumb id={l.id} /></div> })) },
+      ],
+    },
+    {
+      id: 'exercise', label: 'Exercise Tools',
+      items: [
+        { type: 'button', id: 'add-problem', icon: Plus, label: 'Add Problem – thêm một problem', onClick: addProblem },
+        { type: 'button', id: 'add-solution', icon: Plus, label: 'Add Solution – thêm một solution', onClick: addSolution },
+        { type: 'button', id: 'smart-paste', icon: ClipboardPaste, label: 'Smart Paste – dán đề, tự tách problems/solutions và chọn layout', active: showPaste, onClick: openPaste },
+        { type: 'button', id: 'retry-images', icon: RefreshCw, label: 'Tạo ảnh còn thiếu bằng extension', disabled: auto.phase === 'analyzing' || auto.phase === 'generating', disabledReason: 'Đang tạo ảnh…', onClick: () => void retryMissingImages() },
+      ],
+    },
+  ];
+  const ribbonShell: RibbonShell = {
+    ...shell,
+    zoom,
+    onZoom: setZoom,
+    onFitPage: () => setExpanded(true),
+  };
+
   return (
+    <>
+    {ribbonSlot && createPortal(<RibbonToolbar groups={ribbonGroups} shell={ribbonShell} />, ribbonSlot)}
     <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,1fr)] gap-6 items-start">
       {/* ───────── CỘT TRÁI: nội dung ───────── */}
       <div className="space-y-5 min-w-0">
@@ -823,5 +891,6 @@ export const MatchingEditor: React.FC<Props> = ({ value, onChange, onTitleDetect
         </div>
       )}
     </div>
+    </>
   );
 };

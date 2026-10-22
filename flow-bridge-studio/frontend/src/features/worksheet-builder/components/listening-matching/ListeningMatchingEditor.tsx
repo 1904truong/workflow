@@ -353,6 +353,19 @@ export const ListeningMatchingEditor: React.FC<Props> = ({ folder, editingExerci
           if (window.confirm('Xóa toàn bộ bài tập này?')) { onDeleteExercise(editingExercise.id); onCancel(); }
         } : undefined}
         renderMoreSection={renderMoreSection}
+        shell={{
+          onSave: () => handleSave('stay'),
+          onSaveAndReturn: () => handleSave('return'),
+          onExportDocx: () => exportWorksheetToDocx(buildWorksheet(true), 'student'),
+          onPrint: () => window.print(),
+          onBack: onCancel,
+          zoom,
+          onZoom: setZoom,
+          onFitPage: () => setPageFull(true),
+          previewMode: activeTab === 'preview',
+          onPreviewMode: (preview) => setActiveTab(preview ? 'preview' : 'edit_mode'),
+          undo: { onUndo: () => jump(pastRef.current, futureRef.current), onRedo: () => jump(futureRef.current, pastRef.current), canUndo, canRedo },
+        }}
         locked={locked}
       />
 

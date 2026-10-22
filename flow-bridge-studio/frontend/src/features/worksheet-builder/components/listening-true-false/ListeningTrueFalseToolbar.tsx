@@ -7,7 +7,8 @@ import {
 import type { TextStyle } from '../../services/matching-pictures/matchingPicturesCore';
 import type { ListeningTrueFalseData, TfStyleKey } from '../../services/listening-true-false/listeningTrueFalseCore';
 import { TF_LAYOUTS, TF_STYLE_LABELS } from '../../services/listening-true-false/listeningTrueFalseCore';
-import { EditorToolbar, type ToolbarGroup } from '../shared/toolbar/EditorToolbar';
+import { type ToolbarGroup } from '../shared/toolbar/EditorToolbar';
+import { RibbonToolbar, type RibbonShell } from '../shared/toolbar/RibbonToolbar';
 
 export type TfMoreKey = 'typography' | 'advanced';
 const MORE_SETTINGS: { key: TfMoreKey; label: string }[] = [
@@ -40,6 +41,8 @@ interface Props {
   onDuplicate: () => void;
   onDelete?: () => void;
   renderMoreSection: (key: TfMoreKey) => React.ReactNode;
+  /** Lưu / xuất Word / in / zoom / undo của editor, dùng cho các menu File, Edit, View của thanh công cụ */
+  shell?: RibbonShell;
   locked?: boolean;
 }
 
@@ -47,7 +50,7 @@ interface Props {
 export const ListeningTrueFalseToolbar: React.FC<Props> = ({
   data, selKey, onSelKey, curStyle, defaults, onFlag, onSizeDelta, onPatchStyle, onClearStyle, onSettings,
   onAddStatement, onSmartAI, onSmartPaste, onInsertExercise, onImageFile, onGenerateImage, generating,
-  onDuplicate, onDelete, renderMoreSection, locked = false,
+  onDuplicate, onDelete, renderMoreSection, locked = false, shell,
 }) => {
   const { settings } = data;
   const bold = curStyle?.bold ?? defaults.bold;
@@ -147,5 +150,5 @@ export const ListeningTrueFalseToolbar: React.FC<Props> = ({
     },
   ];
 
-  return <EditorToolbar groups={groups} dense locked={locked} />;
+  return <RibbonToolbar groups={groups} locked={locked} shell={shell} />;
 };

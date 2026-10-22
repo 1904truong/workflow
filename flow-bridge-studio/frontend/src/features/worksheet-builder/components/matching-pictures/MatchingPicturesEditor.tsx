@@ -868,6 +868,18 @@ export const MatchingPicturesEditor: React.FC<MatchingPicturesEditorProps> = ({
           }
         } : undefined}
         renderMoreSection={renderMoreSection}
+        shell={{
+          onSave: () => handleSave('stay'),
+          onSaveAndReturn: () => handleSave('return'),
+          onExportDocx: () => handleExportDocx('student'),
+          onPrint: handleExportPdf,
+          onBack: onCancel,
+          zoom,
+          onZoom: setZoom,
+          previewMode: activeTab === 'preview',
+          onPreviewMode: (preview) => setActiveTab(preview ? 'preview' : 'edit_mode'),
+          undo: { onUndo: handleUndo, onRedo: handleRedo, canUndo: historyIndex > 0, canRedo: historyIndex < history.length - 1 },
+        }}
         locked={activeTab === 'preview'}
       />
 

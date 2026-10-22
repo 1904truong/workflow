@@ -7,7 +7,8 @@ import {
 import type { TextStyle } from '../../services/matching-pictures/matchingPicturesCore';
 import type { GapFillingData, GapStyleKey } from '../../services/gap-filling/gapFillingCore';
 import { GAP_LAYOUTS, GAP_STYLE_LABELS } from '../../services/gap-filling/gapFillingCore';
-import { EditorToolbar, type ToolbarGroup } from '../shared/toolbar/EditorToolbar';
+import { type ToolbarGroup } from '../shared/toolbar/EditorToolbar';
+import { RibbonToolbar, type RibbonShell } from '../shared/toolbar/RibbonToolbar';
 
 export type GapMoreKey = 'typography' | 'advanced';
 const MORE_SETTINGS: { key: GapMoreKey; label: string }[] = [
@@ -37,13 +38,15 @@ interface Props {
   onDuplicate: () => void;
   onDelete?: () => void;
   renderMoreSection: (key: GapMoreKey) => React.ReactNode;
+  /** Lưu / xuất Word / in / zoom / undo của editor, dùng cho các menu File, Edit, View của thanh công cụ */
+  shell?: RibbonShell;
   locked?: boolean;
 }
 
 /** Thanh công cụ Gap Filling / Word Formation: cùng bộ nhóm với các dạng bài khác, nút Exercise Tools theo khung từ / chỗ trống. */
 export const GapFillingToolbar: React.FC<Props> = ({
   data, selKey, onSelKey, curStyle, defaults, onFlag, onSizeDelta, onPatchStyle, onClearStyle, onSettings,
-  onAddWord, onImportWords, onAddBlank, onSmartPaste, onInsertExercise, onDuplicate, onDelete, renderMoreSection, locked = false,
+  onAddWord, onImportWords, onAddBlank, onSmartPaste, onInsertExercise, onDuplicate, onDelete, renderMoreSection, locked = false, shell,
 }) => {
   const { settings } = data;
   const bold = curStyle?.bold ?? defaults.bold;
@@ -140,5 +143,5 @@ export const GapFillingToolbar: React.FC<Props> = ({
     },
   ];
 
-  return <EditorToolbar groups={groups} dense locked={locked} />;
+  return <RibbonToolbar groups={groups} locked={locked} shell={shell} />;
 };

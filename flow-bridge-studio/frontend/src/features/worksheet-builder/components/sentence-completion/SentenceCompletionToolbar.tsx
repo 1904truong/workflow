@@ -7,7 +7,8 @@ import {
 import type { TextStyle } from '../../services/matching-pictures/matchingPicturesCore';
 import type { SentenceCompletionData, SentenceStyleKey } from '../../services/sentence-completion/sentenceCompletionCore';
 import { SENTENCE_LAYOUTS, SENTENCE_STYLE_LABELS } from '../../services/sentence-completion/sentenceCompletionCore';
-import { EditorToolbar, type ToolbarGroup } from '../shared/toolbar/EditorToolbar';
+import { type ToolbarGroup } from '../shared/toolbar/EditorToolbar';
+import { RibbonToolbar, type RibbonShell } from '../shared/toolbar/RibbonToolbar';
 
 export type SentenceMoreKey = 'typography' | 'advanced';
 const MORE_SETTINGS: { key: SentenceMoreKey; label: string }[] = [
@@ -92,13 +93,15 @@ interface Props {
   onDuplicate: () => void;
   onDelete?: () => void;
   renderMoreSection: (key: SentenceMoreKey) => React.ReactNode;
+  /** Lưu / xuất Word / in / zoom / undo của editor, dùng cho các menu File, Edit, View của thanh công cụ */
+  shell?: RibbonShell;
   locked?: boolean;
 }
 
 /** Thanh công cụ Sentence Completion: cùng bộ nhóm với các dạng bài khác. */
 export const SentenceCompletionToolbar: React.FC<Props> = ({
   data, selKey, onSelKey, curStyle, defaults, onFlag, onSizeDelta, onPatchStyle, onClearStyle, onSettings,
-  onAddWord, onAddSentence, onImportSentences, onSmartPaste, onInsertExercise, onDuplicate, onDelete, renderMoreSection, locked = false,
+  onAddWord, onAddSentence, onImportSentences, onSmartPaste, onInsertExercise, onDuplicate, onDelete, renderMoreSection, locked = false, shell,
 }) => {
   const { settings } = data;
   const bold = curStyle?.bold ?? defaults.bold;
@@ -189,5 +192,5 @@ export const SentenceCompletionToolbar: React.FC<Props> = ({
     },
   ];
 
-  return <EditorToolbar groups={groups} dense locked={locked} />;
+  return <RibbonToolbar groups={groups} locked={locked} shell={shell} />;
 };

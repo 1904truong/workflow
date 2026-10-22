@@ -17,12 +17,15 @@ interface AppSidebarProps {
   activeNav: MainNavId;
   onNavigate: (navId: MainNavId) => void;
   foldersCount?: number;
+  /** Logo Pinta đã tải ở phần thương hiệu; chưa có thì hiện icon mặc định */
+  logoUrl?: string;
 }
 
 export const AppSidebar: React.FC<AppSidebarProps> = ({
   activeNav,
   onNavigate,
   foldersCount = 0,
+  logoUrl,
 }) => {
   const navItems = [
     { 
@@ -69,13 +72,16 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
       {/* Brand Header */}
       <div className="h-16 px-5 border-b border-slate-100 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20">
-            <Sparkles size={18} />
-          </div>
+          {logoUrl ? (
+            <img src={logoUrl} alt="Pinta English" className="w-9 h-9 rounded-xl object-contain bg-white" />
+          ) : (
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-blue-500/20">
+              <Sparkles size={18} />
+            </div>
+          )}
           <div>
             <div className="flex items-center gap-1.5">
-              <span className="font-bold text-sm text-slate-900 tracking-tight leading-none">Flow Bridge</span>
-              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-sm bg-blue-100 text-blue-700">Studio</span>
+              <span className="font-bold text-sm text-slate-900 tracking-tight leading-none">Auto Sheet</span>
             </div>
             <p className="text-[10px] text-slate-400 font-medium leading-tight mt-0.5">
               Worksheet Creator

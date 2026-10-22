@@ -73,6 +73,9 @@ interface ImageSourceState {
   chatgptStyleRef: string;
   chatgptBg: 'auto' | 'transparent' | 'white' | 'black';
   chatgptRefs: string[];
+  /** Google Flow: model ảnh và số ảnh mỗi lần tạo */
+  flowModel: string;
+  flowCount: number;
 }
 
 const DEFAULT_FILTERS: StockFilters = { orientation: 'auto', fileType: 'jpg', ai: '', people: '', peopleRange: '', peopleGender: '', peopleAge: '', peopleEthnicity: '', color: '', scenery: '', size: '', pexelsColor: '', detail: 'high', count: '1' };
@@ -93,7 +96,7 @@ const loadPrefs = (): Pick<ImageSourceState, 'filters' | 'flowRatio' | 'stockRat
   return { filters: { ...DEFAULT_FILTERS }, flowRatio: '', stockRatio: '', chatgptEffort: 1 };
 };
 
-let state: ImageSourceState = { provider: loadProvider(), keyword: '', chatgptStyle: '', chatgptPreset: (() => { try { return localStorage.getItem('fb_chatgpt_preset') || ''; } catch { return ''; } })(), chatgptMode: 'create', chatgptStyleRef: '', chatgptBg: 'auto', chatgptRefs: [], ...loadPrefs() };
+let state: ImageSourceState = { provider: loadProvider(), keyword: '', chatgptStyle: '', chatgptPreset: (() => { try { return localStorage.getItem('fb_chatgpt_preset') || ''; } catch { return ''; } })(), chatgptMode: 'create', chatgptStyleRef: '', chatgptBg: 'auto', chatgptRefs: [], flowModel: (() => { try { return localStorage.getItem('fb_flow_model') || 'Nano Banana 2.1'; } catch { return 'Nano Banana 2.1'; } })(), flowCount: 1, ...loadPrefs() };
 try { const saved = JSON.parse(localStorage.getItem('fb_image_prov_prefs') || '{}')[state.provider]; if (saved) state = { ...state, ...saved }; } catch { /* bỏ qua */ }
 const listeners = new Set<() => void>();
 
@@ -112,6 +115,7 @@ export const setImageSource = (patch: Partial<ImageSourceState>): void => {
     state = { ...state, ...next };
   }
   state = { ...state, ...patch };
+  if (patch.flowModel !== undefined) { try { localStorage.setItem('fb_flow_model', patch.flowModel); } catch { /* bỏ qua */ } }
   perProv[state.provider] = { keyword: state.keyword, filters: state.filters, stockRatio: state.stockRatio };
   try { localStorage.setItem(PROV_KEY, JSON.stringify(perProv)); } catch { /* bỏ qua */ }
   if (patch.provider) {

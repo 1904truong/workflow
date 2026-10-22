@@ -7,6 +7,23 @@ flow-bridge/node_modules
 .pnp
 .pnp.js
 
+# Python virtual environments & bytecode
+.venv
+.venv/
+**/.venv/
+**/venv/
+venv/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Local test scratchpad & generated audio
+edge-tts-test/
+*.mp3
+*.wav
+*.m4a
+
 # Production builds
 dist/
 dist-ssr/

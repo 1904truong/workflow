@@ -530,6 +530,34 @@
     return true;
   }
 
+  // Lệnh từ web: lưu ảnh lên Supabase, chờ upload xong, trả link có chữ ký (hiệu lực 7 ngày); null nếu chưa cấu hình Supabase
+  async function chatgptWebViaSupabase(src, prompt, opts) {
+    const st = await chrome.runtime.sendMessage({ type: "CLOUD_STATUS" }).catch(() => null);
+    if (!st || !st.ok || !st.configured || !st.signedIn) return null;
+    const blob = await fetchImageBlobAny(src);
+    const bmp = await createImageBitmap(blob);
+    const dims = { width: bmp.width, height: bmp.height };
+    bmp.close?.();
+    const jobId = crypto.randomUUID();
+    const r = await chrome.runtime.sendMessage({ type: "CLOUD_ENQUEUE", payload: { jobId, base64: await blobToBase64(blob), width: dims.width, height: dims.height, source: src.startsWith("blob:") ? "chatgpt:blob" : src.slice(0, 200), meta: { platform: "ChatGPT", prompt, model: `ChatGPT (mức ${opts.effort || 1}/3)`, aspectRatio: opts.aspectRatio || null, expected: 1, index: 0 } } });
+    if (!r || !r.ok) throw new Error(`${r && r.code}: ${r && r.error}`);
+    await chrome.runtime.sendMessage({ type: "CLOUD_FINISH_JOB", payload: { jobId, expected: 1 } }).catch(() => null);
+    let item = null;
+    const t0 = Date.now();
+    while (Date.now() - t0 < 150000) {
+      const q = await chrome.runtime.sendMessage({ type: "CLOUD_QUEUE" }).catch(() => null);
+      item = q && q.ok && (q.queue || []).find((x) => x.id === r.id);
+      if (item && item.status === "done") break;
+      if (item && item.status === "failed") throw new Error("Upload Supabase thất bại: " + (item.error || "không rõ"));
+      await sleep(1500);
+    }
+    if (!item || item.status !== "done" || !item.storagePath) throw new Error("Quá thời gian chờ upload Supabase");
+    const signed = await chrome.runtime.sendMessage({ type: "CLOUD_SIGN_URLS", payload: { paths: [item.storagePath], expiresIn: 604800 } }).catch(() => null);
+    const url = signed && signed.ok && signed.urls && signed.urls[item.storagePath];
+    if (!url) throw new Error("Không tạo được link ảnh Supabase");
+    return { ok: true, imageUrl: url, imageUrls: [url], source: "supabase", storagePath: item.storagePath };
+  }
+
   async function runOne(prompt, refs, opts) {
     let inputEl = await waitFor(findInput, 20000);
     if (!inputEl) throw new Error("Không tìm thấy ô nhập của " + platformOf());
@@ -556,7 +584,13 @@
     if (isGpt && !inImageMode(inputEl)) { await chatgptEnableImageMode(inputEl); inputEl = findInput() || inputEl; }
     await tClick(inputEl); // lấy focus bằng chuột thật
     await sleep(300);
-    const text = isGpt ? `${prompt}${opts.suffix}` : `${opts.prefix}${prompt}${opts.suffix}`;
+    // Có ảnh tham chiếu: đặt tên Ảnh 1, Ảnh 2... theo thứ tự đính và dặn ChatGPT dùng chúng làm style/tham chiếu
+    const refNote = refs.length
+      ? `I attached ${refs.length} reference image${refs.length > 1 ? "s" : ""} (${refs.map((_, i) => `Image ${i + 1}`).join(", ")}, in the order attached). Generate the new image in the style of, and based on, ${refs.length > 1 ? "these reference images" : "this reference image"}.
+
+`
+      : "";
+    const text = isGpt ? `${refNote}${prompt}${opts.suffix}` : `${opts.prefix}${refNote}${prompt}${opts.suffix}`;
     setPromptText(inputEl, text, { noClear: isGpt });
     if (isGpt) {
       // Bảo hiểm: nếu chip "Tạo ảnh" vẫn bị mất thì bật lại (chữ đã điền được giữ nguyên) rồi kiểm tra lại
@@ -607,28 +641,41 @@
       catch (e) { console.warn("[Flow Bridge][Chat] Tải ảnh thất bại:", e.message); say("Ảnh đã tạo nhưng chưa tải được: " + e.message, true); await sleep(2500); }
     }
     // Bước cuối: lưu ảnh lên Supabase (khi bật Auto Save Cloud)
-    if (isGpt) {
+    if (isGpt && !opts._webReq) {
       try { await chatgptSaveToCloud(before, prompt, opts); }
       catch (e) { console.warn("[Flow Bridge][Chat] Lưu Supabase thất bại:", e.message); say("Ảnh đã tạo nhưng chưa lưu được lên Supabase: " + e.message, true); await sleep(2500); }
     }
     // Nếu có yêu cầu từ web Studio: gửi URL ảnh về web
     if (opts._webReq) {
       try {
-        const fresh = [...bigImgs()].filter((im) => !before.has(im) && visible(im)).sort((a, b) => b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom)[0];
-        const src = fresh ? (fresh.currentSrc || fresh.src) : "";
+        const fresh = [...bigImgs()].filter((im) => !before.has(im) && visible(im)).sort((x, y) => y.getBoundingClientRect().bottom - x.getBoundingClientRect().bottom)[0] || done[done.length - 1];
+        let src = fresh ? (fresh.currentSrc || fresh.src) : "";
+        // Link ảnh ChatGPT cần đăng nhập/blob nên web không mở được: lưu lên Supabase rồi trả link; không có Supabase thì trả data URL
+        let result = null;
+        try { result = await chatgptWebViaSupabase(src, prompt, opts); } catch (e) { console.warn("[Flow Bridge][Chat] Supabase lỗi:", e.message); }
+        if (result) { chrome.runtime.sendMessage({ type: "WEB_GEN_DONE", payload: { reqId: opts._webReq, ...result } }).catch(() => {}); return done.length; }
+        try { if (src) src = "data:" + (await fetchImageBlobAny(src).then(async (b) => { const t = b.type || "image/png"; return t + ";base64," + await blobToBase64(b); })); } catch (e) { console.warn("[Flow Bridge][Chat] Không đổi được ảnh sang data URL:", e.message); }
+        if (!src) throw new Error("Không lấy được ảnh để gửi về web");
         chrome.runtime.sendMessage({
           type: "WEB_GEN_DONE",
           payload: { reqId: opts._webReq, ok: true, imageUrl: src, source: "chatgpt" }
         }).catch(() => {});
       } catch (e) {
         console.warn("[Flow Bridge][Chat] Báo web kết quả thất bại:", e);
+        chrome.runtime.sendMessage({ type: "WEB_GEN_DONE", payload: { reqId: opts._webReq, ok: false, code: "IMAGE_READ_FAILED", message: String(e && e.message || e) } }).catch(() => {});
       }
     }
     return done.length;
   }
 
+  // Lệnh từ web Studio: mọi lỗi phải báo về web ngay (không thì web chờ "Generating…" tới khi tự hết hạn)
+  const reportWebFail = (payload, code, message) => {
+    if (!payload || !payload._webReq) return;
+    chrome.runtime.sendMessage({ type: "WEB_GEN_DONE", payload: { reqId: payload._webReq, ok: false, code, message } }).catch(() => {});
+  };
+
   async function runQueue(payload) {
-    if (running) { say("Đang có tác vụ chạy, bỏ qua", true); hideToast(); return; }
+    if (running) { say("Đang có tác vụ chạy, bỏ qua", true); hideToast(); reportWebFail(payload, "BUSY", "Extension đang chạy một tác vụ khác trên ChatGPT. Hãy đợi xong (hoặc bấm Dừng) rồi tạo lại."); return; }
     running = true; stopped = false;
     FBGuard.show();
     const prompts = (payload.prompts || []).filter((p) => p && p.trim());
@@ -647,10 +694,11 @@
         say(`Xong prompt ${i + 1}/${prompts.length} (${n} ảnh)`);
         await sleep(2000);
       }
-      if (stopped) say("Đã dừng", true); else say(`Hoàn tất ${prompts.length} prompt`);
+      if (stopped) { say("Đã dừng", true); reportWebFail(payload, "STOPPED", "Bạn đã dừng việc tạo ảnh trên extension"); } else say(`Hoàn tất ${prompts.length} prompt`);
     } catch (e) {
       console.error("[Flow Bridge][Chat]", e);
       say("Lỗi: " + e.message, true);
+      reportWebFail(payload, /Quá thời gian/.test(e.message) ? "TIMEOUT" : "CHATGPT_FAILED", "ChatGPT không trả được ảnh: " + e.message);
     } finally {
       running = false;
       FBGuard.hide();

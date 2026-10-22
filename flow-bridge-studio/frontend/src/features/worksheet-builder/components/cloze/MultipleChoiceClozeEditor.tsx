@@ -636,6 +636,18 @@ export const MultipleChoiceClozeEditor: React.FC<Props> = ({
         onDelete={onDeleteExercise && editingExercise ? handleDelete : undefined}
         layoutThumb={(id) => <LayoutThumbnail layout={id} className="w-full h-14" />}
         renderMoreSection={renderMoreSection}
+        shell={{
+          onSave: () => handleSave('stay'),
+          onSaveAndReturn: () => handleSave('return'),
+          onExportDocx: handleExportDocx,
+          onPrint: () => window.print(),
+          onBack: onCancel,
+          zoom,
+          onZoom: setZoom,
+          previewMode: activeTab === 'preview',
+          onPreviewMode: (preview) => setActiveTab(preview ? 'preview' : 'edit'),
+          undo: { onUndo: undo, onRedo: redo, canUndo: past.length > 0, canRedo: future.length > 0 },
+        }}
         locked={locked}
       />
 
@@ -694,6 +706,7 @@ export const MultipleChoiceClozeEditor: React.FC<Props> = ({
               generating={imgGen.busy}
               prompt={imgPrompt}
               onPromptChange={setImgPrompt}
+              defaultPrompt={buildImagePrompt}
               message={imgGen.msg}
             />
           </section>

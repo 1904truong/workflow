@@ -489,6 +489,19 @@ export const ReadingMcqEditor: React.FC<Props> = ({ folder, editingExercise, onS
           if (window.confirm('Xóa toàn bộ bài tập này?')) { onDeleteExercise(editingExercise.id); onCancel(); }
         } : undefined}
         renderMoreSection={renderMoreSection}
+        shell={{
+          onSave: () => handleSave('stay'),
+          onSaveAndReturn: () => handleSave('return'),
+          onExportDocx: () => exportWorksheetToDocx(buildWorksheet(true), 'student'),
+          onPrint: () => window.print(),
+          onBack: onCancel,
+          zoom,
+          onZoom: setZoom,
+          onFitPage: () => setPageFull(true),
+          previewMode: activeTab === 'preview',
+          onPreviewMode: (preview) => setActiveTab(preview ? 'preview' : 'edit_mode'),
+          undo: { onUndo: () => jump(pastRef.current, futureRef.current), onRedo: () => jump(futureRef.current, pastRef.current), canUndo, canRedo },
+        }}
         locked={locked}
       />
 
@@ -542,6 +555,7 @@ export const ReadingMcqEditor: React.FC<Props> = ({ folder, editingExercise, onS
               generating={gen.busy}
               prompt={aiPrompt}
               onPromptChange={setAiPrompt}
+              defaultPrompt={defaultAiPrompt}
               message={gen.msg}
             />
             <label className="flex items-center gap-1.5 text-[11px] text-slate-600">Rộng

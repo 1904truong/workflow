@@ -341,7 +341,7 @@ export default function App() {
         description: folderData.description,
         estimatedDuration: folderData.estimatedDuration || 45,
         targetSkills: folderData.targetSkills || ['Reading', 'Vocabulary'],
-        schoolName: folderData.schoolName || 'Cambridge International Academy',
+        schoolName: folderData.schoolName || 'Pinta English',
         teacherName: folderData.teacherName || 'Sarah Jenkins',
         totalPoints: 20,
         status: 'draft',
@@ -560,6 +560,7 @@ export default function App() {
         activeNav={activeNavId}
         onNavigate={handleNavClick}
         foldersCount={folders.length}
+        logoUrl={folders.find((f) => f.printSettings?.branding?.logoUrl)?.printSettings?.branding?.logoUrl}
       />
 
       {/* Main Content Area */}

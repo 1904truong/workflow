@@ -17,7 +17,7 @@ interface AppHeaderProps {
 export const AppHeader: React.FC<AppHeaderProps> = ({
   breadcrumbs,
   saveStatus = 'saved',
-  schoolName = 'Cambridge International Academy',
+  schoolName = 'Pinta English',
   hideSaveStatus = false,
 }) => {
   return (

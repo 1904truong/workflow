@@ -59,13 +59,16 @@ Image needed: ${prompt}`), timeout]);
   return { keyword: local, byAi: false };
 };
 
-export const useAiImage = (opts: UseAiImageOptions) => {
-  const [gen, setGen] = useState<{ busy: boolean; msg: string }>({ busy: false, msg: '' });
+export type GenStatus = { busy: boolean; msg: string };
 
-  const generate = async (prompt?: string): Promise<boolean> => {
+/**
+ * Tạo một ảnh theo nguồn đang chọn (Flow / ChatGPT / Magnific / Pexels). Dùng cho nút từng bài (useAiImage) và cho Generate all.
+ * respectSource: true thì luôn theo nguồn đã chọn dù có truyền sẵn prompt (Generate all); mặc định Smart AI truyền prompt thì dùng Flow.
+ */
+export const runAiImage = async (opts: UseAiImageOptions, setGen: (s: GenStatus) => void, prompt?: string, respectSource = false): Promise<boolean> => {
     const p = (prompt || opts.getPrompt()).trim();
     // Tự động (Smart AI) truyền sẵn prompt thì luôn tạo bằng Flow; chỉ nút bấm tay mới theo nguồn đã chọn
-    const provider = prompt ? 'flow' : getImageSource().provider;
+    const provider = prompt && !respectSource ? 'flow' : getImageSource().provider;
 
     // ChatGPT: tạo ảnh AI qua extension
     if (provider === 'chatgpt') {
@@ -82,7 +85,10 @@ export const useAiImage = (opts: UseAiImageOptions) => {
           aspectRatio: getImageSource().flowRatio || opts.aspectRatio,
           referenceImages: [...getImageSource().chatgptRefs.slice(0, getImageSource().chatgptStyleRef ? 2 : 3), ...(getImageSource().chatgptStyleRef ? [getImageSource().chatgptStyleRef] : [])],
           provider: 'chatgpt',
+          // ChatGPT tạo tối đa ~4 phút + tải/upload ảnh: chờ lâu hơn mặc định 5 phút để không bỏ cuộc khi extension vẫn đang làm
+          timeoutMs: 10 * 60 * 1000,
           chatgptEffort: getImageSource().chatgptEffort || 1,
+          ui: { presetId: getImageSource().chatgptPreset || '', background: getImageSource().chatgptBg || '' },
         });
         opts.onImage(res.imageUrl, p);
         setGen({ busy: false, msg: 'Image generated with ChatGPT and added to the exercise.' });
@@ -133,7 +139,8 @@ export const useAiImage = (opts: UseAiImageOptions) => {
       return false;
     }
     try {
-      const res = await generateImageViaExtension({ prompt: buildFinalPrompt(p, opts.style), aspectRatio: getImageSource().flowRatio || opts.aspectRatio });
+      const src = getImageSource();
+      const res = await generateImageViaExtension({ prompt: buildFinalPrompt([p, presetText(src.chatgptPreset) ? `\n\n${presetText(src.chatgptPreset)}\n` : ''].filter(Boolean).join(', '), opts.style), aspectRatio: src.flowRatio || opts.aspectRatio, provider: 'flow', ui: { presetId: src.chatgptPreset || '' }, referenceImages: src.chatgptRefs.slice(0, 3), flowModel: src.flowModel, flowCount: src.flowCount || 1 });
       opts.onImage(res.imageUrl, p);
       setGen({ busy: false, msg: 'Image generated and added to the exercise.' });
       return true;
@@ -141,7 +148,10 @@ export const useAiImage = (opts: UseAiImageOptions) => {
       setGen({ busy: false, msg: friendlyExtensionError(e instanceof Error ? e.message : 'Could not generate the image') });
       return false;
     }
-  };
+};
 
+export const useAiImage = (opts: UseAiImageOptions) => {
+  const [gen, setGen] = useState<GenStatus>({ busy: false, msg: '' });
+  const generate = (prompt?: string): Promise<boolean> => runAiImage(opts, setGen, prompt);
   return { gen, generate };
 };

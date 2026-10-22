@@ -1,5 +1,7 @@
+import { TtsAudioButton } from '../shared/TtsAudioButton';
+import { publicAudioUrl, type StoredAudio } from '../../services/tts/audioStorage';
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
-import { createPortal } from 'react-dom';
+import { createPortal, flushSync } from 'react-dom';
 import { PageZoomOverlay } from '../shared/PageZoomOverlay';
 import { ArrowLeft, Check, Plus, Trash2, Copy, ImagePlus, X, ClipboardPaste, Maximize2, Minimize, Minus, ChevronLeft, ChevronRight, ChevronDown, Eye, Play, Pause, Headphones, Upload, FileDown, Printer, MoreHorizontal, Undo2, Redo2, Save, Link2, QrCode, AlertCircle } from 'lucide-react';
 import type { LessonFolder, Exercise, Worksheet } from '../../types';
@@ -14,6 +16,8 @@ import {
   createListeningGapFill,
   insertBlankInParagraph,
   resequenceListeningBlanks,
+  bakeParagraphFormat,
+  applyMarksToParagraph,
   getNextBlankLabel,
   normalizeAudioLink,
   formatAudioDuration,
@@ -31,6 +35,8 @@ import { PHOTO_STYLE } from '../../services/matching/autoMatching';
 import { ListeningGapFillRenderer } from './ListeningGapFillRenderer';
 import { WorksheetRenderer } from '../preview/WorksheetRenderer';
 import { ListeningToolbar, type MoreSectionKey } from './ListeningToolbar';
+import { RichParagraphInput, gapRanges, mapOffsetAfterResequence, type RichEdit, type RichParagraphHandle, type RichSelectionInfo } from './RichParagraphInput';
+import { segmentText, attrsToStyle, applyMarkPatch, marksAfterTextChange, type TextMark, type TextMarkAttrs } from '../../services/listening/textMarks';
 import { BrandHeader } from '../preview/BrandHeader';
 import { BrandFooter } from '../preview/BrandFooter';
 import { resolveBranding, fileToSmallDataUrl } from '../../types/branding';
@@ -113,8 +119,38 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
   const canUndo = pastRef.current.length > 0;
   const canRedo = futureRef.current.length > 0;
 
-  const textareaRefs = useRef<Record<number, HTMLTextAreaElement | null>>({});
   const cursorRef = useRef<{ index: number; pos: number }>({ index: 0, pos: 0 });
+  // Có nhiều ô soạn cùng lúc (đoạn đang mở ở cột trái + từng đoạn trên trang A4). Thanh công cụ luôn nhắm vào ô người dùng
+  // thao tác gần nhất: `activeEditorRef` giữ ô đó, đoạn của nó và độ dài tiền tố không sửa được (layout cắt tên người nói, dấu "+").
+  const activeEditorRef = useRef<{ handle: RichParagraphHandle; index: number; offset: number } | null>(null);
+  const [richInfo, setRichInfo] = useState<RichSelectionInfo | null>(null);
+  const richInfoRef = useRef<RichSelectionInfo | null>(null);
+  const activeParaRef = useRef(0);
+  const selectedExtraRef = useRef<string | null>(null);
+  const activeHandle = () => activeEditorRef.current?.handle ?? null;
+  // Bấm vào một đoạn để sửa: đặt con trỏ ngay chỗ bấm (như Word) thay vì bắt bấm thêm lần nữa
+  const [focusRequest, setFocusRequest] = useState<{ index: number; pos: number } | null>(null);
+  useEffect(() => { if (focusRequest) setFocusRequest(null); }, [focusRequest]);
+  const caretOffsetFromClick = (e: React.MouseEvent<HTMLElement>, textLen: number): number => {
+    const doc = document as Document & { caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null };
+    let node: Node | null = null;
+    let off = 0;
+    if (doc.caretPositionFromPoint) {
+      const cp = doc.caretPositionFromPoint(e.clientX, e.clientY);
+      node = cp?.offsetNode ?? null;
+      off = cp?.offset ?? 0;
+    } else if (document.caretRangeFromPoint) {
+      const r = document.caretRangeFromPoint(e.clientX, e.clientY);
+      node = r?.startContainer ?? null;
+      off = r?.startOffset ?? 0;
+    }
+    const p = e.currentTarget.querySelector('p');
+    if (!node || !p || !p.contains(node)) return textLen;
+    const rg = document.createRange();
+    rg.selectNodeContents(p);
+    rg.setEnd(node, off);
+    return Math.min(textLen, rg.toString().length);
+  };
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -164,8 +200,9 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
       autosaveReady.current = true;
       return;
     }
-    setSaveStatus('saving');
-    setIsDirty(true);
+    // Chỉ cập nhật khi giá trị đổi: gõ liên tục mà vẫn gọi setState thừa ở đây sẽ làm React báo "Maximum update depth"
+    if (saveStatus !== 'saving') setSaveStatus('saving');
+    if (!isDirty) setIsDirty(true);
     const h = window.setTimeout(() => {
       const cur = latestRef.current;
       if (!cur) return;
@@ -177,6 +214,15 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
 
   const [activeTab, setActiveTab] = useState<'preview' | 'edit_mode'>('edit_mode');
   const [zoom, setZoom] = useState<number>(100);
+  // Khi in: bỏ các ô soạn trên A4 để bản in giống hệt Preview (chỗ trống vẽ đúng kiểu in, không có viền/nền của ô sửa)
+  const [printing, setPrinting] = useState<boolean>(false);
+  useEffect(() => {
+    const before = () => { document.body.classList.add('print-a4-only'); flushSync(() => setPrinting(true)); };
+    const after = () => { document.body.classList.remove('print-a4-only'); setPrinting(false); };
+    window.addEventListener('beforeprint', before);
+    window.addEventListener('afterprint', after);
+    return () => { window.removeEventListener('beforeprint', before); window.removeEventListener('afterprint', after); document.body.classList.remove('print-a4-only'); };
+  }, []);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [pageFull, setPageFull] = useState(false);
   const [showSmartPaste, setShowSmartPaste] = useState<boolean>(false);
@@ -186,6 +232,7 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
   const [isPlayingAudio, setIsPlayingAudio] = useState<boolean>(false);
   const [activeParagraphIndex, setActiveParagraphIndex] = useState<number>(0);
+  activeParaRef.current = activeParagraphIndex;
 
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   useLayoutEffect(() => {
@@ -273,6 +320,7 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
 
   // ── Định dạng đoạn đang chọn / phần tử chèn thêm ──
   const [selectedExtraId, setSelectedExtraId] = useState<string | null>(null);
+  selectedExtraRef.current = selectedExtraId;
   const selectedExtra = (data.extras || []).find((x) => x.id === selectedExtraId) || null;
 
   const handleParaFormat = (patch: ListeningParagraphFormat) => {
@@ -318,10 +366,15 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
   };
 
   const handleClearFormat = () => {
+    const sel = activeHandle()?.getSelection();
+    if (sel && sel.end > sel.start) {
+      activeHandle()!.clearFormat(); // chỉ xóa định dạng vùng đang bôi đen
+      return;
+    }
     const paras = [...data.paragraphs];
     const cur = paras[activeParagraphIndex];
     if (!cur) return;
-    paras[activeParagraphIndex] = { ...cur, format: undefined };
+    paras[activeParagraphIndex] = { ...cur, format: undefined, marks: undefined };
     update({ paragraphs: paras });
   };
 
@@ -807,29 +860,151 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
   const nextLabel = getNextBlankLabel(data.blanks);
 
   const handleInsertBlank = () => {
-    const pIdx = activeParagraphIndex;
-    const curPos = cursorRef.current.index === pIdx ? cursorRef.current.pos : undefined;
-    const updated = insertBlankInParagraph(data, pIdx, curPos);
+    const act = activeEditorRef.current;
+    const pIdx = act?.index ?? activeParagraphIndex;
+    const off = act?.offset ?? 0; // ô trên A4 có thể bỏ qua tiền tố: đổi về vị trí trong toàn bộ chữ của đoạn
+    const sel = act?.handle.getSelection();
+    const curPos = sel ? sel.start + off : cursorRef.current.index === pIdx ? cursorRef.current.pos : undefined;
+    const selEnd = sel && sel.end > sel.start ? sel.end + off : undefined; // đang bôi đen: vùng chọn được thay bằng chỗ trống
+    const oldText = data.paragraphs[pIdx]?.text ?? '';
+    const updated = insertBlankInParagraph(data, pIdx, curPos, selEnd);
     setData(updated);
 
-    // Đưa con trỏ và focus vào ngay sau chỗ trống vừa chèn
-    setTimeout(() => {
-      const el = textareaRefs.current[pIdx];
-      if (el) {
-        el.focus();
-        if (typeof curPos === 'number') {
-          const nextPos = Math.min(el.value.length, curPos + 16);
-          el.setSelectionRange(nextPos, nextPos);
-          cursorRef.current = { index: pIdx, pos: nextPos };
-        }
-      }
-    }, 40);
+    // Đưa con trỏ vào ngay sau chỗ trống vừa chèn (chỗ trống mới = chỗ trống thứ n+1, n = số chỗ trống đứng trước con trỏ)
+    const newText = updated.paragraphs[pIdx]?.text ?? '';
+    const before = gapRanges(oldText).filter((g) => g.end <= (curPos ?? oldText.length)).length;
+    const target = gapRanges(newText)[before];
+    const pos = target ? target.end : newText.length;
+    setTimeout(() => act?.handle.focusAt(Math.max(0, pos - off)), 40);
   };
 
-  const handleUpdateParagraphText = (index: number, newText: string) => {
+  const gapLabels = (t: string) => gapRanges(t).map((g) => t.slice(g.start, g.end).replace(/\s*_+$/, '')).join('|');
+
+  const sameInfo = (a: RichSelectionInfo | null, b: RichSelectionInfo | null) =>
+    a === b || (!!a && !!b && a.collapsed === b.collapsed && JSON.stringify(a.attrs) === JSON.stringify(b.attrs));
+
+  /** Mọi ô soạn (cột trái và từng đoạn trên A4) báo về đây. Ô được người dùng thao tác trở thành ô đang hoạt động và kéo theo đoạn đang chọn. */
+  const handleSelectionInfo = (index: number, offset: number, info: RichSelectionInfo | null, handle: RichParagraphHandle) => {
+    const act = activeEditorRef.current;
+    if (!info) {
+      if (act?.handle === handle) { activeEditorRef.current = null; if (richInfoRef.current) { richInfoRef.current = null; setRichInfo(null); } }
+      return;
+    }
+    if (!info.user && act?.handle !== handle) return; // làm mới tự động của ô không hoạt động: bỏ qua
+    activeEditorRef.current = { handle, index, offset };
+    // Chỉ gọi setState khi giá trị thật sự đổi: gõ nhanh phát sinh rất nhiều báo cáo, mỗi lần gọi thừa đều tốn một lượt render
+    if (!sameInfo(richInfoRef.current, info)) { richInfoRef.current = info; setRichInfo(info); }
+    if (info.user) {
+      const s = handle.getSelection();
+      if (s) cursorRef.current = { index, pos: s.start + offset };
+      if (activeParaRef.current !== index) setActiveParagraphIndex(index);
+      if (selectedExtraRef.current !== null) setSelectedExtraId(null);
+    }
+  };
+
+  /** Chỉnh sửa cấp tài liệu từ trang A4 (xuyên nhiều đoạn): lưu danh sách đoạn mới, đánh lại nhãn chỗ trống khi bộ chỗ trống/đoạn đổi. */
+  const handleDocEdit = (next: ListeningParagraph[]): ListeningParagraph[] => {
+    const prev = dataRef.current;
+    const sig = (ps: ListeningParagraph[]) => ps.map((p) => `${p.id}:${gapLabels(p.text)}`).join('|');
+    let nextData: ListeningGapFillData = { ...prev, paragraphs: next };
+    if (sig(prev.paragraphs) !== sig(next)) nextData = resequenceListeningBlanks(nextData);
+    setData(nextData);
+    return nextData.paragraphs;
+  };
+
+  /** Sửa chữ của một đoạn bằng hàm biến đổi (tên người nói, tiêu đề cột, dòng điền form...); marks dịch theo, nhãn chỗ trống đánh lại nếu cần. */
+  const handleParagraphText = (paraId: string, fn: (text: string) => string) => {
+    const prev = dataRef.current;
+    const i = prev.paragraphs.findIndex((p) => p.id === paraId);
+    if (i < 0) return;
+    const old = prev.paragraphs[i];
+    const text = fn(old.text);
+    if (text === old.text) return;
+    handleDocEdit(prev.paragraphs.map((p, k) => (k === i ? { ...p, text, marks: marksAfterTextChange(old.text, text, old.marks) } : p)));
+  };
+
+  /** Nhận chỉnh sửa từ ô soạn: lưu text + marks, đánh lại nhãn chỗ trống nếu bộ chỗ trống đổi, trả nội dung cuối cùng. */
+  const handleRichEdit = (index: number, edit: RichEdit): RichEdit => {
+    const prev = dataRef.current;
+    const para = prev.paragraphs[index];
+    if (!para) return edit;
+    let next: ListeningGapFillData = {
+      ...prev,
+      paragraphs: prev.paragraphs.map((p, i) => (i === index ? { ...p, text: edit.text, marks: edit.marks } : p)),
+    };
+    let result = edit;
+    if (gapLabels(para.text) !== gapLabels(edit.text)) {
+      next = resequenceListeningBlanks(next);
+      const np = next.paragraphs[index];
+      result = {
+        text: np.text,
+        marks: np.marks,
+        caret: mapOffsetAfterResequence(edit.text, np.text, edit.caret),
+        caretEnd: mapOffsetAfterResequence(edit.text, np.text, edit.caretEnd),
+      };
+    }
+    setData(next); // trạng thái "đang lưu / đã lưu" do hiệu ứng tự lưu theo [data] đặt
+    return result;
+  };
+
+  /** B/I/U/màu/tô nền/font/cỡ chữ: áp lên vùng chọn trong ô soạn; chưa có ô soạn nào đang chọn thì áp cho cả đoạn. */
+  const handleMarkFormat = (patch: TextMarkAttrs) => {
+    const h = activeHandle();
+    if (h?.hasSelection()) {
+      h.applyFormat(patch);
+      return;
+    }
+    const cur = data.paragraphs[activeParagraphIndex];
+    if (!cur) return;
     const paras = [...data.paragraphs];
-    paras[index] = { ...paras[index], text: newText };
+    paras[activeParagraphIndex] = applyMarksToParagraph(cur, patch);
     update({ paragraphs: paras });
+  };
+
+  /** Kiểu đoạn: Normal (bỏ định dạng chữ cả đoạn) / Heading (đậm, lớn hơn 2pt) / Subheading (đậm); Heading & Subheading bỏ số thứ tự. */
+  const handleParagraphStyle = (kind: 'normal' | 'heading' | 'subheading') => {
+    const cur = data.paragraphs[activeParagraphIndex];
+    if (!cur) return;
+    const len = cur.text.length;
+    const size = data.settings.passageFontSizePt + 2;
+    const marks = kind === 'normal' ? undefined : applyMarkPatch(undefined, len, 0, len, kind === 'heading' ? { bold: true, fontSizePt: size } : { bold: true });
+    const format = { ...cur.format, bold: undefined, italic: undefined, underline: undefined, color: undefined, highlight: undefined, ...(kind === 'normal' ? {} : { list: 'none' as const }) };
+    const paras = [...data.paragraphs];
+    paras[activeParagraphIndex] = { ...cur, marks, format };
+    update({ paragraphs: paras });
+  };
+
+  // Bài cũ lưu đậm/nghiêng/màu... ở mức cả đoạn: khi mở đoạn để sửa thì đổi sang định dạng theo từng từ (hiển thị y hệt)
+  useEffect(() => {
+    const cur = data.paragraphs[activeParagraphIndex];
+    if (!cur) return;
+    const baked = bakeParagraphFormat(cur);
+    if (baked !== cur) {
+      const paras = [...data.paragraphs];
+      paras[activeParagraphIndex] = baked;
+      setData({ ...data, paragraphs: paras });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeParagraphIndex, data.paragraphs[activeParagraphIndex]?.format]);
+
+  const renderEditorText = (text: string, marks?: TextMark[]) => {
+    const nodes: React.ReactNode[] = [];
+    let last = 0;
+    const addText = (from: number, to: number) =>
+      segmentText(marks, from, to).forEach((seg) => nodes.push(<span key={`t${seg.start}`} style={attrsToStyle(seg.attrs) as React.CSSProperties}>{text.slice(seg.start, seg.end)}</span>));
+    for (const g of gapRanges(text)) {
+      addText(last, g.start);
+      const m = /^\(([^)]+)\)\s*(_+)$/.exec(text.slice(g.start, g.end));
+      nodes.push(
+        <span key={`g${g.start}`}>
+          <span className="font-bold text-blue-600">({m?.[1]})</span>{' '}
+          <span className="text-slate-500">{m?.[2]}</span>
+        </span>,
+      );
+      last = g.end;
+    }
+    addText(last, text.length);
+    return nodes;
   };
 
   const handleAddParagraph = () => {
@@ -907,8 +1082,45 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
   const handleAudioUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
-    if (!file) return;
+    if (file) applyAudioFile(file);
+  };
 
+  // Audio lưu trên Supabase: dựng lại link theo cấu hình hiện tại
+  useEffect(() => {
+    const sp = data.audio.storagePath;
+    if (!sp) return;
+    const url = publicAudioUrl(sp);
+    if (url && (data.audio.audioUrl !== url || data.audio.shareUrl !== url)) {
+      setData((prev) => ({ ...prev, audio: { ...prev.audio, audioUrl: url, shareUrl: url, sourceType: 'link' } }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data.audio.storagePath]);
+
+  const handleAudioStored = (stored: StoredAudio, file: File) => {
+    audioRef.current?.pause();
+    audioRef.current = null;
+    setIsPlayingAudio(false);
+    update({
+      audio: {
+        filename: file.name,
+        sizeMb: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
+        durationStr: '00:00',
+        audioUrl: stored.publicUrl,
+        shareUrl: stored.publicUrl,
+        storagePath: stored.storagePath,
+        sourceType: 'link',
+      },
+      settings: { ...data.settings, showQrCode: true },
+    });
+    readAudioDuration(stored.publicUrl, (sec) =>
+      setData((prev) => ({
+        ...prev,
+        audio: { ...prev.audio, durationStr: formatAudioDuration(sec), durationSeconds: sec || undefined },
+      }))
+    );
+  };
+
+  const applyAudioFile = (file: File) => {
     const sizeMb = (file.size / (1024 * 1024)).toFixed(1) + ' MB';
     const objectUrl = URL.createObjectURL(file);
     audioRef.current?.pause();
@@ -1238,6 +1450,10 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
         selectedExtra={selectedExtra}
         onSettings={updateSettings}
         onParaFormat={handleParaFormat}
+        richInfo={richInfo}
+        onMarkFormat={handleMarkFormat}
+        onParagraphStyle={handleParagraphStyle}
+        onEditCommand={(cmd) => (cmd === 'selectAll' ? activeHandle()?.selectAll() : activeHandle()?.execClipboard(cmd))}
         onClearFormat={handleClearFormat}
         onImageFile={(ev) => handleParagraphImageUpload(ev, activeParagraphIndex)}
         imageSupported={imageSupported}
@@ -1249,11 +1465,22 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
         nextBlankLabel={nextLabel}
         onInsertExercise={() => handleSave('return')}
         onSmartPaste={() => setShowSmartPaste(true)}
+        onResequence={() => setData(resequenceListeningBlanks(data))}
         onDuplicateExtra={handleDuplicateExtra}
         onAddExtra={handleAddExtra}
         onMoveExtra={handleMoveExtra}
         onAlignExtra={handleAlignExtra}
         renderMoreSection={renderMoreSection}
+        onSave={() => handleSave('stay')}
+        onExportDocx={() => handleExportDocx('student')}
+        onPrint={handleExportPdf}
+        onBack={onCancel}
+        zoom={zoom}
+        onZoom={setZoom}
+        onFitPage={() => setPageFull(true)}
+        previewMode={activeTab === 'preview'}
+        onPreviewMode={(preview) => setActiveTab(preview ? 'preview' : 'edit_mode')}
+        undo={{ onUndo: handleUndo, onRedo: handleRedo, canUndo, canRedo }}
         locked={activeTab === 'preview'}
       />
 
@@ -1403,6 +1630,7 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
                       <Upload size={16} strokeWidth={1.75} /> Upload
                       <input type="file" accept="audio/*" hidden onChange={handleAudioUpload} />
                     </label>
+                    <TtsAudioButton onFile={applyAudioFile} onStored={handleAudioStored} className="h-8 px-3 inline-flex items-center gap-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-100 rounded-lg transition-colors" />
 
                     <button
                       type="button"
@@ -1630,48 +1858,29 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
                                 </button>
                               </div>
                             </div>
-                            <textarea
-                              ref={(el) => { textareaRefs.current[pIdx] = el; }}
-                              rows={4}
-                              value={para.text}
-                              onSelect={(e) => {
-                                cursorRef.current = { index: pIdx, pos: e.currentTarget.selectionStart };
-                              }}
-                              onClick={(e) => {
-                                cursorRef.current = { index: pIdx, pos: e.currentTarget.selectionStart };
-                              }}
-                              onKeyUp={(e) => {
-                                cursorRef.current = { index: pIdx, pos: e.currentTarget.selectionStart };
-                              }}
-                              onChange={(e) => {
-                                cursorRef.current = { index: pIdx, pos: e.currentTarget.selectionStart };
-                                handleUpdateParagraphText(pIdx, e.target.value);
-                              }}
-                              className="w-full p-2 border border-slate-200 rounded-md text-xs text-slate-900 leading-relaxed focus:outline-none focus:ring-1 focus:ring-blue-500/30 resize-y"
+                            <RichParagraphInput
+                              text={para.text}
+                              marks={para.marks}
+                              initialCaret={focusRequest?.index === pIdx ? focusRequest.pos : undefined}
+                              onEdit={(edit) => handleRichEdit(pIdx, edit)}
+                              onSelectionInfo={(info, handle) => handleSelectionInfo(pIdx, 0, info, handle)}
+                              className="w-full min-h-[5.5rem] p-2 border border-slate-200 rounded-md text-xs text-slate-900 leading-relaxed focus:outline-none focus:ring-1 focus:ring-blue-500/30"
                             />
                           </div>
                         ) : (
                           <div
-                            onClick={() => {
+                            onClick={(e) => {
+                              const pos = caretOffsetFromClick(e, para.text.length);
                               setActiveParagraphIndex(pIdx);
                               setSelectedExtraId(null);
-                              cursorRef.current = { index: pIdx, pos: para.text.length };
+                              cursorRef.current = { index: pIdx, pos };
+                              setFocusRequest({ index: pIdx, pos });
                             }}
                             className="flex gap-2 text-[12.5px] leading-relaxed text-slate-900 cursor-text rounded-md hover:bg-slate-50 px-1 -mx-1"
                           >
                             <span className="font-bold shrink-0 w-4">{num}.</span>
                             <p className="flex-1 min-w-0">
-                              {para.text.split(/(\([A-Za-z0-9]+\)\s*_{2,})/g).map((part, i) => {
-                                const m = part.match(/^\(([A-Za-z0-9]+)\)\s*(_{2,})$/);
-                                return m ? (
-                                  <span key={i}>
-                                    <span className="font-bold text-blue-600">({m[1]})</span>{' '}
-                                    <span className="text-slate-500">{m[2]}</span>
-                                  </span>
-                                ) : (
-                                  <span key={i}>{part}</span>
-                                );
-                              })}
+                              {renderEditorText(para.text, para.marks)}
                             </p>
                           </div>
                         )}
@@ -1726,6 +1935,7 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
                   generating={bodyGen.busy}
                   prompt={data.bodyImage?.prompt || ''}
                   onPromptChange={(v) => update({ bodyImage: { ...data.bodyImage, prompt: v } })}
+                  defaultPrompt={buildBodyImagePrompt}
                   message={bodyGen.msg}
                 />
               </section>
@@ -1917,7 +2127,7 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
           {/* Realistic A4 Paper Canvas */}
           <div ref={canvasRef} className="flex-1 min-h-0 overflow-auto bg-slate-200/60 p-3 rounded-2xl flex justify-center items-start shadow-inner">
             <div
-              className="bg-white text-[#111] shadow-2xl transition-all flex flex-col justify-between"
+              className="a4-print-area bg-white text-[#111] shadow-2xl transition-all flex flex-col justify-between"
               style={{
                 width: '210mm',
                 minHeight: '297mm',
@@ -1937,7 +2147,7 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
                     exerciseIndex={data.exerciseNumber || 3}
                     selectedExtraId={selectedExtraId}
                     onSelectExtra={setSelectedExtraId}
-                    editable={activeTab === 'edit_mode' ? { onTitle: (v) => update({ exerciseTitle: v }), onPassageTitle: (v) => update({ passageTitle: v }) } : undefined}
+                    editable={activeTab === 'edit_mode' && !printing ? { onTitle: (v) => update({ exerciseTitle: v }), onPassageTitle: (v) => update({ passageTitle: v }), onIntro: (v) => update({ intro: v }), onExerciseNumber: (n) => update({ exerciseNumber: n }), onExtraText: (id, text) => patchExtra(id, { text }), onExtraCell: (id, r, c, v) => { const x = (data.extras || []).find((e) => e.id === id); if (x) setTableCell(x, r, c, v); }, onQuestion: (id, text) => setQuestions(questions.map((q) => (q.id === id ? { ...q, text } : q))), onParagraphText: handleParagraphText, paragraphs: { onDocEdit: handleDocEdit, onSelection: handleSelectionInfo } } : undefined}
                     onSelectBlank={(bId) => {
                       setSelectedBlankId(bId);
                       blankRefs.current[bId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });

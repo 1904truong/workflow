@@ -198,7 +198,7 @@ export function parseWorksheetText(rawText: string): ParseResult {
     lesson: headerMeta.lesson || 'LESSON 1',
     gradeLevel: headerMeta.gradeLevel || 'Level B1',
     subject: 'English',
-    schoolName: headerMeta.schoolName || 'Cambridge International Academy',
+    schoolName: headerMeta.schoolName || 'Pinta English',
     teacherName: headerMeta.teacherName || 'English Teacher',
     totalTimeMinutes: headerMeta.timeMinutes || 45,
     totalPoints: totalPoints,

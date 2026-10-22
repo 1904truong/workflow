@@ -94,6 +94,7 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
 
   // Search & categories for step 1
   const [typeSearch, setTypeSearch] = useState('');
+  const [ribbonSlot, setRibbonSlot] = useState<HTMLDivElement | null>(null);
   const [typeCategory, setTypeCategory] = useState<string>('all');
 
   const categories = [
@@ -510,6 +511,9 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
         )}
       </div>
 
+      {/* Thanh công cụ (Matching Information) – MatchingEditor đưa vào đây bằng portal */}
+      {step === 'editor' && isMatchingInfo && <div ref={setRibbonSlot} className="shrink-0" />}
+
       {/* STEP 1: SELECT EXERCISE TYPE */}
       {step === 'select_type' && (
         <div className="flex-1 overflow-y-auto p-6 md:p-8 max-w-5xl w-full mx-auto space-y-6">
@@ -675,6 +679,13 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
               setTitle={setTitle}
               instructions={instructions}
               setInstructions={setInstructions}
+              ribbonSlot={ribbonSlot}
+              shell={{
+                onSave: () => handleSave('stay'),
+                onSaveAndAdd: () => handleSave('add_another'),
+                onSaveAndReturn: () => handleSave('return'),
+                onBack: step === 'editor' && !editingExercise ? () => setStep('select_type') : onCancel,
+              }}
             />
           ) : (
           <>

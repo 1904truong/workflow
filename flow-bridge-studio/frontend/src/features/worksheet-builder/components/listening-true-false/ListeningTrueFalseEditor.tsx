@@ -422,6 +422,19 @@ export const ListeningTrueFalseEditor: React.FC<Props> = ({ folder, editingExerc
           if (window.confirm('Xóa toàn bộ bài tập này?')) { onDeleteExercise(editingExercise.id); onCancel(); }
         } : undefined}
         renderMoreSection={renderMoreSection}
+        shell={{
+          onSave: () => handleSave('stay'),
+          onSaveAndReturn: () => handleSave('return'),
+          onExportDocx: () => exportWorksheetToDocx(buildWorksheet(true), 'student'),
+          onPrint: () => window.print(),
+          onBack: onCancel,
+          zoom,
+          onZoom: setZoom,
+          onFitPage: () => setPageFull(true),
+          previewMode: activeTab === 'preview',
+          onPreviewMode: (preview) => setActiveTab(preview ? 'preview' : 'edit_mode'),
+          undo: { onUndo: () => jump(pastRef.current, futureRef.current), onRedo: () => jump(futureRef.current, pastRef.current), canUndo, canRedo },
+        }}
         locked={locked}
       />
 
@@ -475,6 +488,7 @@ export const ListeningTrueFalseEditor: React.FC<Props> = ({ folder, editingExerc
               generating={gen.busy}
               prompt={data.image.prompt || ''}
               onPromptChange={(v) => update({ image: { ...data.image, prompt: v } })}
+              defaultPrompt={() => buildTfImagePrompt(dataRef.current)}
               message={gen.msg}
             />
           </section>

@@ -337,18 +337,33 @@ document.addEventListener("DOMContentLoaded", () => {
   // Lệnh từ web Studio: điền prompt + ảnh tham chiếu vào side panel (chuyển về Flow) để người dùng thấy
   function applyWebFill(fill) {
     if (!fill) return;
-    document.querySelector('.platform-chip[data-platform="flow"]')?.click();
+    const target = fill.platform || "flow";
+    if (currentPlatform !== target) document.querySelector(`.platform-chip[data-platform="${target}"]`)?.click();
     if (fill.prompt) setPrompt(String(fill.prompt).slice(0, 4000));
     refImages.length = 0; refStatus.length = 0;
     (fill.referenceImages || []).slice(0, MAX_REF).forEach((src) => { refImages.push(src); refStatus.push("pending"); });
     renderRefs();
+    if (fill.autoRun) {
+      if (fill.model && [...modelSelect.options].some((o) => o.value === fill.model)) { modelSelect.value = fill.model; modelSelect.dispatchEvent(new Event("change")); }
+      if (fill.batchCount >= 1 && fill.batchCount <= 4) { batchCount = fill.batchCount; batchCountVal.textContent = batchCount; modalBatchVal.textContent = batchCount; }
+      if (fill.ui) {
+        if (typeof pickStyle === "function") pickStyle(allStyles().some((p) => p.id === fill.ui.presetId) ? fill.ui.presetId : "");
+        const bgEl = document.getElementById("gptBg"); if (bgEl) bgEl.value = fill.ui.background || "";
+      }
+      if (fill.aspectRatio && [...ratioSelect.options].some((o) => o.value === fill.aspectRatio)) ratioSelect.value = fill.aspectRatio;
+      const eff = document.getElementById("chatgptEffort"); if (eff && fill.chatgptEffort) eff.value = String(fill.chatgptEffort);
+      triggerGeneration({ _webReq: fill.reqId });
+    }
   }
   chrome.storage.local.get(["lastWebRequest"], (res) => {
     const f = res && res.lastWebRequest;
     if (f && Date.now() - (f.at || 0) < 10 * 60 * 1000) applyWebFill(f); // side panel mở sau khi web gửi lệnh
     if (f) chrome.storage.local.remove("lastWebRequest"); // chỉ áp dụng một lần
   });
-  chrome.runtime.onMessage.addListener((m) => { if (m && m.type === "WEB_FILL") applyWebFill(m.payload); });
+  chrome.runtime.onMessage.addListener((m, _sender, sendResponse) => {
+    if (!m || m.type !== "WEB_FILL") return;
+    try { applyWebFill(m.payload); sendResponse({ ok: true }); } catch (e) { console.error("[Flow Bridge] WEB_FILL lỗi:", e); sendResponse({ ok: false, error: String(e && e.message || e) }); }
+  });
 
   chrome.runtime.onMessage.addListener((m) => {
     if (m && m.type === "REF_STATUS" && refStatus[m.index] !== undefined) {
@@ -557,7 +572,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // ── Style preset: chọn phong cách, nối vào cuối mỗi prompt khi tạo ──
   const STYLE_KEY = "fb_style_preset";
-  const stylePresets = window.FB_STYLE_PRESETS || [];
+  const CUSTOM_KEY = "fb_custom_style_presets";
+  const loadCustom = () => { try { return JSON.parse(localStorage.getItem(CUSTOM_KEY) || "[]").map((p) => ({ ...p, custom: true })); } catch (_) { return []; } };
+  const saveCustom = (l) => { try { localStorage.setItem(CUSTOM_KEY, JSON.stringify(l.map(({ id, name, text }) => ({ id, name, text })))); } catch (_) {} };
+  const allStyles = () => [...(window.FB_STYLE_PRESETS || []), ...loadCustom()];
   const styleBtn = document.getElementById("styleBtn");
   const stylePopup = document.getElementById("stylePopup");
   let styleId = "";
@@ -567,7 +585,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const sp = document.createElement("span"); sp.className = "style-thumb style-thumb-empty"; sp.textContent = "✦"; return sp;
   }
   function renderStyleBtn() {
-    const cur = stylePresets.find((p) => p.id === styleId);
+    const cur = allStyles().find((p) => p.id === styleId);
     if (!cur) styleId = "";
     styleBtn.replaceChildren(styleThumbEl(cur), Object.assign(document.createElement("span"), { className: "style-label", textContent: cur ? cur.name : "No style preset" }), Object.assign(document.createElement("span"), { className: "select-arrow", textContent: "▾" }));
   }
@@ -579,12 +597,17 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   function renderStylePopup() {
     stylePopup.replaceChildren();
-    [{ id: "", name: "No style preset" }, ...stylePresets].forEach((p) => {
+    [{ id: "", name: "No style preset" }, ...allStyles()].forEach((p) => {
       const b = document.createElement("button");
       b.type = "button";
       b.className = "style-item" + (p.id === styleId ? " active" : "");
       b.append(styleThumbEl(p), Object.assign(document.createElement("span"), { className: "n", textContent: p.name }));
       if (p.id === styleId) b.append("✓");
+      if (p.custom) {
+        const d = Object.assign(document.createElement("span"), { className: "del", textContent: "×", title: "Xóa preset" });
+        d.addEventListener("click", (e) => { e.stopPropagation(); if (!confirm(`Xóa preset "${p.name}"?`)) return; saveCustom(loadCustom().filter((x) => x.id !== p.id)); if (styleId === p.id) pickStyle(""); else renderStylePopup(); });
+        b.append(d);
+      }
       b.addEventListener("click", () => pickStyle(p.id));
       stylePopup.append(b);
     });
@@ -597,10 +620,43 @@ document.addEventListener("DOMContentLoaded", () => {
   document.addEventListener("click", (e) => {
     if (!stylePopup.contains(e.target) && !styleBtn.contains(e.target)) stylePopup.style.display = "none";
   });
-  function currentStyleText() {
-    const platform = document.querySelector(".platform-chip.active")?.dataset.platform || "flow";
+  // ChatGPT: chỉ dẫn thêm, ảnh style, nền, lưu preset (giống bảng "Confirm run" bên web)
+  const gptStyleText = document.getElementById("gptStyleText");
+  const gptBg = document.getElementById("gptBg");
+  let gptStyleRef = "";
+  function renderStyleRef() {
+    const w = document.getElementById("gptStyleRefWrap"), up = document.getElementById("gptStyleRefUp");
+    w.replaceChildren();
+    up.style.display = gptStyleRef ? "none" : "";
+    if (!gptStyleRef) return;
+    const box = Object.assign(document.createElement("span"), { className: "gpt-style-ref", title: "Ảnh style: chỉ copy phong cách" });
+    const img = Object.assign(document.createElement("img"), { src: gptStyleRef });
+    const x = Object.assign(document.createElement("button"), { type: "button", textContent: "×" });
+    x.addEventListener("click", () => { gptStyleRef = ""; renderStyleRef(); });
+    box.append(img, x); w.append(box);
+  }
+  document.getElementById("gptStyleRefInput").addEventListener("change", (e) => {
+    const f = e.target.files && e.target.files[0]; e.target.value = "";
+    if (!f) return;
+    const r = new FileReader(); r.onload = () => { gptStyleRef = String(r.result); renderStyleRef(); }; r.readAsDataURL(f);
+  });
+  document.getElementById("gptSavePreset").addEventListener("click", () => {
+    const text = gptStyleText.value.trim();
+    if (!text) { alert("Hãy nhập nội dung style trước, rồi lưu thành preset."); return; }
+    const name = (prompt("Tên preset:") || "").trim();
+    if (!name) return;
+    const id = "custom-" + Date.now();
+    saveCustom([...loadCustom(), { id, name, text }]);
+    gptStyleText.value = "";
+    pickStyle(id);
+  });
+  // Ghép giống web: chỉ dẫn thêm, preset, ghi chú ảnh style, nền
+  function composeExtras(platform) {
     if (platform === "magnific" || platform === "pexels") return "";
-    return (stylePresets.find((p) => p.id === styleId) || {}).text || "";
+    const preset = (allStyles().find((p) => p.id === styleId) || {}).text || "";
+    if (platform !== "chatgpt") return preset;
+    const bg = { transparent: "transparent background", white: "plain white background", black: "plain black background" }[gptBg.value] || "";
+    return [gptStyleText.value.trim(), preset ? `\n\n${preset}\n` : "", gptStyleRef ? "The LAST attached image is a STYLE reference only: copy its art style (colors, line work, rendering), not its content" : "", bg].filter(Boolean).join(", ");
   }
 
   // Nền tảng đang chọn (flow | chatgpt | grok | gemini | magnific | pexels)
@@ -778,7 +834,7 @@ document.addEventListener("DOMContentLoaded", () => {
     runConfirmModal.style.display = "none";
   }
 
-  function triggerGeneration() {
+  function triggerGeneration(extra) {
     // ── BƯỚC 1: Bắt đăng nhập tài khoản trên extension (nếu chưa đăng nhập) ──
     if (!currentUser) {
       alert("Bước 1: Vui lòng đăng nhập tài khoản trên tiện ích mở rộng trước khi thực hiện tạo ảnh!");
@@ -800,10 +856,10 @@ document.addEventListener("DOMContentLoaded", () => {
       prompts = [rawText];
     }
 
-    const styleText = currentStyleText();
-    if (styleText) prompts = prompts.map((p) => `${p}
-
-${styleText}`);
+    const platformNow = document.querySelector(".platform-chip.active")?.dataset.platform || "flow";
+    const fromWeb = !!(extra && extra._webReq);
+    const styleText = fromWeb ? "" : composeExtras(platformNow);
+    if (styleText) prompts = prompts.map((p) => platformNow === "chatgpt" ? `${p}, ${styleText}` : `${p}\n\n${styleText}`);
 
     const payload = {
       prompts,
@@ -812,11 +868,12 @@ ${styleText}`);
       model: modelSelect.value,
       resolution: modalResolutionSelect?.value || "1K",
       autoSubmit: submitMode === "auto",
-      referenceImages: refImages.slice(),
+      referenceImages: (platformNow === "chatgpt" && gptStyleRef && !fromWeb) ? [...refImages.slice(0, 2), gptStyleRef] : refImages.slice(),
       platform: document.querySelector(".platform-chip.active")?.dataset.platform || "flow",
       filters: magnificFilters(),
       chatgptEffort: Number(document.getElementById("chatgptEffort")?.value || 1),
       autoDownload: autoDownloadToggle ? autoDownloadToggle.checked : true,
+      ...(extra || {}),
     };
 
     refStatus.fill("pending");

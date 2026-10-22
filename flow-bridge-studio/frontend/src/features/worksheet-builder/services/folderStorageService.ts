@@ -79,7 +79,7 @@ const INITIAL_SAMPLE_FOLDERS: LessonFolder[] = [
     description: 'Comprehensive mid-term unit test assessing reading comprehension, picture matching, ecological vocabulary, and short-answer writing.',
     estimatedDuration: 45,
     targetSkills: ['Reading', 'Vocabulary', 'Matching', 'Writing'],
-    schoolName: 'Cambridge International Academy',
+    schoolName: 'Pinta English',
     teacherName: 'Sarah Jenkins',
     totalPoints: 20,
     status: 'ready',

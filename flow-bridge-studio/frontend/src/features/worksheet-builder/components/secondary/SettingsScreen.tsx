@@ -9,7 +9,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   onResetSamples,
 }) => {
   const [schoolName, setSchoolName] = useState(
-    localStorage.getItem('fb_default_school') || 'Cambridge International Academy'
+    localStorage.getItem('fb_default_school') || 'Pinta English'
   );
   const [teacherName, setTeacherName] = useState(
     localStorage.getItem('fb_default_teacher') || 'Sarah Jenkins'
@@ -26,7 +26,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     e.preventDefault();
     localStorage.setItem('fb_default_school', schoolName.trim());
     localStorage.setItem('fb_default_teacher', teacherName.trim());
-    if (supabaseUrl.trim()) localStorage.setItem('fb_supabase_url', supabaseUrl.trim());
+    // Chỉ nhận địa chỉ dự án hợp lệ (chặn trường hợp trình duyệt tự điền email vào ô này)
+    if (/^https?:\/\/[^\s/@]+\.[^\s/@]+/i.test(supabaseUrl.trim())) localStorage.setItem('fb_supabase_url', supabaseUrl.trim().replace(/\/+$/, ''));
+    else if (supabaseUrl.trim()) { window.alert('Supabase Project URL không hợp lệ. Dạng đúng: https://xxxx.supabase.co'); return; }
     if (supabaseKey.trim()) localStorage.setItem('fb_supabase_key', supabaseKey.trim());
 
     setSavedSuccess(true);
@@ -140,6 +142,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 </label>
                 <input
                   type="text"
+                  name="supabase-project-url"
+                  autoComplete="off"
+                  inputMode="url"
                   value={supabaseUrl}
                   onChange={(e) => setSupabaseUrl(e.target.value)}
                   placeholder="https://xyz.supabase.co"
@@ -153,6 +158,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 </label>
                 <input
                   type="password"
+                  name="supabase-anon-key"
+                  autoComplete="new-password"
                   value={supabaseKey}
                   onChange={(e) => setSupabaseKey(e.target.value)}
                   placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..."

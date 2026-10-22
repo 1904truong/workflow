@@ -50,7 +50,7 @@ export const CreateFolderScreen: React.FC<CreateFolderScreenProps> = ({
   const [lessonTitle, setLessonTitle] = useState(initialFolder?.lessonTitle || '');
   const [description, setDescription] = useState(initialFolder?.description || '');
   const [estimatedDuration, setEstimatedDuration] = useState<number>(initialFolder?.estimatedDuration || 45);
-  const [schoolName, setSchoolName] = useState(initialFolder?.schoolName || 'Cambridge International Academy');
+  const [schoolName, setSchoolName] = useState(initialFolder?.schoolName || 'Pinta English');
   const [teacherName, setTeacherName] = useState(initialFolder?.teacherName || 'Sarah Jenkins');
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);

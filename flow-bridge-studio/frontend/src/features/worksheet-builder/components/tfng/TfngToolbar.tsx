@@ -7,7 +7,8 @@ import {
 import type { TextStyle } from '../../services/matching-pictures/matchingPicturesCore';
 import type { TfngData, TfngStyleKey } from '../../services/tfng/tfngCore';
 import { TFNG_LAYOUTS, TFNG_STYLE_LABELS } from '../../services/tfng/tfngCore';
-import { EditorToolbar, type ToolbarGroup } from '../shared/toolbar/EditorToolbar';
+import { type ToolbarGroup } from '../shared/toolbar/EditorToolbar';
+import { RibbonToolbar, type RibbonShell } from '../shared/toolbar/RibbonToolbar';
 
 const Dots = ({ kind }: { kind: 'round' | 'box' | 'line' | 'text' }) => (
   <span className="flex gap-0.5 items-center">
@@ -85,6 +86,8 @@ interface Props {
   onDuplicate: () => void;
   onDelete?: () => void;
   renderMoreSection: (key: TfngMoreKey) => React.ReactNode;
+  /** Lưu / xuất Word / in / zoom / undo của editor, dùng cho các menu File, Edit, View của thanh công cụ */
+  shell?: RibbonShell;
   locked?: boolean;
 }
 
@@ -92,7 +95,7 @@ interface Props {
 export const TfngToolbar: React.FC<Props> = ({
   data, selKey, onSelKey, curStyle, defaults, onFlag, onSizeDelta, onPatchStyle, onClearStyle, onSettings,
   onAddStatement, onSmartAI, onSmartPaste, onInsertExercise, onImageFile, onGenerateImage, generating,
-  onDuplicate, onDelete, renderMoreSection, locked = false,
+  onDuplicate, onDelete, renderMoreSection, locked = false, shell,
 }) => {
   const { settings } = data;
   const bold = curStyle?.bold ?? defaults.bold;
@@ -185,5 +188,5 @@ export const TfngToolbar: React.FC<Props> = ({
     },
   ];
 
-  return <EditorToolbar groups={groups} dense locked={locked} />;
+  return <RibbonToolbar groups={groups} locked={locked} shell={shell} />;
 };

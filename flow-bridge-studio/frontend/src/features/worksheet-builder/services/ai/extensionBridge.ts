@@ -53,12 +53,17 @@ export async function generateImageViaExtension(opts: {
   keyword?: string;
   /** Bộ lọc trang tìm ảnh (orientation, fileType, ai) */
   filters?: Record<string, string>;
+  /** Cấu hình ChatGPT để extension hiển thị đúng (style preset, nền) */
+  ui?: { presetId?: string; background?: string };
+  /** Google Flow: model và số ảnh mỗi lần tạo */
+  flowModel?: string;
+  flowCount?: number;
 }): Promise<GenerateResult> {
   let res: BridgeResponse;
   try {
     res = await askExtension(
       'TRIGGER_GENERATE',
-      { prompt: opts.prompt, referenceImages: opts.referenceImages || [], options: { aspectRatio: opts.aspectRatio, provider: opts.provider, chatgptEffort: opts.chatgptEffort, keyword: opts.keyword, filters: opts.filters } },
+      { prompt: opts.prompt, referenceImages: opts.referenceImages || [], options: { aspectRatio: opts.aspectRatio, provider: opts.provider, chatgptEffort: opts.chatgptEffort, keyword: opts.keyword, filters: opts.filters, ui: opts.ui, model: opts.flowModel, batchCount: opts.flowCount } },
       opts.timeoutMs ?? 300000,
     );
   } catch (e: any) {

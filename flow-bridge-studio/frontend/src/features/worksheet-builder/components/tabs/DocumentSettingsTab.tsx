@@ -116,7 +116,7 @@ export const DocumentSettingsTab = ({
               type="text"
               value={worksheet.schoolName}
               onChange={(e) => onUpdateMetadata('schoolName', e.target.value)}
-              placeholder="e.g. Cambridge International Academy"
+              placeholder="e.g. Pinta English"
               className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
             />
           </div>

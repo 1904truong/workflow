@@ -195,6 +195,23 @@
         </div>
       </section>
 
+      <!-- ChatGPT: giống bảng "Confirm run" bên web soạn bài -->
+      <section class="gpt-only gpt-extra" id="gptExtra">
+        <div class="tb-field"><span class="tb-flabel">Background</span>
+          <div class="select-wrapper"><select id="gptBg" class="form-select">
+            <option value="">Auto (let ChatGPT decide)</option><option value="transparent">Transparent</option><option value="white">White</option><option value="black">Black</option>
+          </select><span class="select-arrow">▾</span></div></div>
+        <div class="tb-field"><span class="tb-flabel">Additional instructions <em>(optional)</em></span>
+          <div class="gpt-style-row">
+            <textarea id="gptStyleText" rows="2" placeholder="e.g. cartoon, realistic, watercolor, minimalist, keep the same character style, no text, bright colors…"></textarea>
+            <div class="gpt-style-side">
+              <button type="button" id="gptSavePreset" class="mini-btn" title="Lưu nội dung thành preset">Save preset</button>
+              <span id="gptStyleRefWrap"></span>
+              <label id="gptStyleRefUp" class="mini-btn" title="Ảnh style: chỉ copy phong cách của ảnh">⬆ Style img<input type="file" id="gptStyleRefInput" accept="image/*" hidden></label>
+            </div>
+          </div></div>
+      </section>
+
       <!-- ẢNH THAM CHIẾU -->
       <!-- CẤU HÌNH TÌM ẢNH MAGNIFIC (chỉ hiện khi chọn Magnific); prompt ở trên là từ khóa tìm ảnh -->
       <section class="mg-config magnific-only" id="magnificConfig">

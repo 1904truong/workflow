@@ -2,9 +2,10 @@
 // Trình soạn giữ tiêu đề mục (SectionHead) của riêng mình và truyền dữ liệu / hàm xử lý vào đây.
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Maximize2, ChevronDown, ChevronUp, FileText, ImagePlus, Layers, Mountain, Palette, Search, Sparkles, Upload, User, X, Image as ImageIcon, Ban, Building2, FileCode, FileImage, Moon, SignalHigh, SignalLow, SignalMedium, Trees, Waves, Wheat, House } from 'lucide-react';
+import { Loader2, Maximize2, ChevronDown, ChevronUp, FileText, ImagePlus, Layers, Mountain, Palette, Search, Sparkles, Upload, User, X, Image as ImageIcon, Ban, Building2, FileCode, FileImage, Moon, SignalHigh, SignalLow, SignalMedium, Trees, Waves, Wheat, House } from 'lucide-react';
 import { allPresets, saveCustomPresets, loadCustomPresets } from '../../services/ai/stylePresets';
 import { probeExtension, suggestStockKeyword } from '../../services/ai/useAiImage';
+import { analyzeWorksheetWithAI } from '../../services/ai/aiAnalyzer';
 import { PROVIDER_SHORT, setImageSource, useImageSource, type ImageProvider } from '../../services/ai/imageSource';
 
 export interface ImageSlotView {
@@ -25,6 +26,8 @@ interface Props {
   prompt: string;
   onPromptChange: (v: string) => void;
   message?: string;
+  /** Prompt mặc định dựng từ nội dung bài (đúng hàm mà editor dùng khi ô prompt trống); nút "From AI analysis" đưa nó cho AI viết lại */
+  defaultPrompt?: () => string;
   /** Tỉ lệ khung xem trước (mặc định 16/10) */
   previewRatio?: number;
 }
@@ -248,11 +251,47 @@ const CfgField: React.FC<{ label: string; icon: React.ReactNode; disabled?: bool
   </div>
 );
 
-export const ImageManagerBody: React.FC<Props> = ({
-  slots, maxImages, onCountChange, onFile, onRemove, onGenerate, generating, prompt, onPromptChange, message, previewRatio = 16 / 10,
-}) => {
-  const main = slots[0];
-  const { provider, keyword, filters, flowRatio, stockRatio, chatgptEffort, chatgptStyle, chatgptRefs, chatgptBg, chatgptStyleRef, chatgptPreset } = useImageSource();
+/** Ảnh tham chiếu (tối đa 3): dùng chung cho Flow và ChatGPT */
+const RefImagesField: React.FC<{ refs: string[]; onChange: (list: string[]) => void }> = ({ refs, onChange }) => (
+                  <div className="space-y-1.5">
+                    <div className="text-xs font-bold text-slate-800">Reference images <span className="font-normal text-slate-400">(optional, up to 3)</span></div>
+                    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-slate-300 p-2.5">
+                      {refs.map((src, i) => (
+                        <span key={i} className="relative">
+                          <img src={src} alt="" className="w-14 h-14 object-cover rounded-lg border border-slate-200" />
+                          <button type="button" onClick={() => onChange(refs.filter((_, k) => k !== i))} className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-rose-600 text-white text-[10px] leading-none">×</button>
+                        </span>
+                      ))}
+                      {refs.length < 3 && (
+                        <label className="flex-1 min-w-[10rem] h-14 text-xs text-slate-500 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50 rounded-lg">
+                          <Upload size={16} /> Upload reference image(s)
+                          <span className="text-[10px] text-slate-400">JPG, PNG, WEBP (max 10MB each)</span>
+                          <input type="file" accept="image/*" multiple hidden onChange={(e) => {
+                            const files = Array.from(e.target.files || []).filter((f) => f.size <= 10 * 1024 * 1024).slice(0, 3 - refs.length);
+                            e.target.value = '';
+                            void Promise.all(files.map((f) => new Promise<string>((res) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.readAsDataURL(f); }))).then((urls) => onChange([...refs, ...urls]));
+                          }} />
+                        </label>
+                      )}
+                    </div>
+                  </div>
+);
+
+export interface ImageRunConfigDialogProps {
+  open: boolean;
+  onClose: () => void;
+  generating: boolean;
+  prompt: string;
+  onPromptChange: (v: string) => void;
+  defaultPrompt?: () => string;
+  /** Bấm nút chạy trong bảng (bảng tự đóng trước khi gọi) */
+  onRun: () => void;
+}
+
+/** Bảng "Confirm run": chọn nguồn ảnh, model, tỉ lệ, preset... Dùng cho từng bài và cho nút Generate all ở AI Image Studio */
+export const ImageRunConfigDialog: React.FC<ImageRunConfigDialogProps> = ({ open: cfgOpen, onClose, generating, prompt, onPromptChange, defaultPrompt, onRun }) => {
+  const setCfgOpen = (v: boolean) => { if (!v) onClose(); };
+  const { provider, keyword, filters, flowRatio, stockRatio, chatgptEffort, chatgptStyle, chatgptRefs, chatgptBg, chatgptStyleRef, chatgptPreset, flowModel, flowCount } = useImageSource();
   const [presets, setPresets] = useState(() => allPresets());
   const stock = provider === 'magnific' || provider === 'pexels';
   const [peopleOpen, setPeopleOpen] = useState(false);
@@ -265,11 +304,39 @@ export const ImageManagerBody: React.FC<Props> = ({
       : filters.people === 'include'
         ? ['With people', filters.peopleRange && `${cap(filters.peopleRange)} person(s)`, filters.peopleGender && cap(filters.peopleGender), filters.peopleAge && cap(filters.peopleAge), filters.peopleEthnicity && cap(filters.peopleEthnicity)].filter(Boolean).join(' · ')
         : 'All';
-  const [cfgOpen, setCfgOpen] = useState(false);
   const [ext, setExt] = useState<'checking' | 'ok' | 'no'>('checking');
   const [kw, setKw] = useState('');
   const [aiFilled, setAiFilled] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
+  // "From AI analysis" ở nguồn tạo ảnh (Flow/ChatGPT): AI viết prompt từ nội dung bài; lỗi thì dùng prompt dựng tại chỗ và nói rõ lý do
+  const [promptBusy, setPromptBusy] = useState(false);
+  const [promptNote, setPromptNote] = useState<{ text: string; ok: boolean } | null>(null);
+  const runAiPrompt = async () => {
+    const base = (defaultPrompt?.() || prompt || '').trim();
+    if (!base) { setPromptNote({ text: 'Chưa có nội dung bài để phân tích. Hãy nhập nội dung bài trước.', ok: false }); return; }
+    setPromptBusy(true);
+    setPromptNote(null);
+    const probe = await probeExtension();
+    if (!probe.present) {
+      // Chưa nối extension thì không chờ AI: dùng ngay prompt dựng từ nội dung bài và nói rõ lý do
+      setPromptBusy(false);
+      onPromptChange(base.slice(0, 3000));
+      setPromptNote({ text: `Chưa kết nối extension nên chưa phân tích bằng AI được (${probe.note}). Đã tạo prompt từ nội dung bài, bạn sửa tay được.`, ok: false });
+      return;
+    }
+    const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 60000));
+    const out = await Promise.race([analyzeWorksheetWithAI(`Exercise 1: Picture for a worksheet\nImage needed: ${base}`), timeout]);
+    setPromptBusy(false);
+    const aiPrompt = out && out.ok ? out.plan?.images?.[0]?.prompt?.trim() : '';
+    if (aiPrompt) {
+      onPromptChange(aiPrompt.slice(0, 3000));
+      setPromptNote({ text: '✦ Prompt do AI tạo từ nội dung bài (sửa tay được).', ok: true });
+      return;
+    }
+    onPromptChange(base.slice(0, 3000));
+    const why = !out ? 'AI không phản hồi sau 60 giây' : out.errorCode ? `${out.errorCode}${out.errorMessage ? ` – ${out.errorMessage}` : ''}` : 'AI không trả về prompt hợp lệ';
+    setPromptNote({ text: `AI phân tích chưa dùng được (${why}). Đã tạo prompt từ nội dung bài, bạn sửa tay được.`, ok: false });
+  };
   const [manualKw, setManualKw] = useState(false);
   // Pexels chỉ có ô tìm kiếm: các lựa chọn được viết thẳng vào câu từ khóa
   const cap1 = (v: string) => v.replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase());
@@ -321,60 +388,8 @@ export const ImageManagerBody: React.FC<Props> = ({
     return () => { alive = false; setAiBusy(false); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cfgOpen, provider, stock]);
-  const pick = (idx: number) => (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    e.target.value = '';
-    if (f) onFile(idx, f);
-  };
-
+  if (!cfgOpen) return null;
   return (
-    <div className="space-y-2.5">
-      <div className="flex items-center gap-3">
-        {main?.url ? (
-          <img src={main.url} alt="" className="w-28 object-cover rounded-lg border border-slate-200" style={{ aspectRatio: String(previewRatio) }} />
-        ) : (
-          <div className="w-28 rounded-lg border border-dashed border-slate-300 bg-slate-50 text-slate-400 text-[11px] flex items-center justify-center" style={{ aspectRatio: String(previewRatio) }}>No image</div>
-        )}
-        <div className="flex flex-col gap-1.5 items-start">
-          <label className={`${smallBtn} cursor-pointer`}><ImagePlus size={12} /> Upload image<input type="file" accept="image/*" hidden onChange={pick(0)} /></label>
-          <button type="button" onClick={() => setCfgOpen(true)} disabled={generating} className="px-2.5 h-7 rounded-lg bg-blue-600 text-white text-[11px] font-bold hover:bg-blue-700 disabled:opacity-40 flex items-center gap-1">
-            {stock ? <Search size={12} /> : <ImagePlus size={12} />}
-            {generating ? (stock ? 'Waiting for your pick…' : 'Generating…') : stock ? `Find image on ${PROVIDER_SHORT[provider]}` : main?.url ? 'Regenerate AI image' : 'Generate AI image'}
-          </button>
-          {main?.url && <button type="button" onClick={() => onRemove(0)} className="text-[11px] font-semibold text-rose-600 hover:underline">Remove image</button>}
-        </div>
-      </div>
-
-      {maxImages && maxImages > 1 && onCountChange && (
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600">Images
-            <select value={slots.length} onChange={(e) => onCountChange(Number(e.target.value))} className={`${fieldCls} !w-16 !py-1`}>
-              {Array.from({ length: maxImages }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}</option>)}
-            </select>
-          </label>
-          {slots.slice(1).map((slot, k) => (
-            <span key={k} className="flex items-center gap-1.5">
-              {slot.url
-                ? <img src={slot.url} alt="" className="w-14 h-[40px] object-cover rounded-md border border-slate-200" />
-                : <span className="w-14 h-[40px] rounded-md border border-dashed border-slate-300 bg-slate-50 text-[10px] text-slate-400 flex items-center justify-center">Image {k + 2}</span>}
-              <label className={`${smallBtn} cursor-pointer`}>Image {k + 2}<input type="file" accept="image/*" hidden onChange={pick(k + 1)} /></label>
-              {slot.url && <button type="button" onClick={() => onRemove(k + 1)} className="text-[11px] font-semibold text-rose-600 hover:underline">Remove</button>}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {stock ? (
-        <input
-          value={keyword}
-          onChange={(e) => setImageSource({ keyword: e.target.value })}
-          placeholder="Search keywords (leave empty: AI analyzes the exercise and picks short keywords)"
-          className={`${fieldCls} text-[11px]`}
-        />
-      ) : (
-        <PromptBox value={prompt} onChange={onPromptChange} />
-      )}
-      {cfgOpen && (
         <div className="fixed inset-0 z-[90] bg-slate-900/40 backdrop-blur-[2px] flex items-center justify-center p-4" onClick={() => { setCfgOpen(false); setOpenChip(null); }}>
           <div className="w-[min(519px,96vw)] h-[min(669px,94vh)] flex flex-col overflow-hidden rounded-2xl bg-white border border-slate-200 text-slate-900 shadow-2xl" onClick={(e) => { e.stopPropagation(); setOpenChip(null); }}>
             <div className="flex items-center justify-between px-4 pt-3.5 pb-2">
@@ -390,7 +405,7 @@ export const ImageManagerBody: React.FC<Props> = ({
                     <button
                       key={k}
                       type="button"
-                      onClick={() => setImageSource({ provider: k })}
+                      onClick={() => { if (k === provider) return; if (generating && !window.confirm('An image is still being generated. Switching the image source now may interrupt it. Switch anyway?')) return; setImageSource({ provider: k }); }}
                       className={`px-2.5 h-7 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 leading-none shrink-0 ${provider === k ? 'bg-blue-100 text-blue-700 shadow-xs' : 'text-slate-700 hover:text-slate-900 hover:bg-slate-100/60'}`}
                     >
                       <span className="w-4 h-4 shrink-0 flex items-center justify-center overflow-hidden rounded-[3px]">
@@ -429,33 +444,13 @@ export const ImageManagerBody: React.FC<Props> = ({
                         <FileText size={14} /> Import from file
                         <input type="file" accept=".txt,text/plain" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void f.text().then((t) => onPromptChange(t.trim().slice(0, 3000))); }} />
                       </label>
-                      <button type="button" onClick={() => onPromptChange('')} className="h-8 px-3 rounded-lg border border-blue-100 bg-blue-50 text-blue-700 text-xs font-semibold flex items-center gap-1.5 hover:bg-blue-100"><Sparkles size={14} /> From AI analysis</button>
+                      <button type="button" onClick={() => { void runAiPrompt(); }} disabled={promptBusy} title="AI đọc nội dung bài và viết prompt tạo ảnh" className="h-8 px-3 rounded-lg border border-blue-100 bg-blue-50 text-blue-700 text-xs font-semibold flex items-center gap-1.5 hover:bg-blue-100 disabled:opacity-60"><Sparkles size={14} /> {promptBusy ? 'AI is analyzing…' : 'From AI analysis'}</button>
                       <span className="ml-auto text-xs text-slate-400">{prompt.length}/3000</span>
                     </div>
+                    {promptNote && <p className={`text-[11px] ${promptNote.ok ? 'text-blue-700' : 'text-amber-700'}`}>{promptNote.text}</p>}
                   </div>
 
-                  <div className="space-y-1.5">
-                    <div className="text-xs font-bold text-slate-800">Reference images <span className="font-normal text-slate-400">(optional, up to 3)</span></div>
-                    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-slate-300 p-2.5">
-                      {chatgptRefs.map((src, i) => (
-                        <span key={i} className="relative">
-                          <img src={src} alt="" className="w-14 h-14 object-cover rounded-lg border border-slate-200" />
-                          <button type="button" onClick={() => setImageSource({ chatgptRefs: chatgptRefs.filter((_, k) => k !== i) })} className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-rose-600 text-white text-[10px] leading-none">×</button>
-                        </span>
-                      ))}
-                      {chatgptRefs.length < 3 && (
-                        <label className="flex-1 min-w-[10rem] h-14 text-xs text-slate-500 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-50 rounded-lg">
-                          <Upload size={16} /> Upload reference image(s)
-                          <span className="text-[10px] text-slate-400">JPG, PNG, WEBP (max 10MB each)</span>
-                          <input type="file" accept="image/*" multiple hidden onChange={(e) => {
-                            const files = Array.from(e.target.files || []).filter((f) => f.size <= 10 * 1024 * 1024).slice(0, 3 - chatgptRefs.length);
-                            e.target.value = '';
-                            void Promise.all(files.map((f) => new Promise<string>((res) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.readAsDataURL(f); }))).then((urls) => setImageSource({ chatgptRefs: [...chatgptRefs, ...urls] }));
-                          }} />
-                        </label>
-                      )}
-                    </div>
-                  </div>
+                  <RefImagesField refs={chatgptRefs} onChange={(list) => setImageSource({ chatgptRefs: list })} />
 
                   <div className="grid grid-cols-2 gap-2">
                     <CfgField label="Aspect ratio" icon={<RatioIcon ratio={flowRatio} />}><RatioPicker value={flowRatio} onChange={(v) => setImageSource({ flowRatio: v as typeof flowRatio })} /></CfgField>
@@ -517,31 +512,44 @@ export const ImageManagerBody: React.FC<Props> = ({
                 </div>
               )}
 
-              {!stock && provider !== 'chatgpt' && (
-                <div className="space-y-2.5">
-                  <label className="flex items-center justify-between gap-3 text-xs font-semibold text-slate-700">
-                    <span>Aspect ratio</span>
-                    <select
-                      value={flowRatio}
-                      onChange={(e) => setImageSource({ flowRatio: e.target.value as typeof flowRatio })}
-                      className="h-9 min-w-[10rem] px-3 rounded-lg bg-white border border-slate-200 text-xs font-normal text-slate-900"
-                    >
-                      <option value="">Match exercise</option>
-                      {['1:1', '4:3', '3:4', '16:9', '9:16'].map((r) => <option key={r} value={r}>{r}</option>)}
-                    </select>
-                  </label>
-
-                  
-
-                  
-
-                  <div className="space-y-1.5 pt-1">
-                    <div className="flex items-center justify-between">
-                      <div className="text-xs font-bold text-slate-800">Prompt</div>
-                      <button type="button" onClick={() => onPromptChange('')} className="h-7 px-2.5 rounded-lg border border-blue-100 bg-blue-50 text-blue-700 text-[11px] font-semibold flex items-center gap-1 hover:bg-blue-100"><Sparkles size={13} /> Auto-write from exercise</button>
+              {provider === 'flow' && (
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <div className="text-xs font-bold text-slate-800">Prompt / Description</div>
+                    <PromptBox value={prompt} onChange={onPromptChange} rows={3} />
+                    <div className="flex items-center gap-2">
+                      <label className="h-8 px-3 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-semibold text-slate-700 flex items-center gap-1.5 cursor-pointer">
+                        <FileText size={14} /> Import from file
+                        <input type="file" accept=".txt,text/plain" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void f.text().then((t) => onPromptChange(t.trim().slice(0, 3000))); }} />
+                      </label>
+                      <button type="button" onClick={() => { void runAiPrompt(); }} disabled={promptBusy} title="AI đọc nội dung bài và viết prompt tạo ảnh" className="h-8 px-3 rounded-lg border border-blue-100 bg-blue-50 text-blue-700 text-xs font-semibold flex items-center gap-1.5 hover:bg-blue-100 disabled:opacity-60"><Sparkles size={14} /> {promptBusy ? 'AI is analyzing…' : 'From AI analysis'}</button>
+                      <span className="ml-auto text-xs text-slate-400">{prompt.length}/3000</span>
                     </div>
-                    <PromptBox value={prompt} onChange={onPromptChange} />
+                    {promptNote && <p className={`text-[11px] ${promptNote.ok ? 'text-blue-700' : 'text-amber-700'}`}>{promptNote.text}</p>}
                   </div>
+
+                  <div className="grid grid-cols-[1.5fr_1fr_0.7fr] gap-2">
+                    <CfgField label="Model" icon={<Sparkles size={15} />}>
+                      <select value={flowModel} onChange={(e) => setImageSource({ flowModel: e.target.value })} className={cfgSelect}>
+                        <option value="Nano Banana 2.1">Nano Banana 2.1</option>
+                        <option value="Nano Banana 2 Lite">Nano Banana 2 Lite</option>
+                        <option value="Nano Banana Pro">Nano Banana Pro</option>
+                      </select>
+                    </CfgField>
+                    <CfgField label="Aspect ratio" icon={<RatioIcon ratio={flowRatio} />}><RatioPicker value={flowRatio} onChange={(v) => setImageSource({ flowRatio: v as typeof flowRatio })} /></CfgField>
+                    <CfgField label="Outputs" icon={null}>
+                      <select value={flowCount || 1} onChange={(e) => setImageSource({ flowCount: Number(e.target.value) })} className={cfgSelect}>
+                        {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                    </CfgField>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="text-xs font-bold text-slate-800 shrink-0 w-10">Style</div>
+                    <PresetPicker value={chatgptPreset} presets={presets} onChange={(id) => setImageSource({ chatgptPreset: id })} />
+                  </div>
+
+                  <RefImagesField refs={chatgptRefs} onChange={(list) => setImageSource({ chatgptRefs: list })} />
                 </div>
               )}
 
@@ -668,15 +676,86 @@ export const ImageManagerBody: React.FC<Props> = ({
               <button type="button" onClick={() => setCfgOpen(false)} className="h-9 px-4 rounded-lg border border-slate-200 bg-white text-slate-800 text-xs font-bold hover:bg-slate-50 mt-3">Cancel</button>
               <button
                 type="button"
-                onClick={() => { if (stock) setImageSource({ keyword: kwShown.trim() }); setCfgOpen(false); onGenerate(); }}
-                className="h-9 px-4 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 flex items-center gap-1.5 mt-3"
+                disabled={generating}
+                title={generating ? 'An image is still being generated' : undefined}
+                onClick={() => { if (stock) setImageSource({ keyword: kwShown.trim() }); setCfgOpen(false); onRun(); }}
+                className="h-9 px-4 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 disabled:opacity-40 flex items-center gap-1.5 mt-3"
               >
                 ▷ {stock ? `Find on ${PROVIDER_SHORT[provider]}` : `Run with ${PROVIDER_SHORT[provider]}`}
               </button>
             </div>
           </div>
         </div>
+  );
+};
+
+export const ImageManagerBody: React.FC<Props> = ({
+  slots, maxImages, onCountChange, onFile, onRemove, onGenerate, generating, prompt, onPromptChange, message, previewRatio = 16 / 10, defaultPrompt }) => {
+  const main = slots[0];
+  const { provider, keyword } = useImageSource();
+  const stock = provider === 'magnific' || provider === 'pexels';
+  const [cfgOpen, setCfgOpen] = useState(false);
+  const pick = (idx: number) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (f) onFile(idx, f);
+  };
+
+  return (
+    <div className="space-y-2.5">
+      <div className="flex items-center gap-3">
+        {main?.url ? (
+          <img src={main.url} alt="" className="w-28 object-cover rounded-lg border border-slate-200" style={{ aspectRatio: String(previewRatio) }} />
+        ) : (
+          <div className="w-28 rounded-lg border border-dashed border-slate-300 bg-slate-50 text-slate-400 text-[11px] flex items-center justify-center" style={{ aspectRatio: String(previewRatio) }}>No image</div>
+        )}
+        <div className="flex flex-col gap-1.5 items-start">
+          <label className={`${smallBtn} cursor-pointer`}><ImagePlus size={12} /> Upload image<input type="file" accept="image/*" hidden onChange={pick(0)} /></label>
+          <button type="button" onClick={() => setCfgOpen(true)} className={`px-2.5 h-7 rounded-lg text-white text-[11px] font-bold flex items-center gap-1 ${generating ? 'bg-blue-400' : 'bg-blue-600 hover:bg-blue-700'}`}>
+            {generating ? <Loader2 size={12} className="animate-spin" /> : stock ? <Search size={12} /> : <ImagePlus size={12} />}
+            {generating ? (stock ? 'Waiting for your pick…' : 'Generating…') : stock ? `Find image on ${PROVIDER_SHORT[provider]}` : main?.url ? 'Regenerate AI image' : 'Generate AI image'}
+          </button>
+          {main?.url && <button type="button" onClick={() => onRemove(0)} className="text-[11px] font-semibold text-rose-600 hover:underline">Remove image</button>}
+        </div>
+      </div>
+
+      {maxImages && maxImages > 1 && onCountChange && (
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600">Images
+            <select value={slots.length} onChange={(e) => onCountChange(Number(e.target.value))} className={`${fieldCls} !w-16 !py-1`}>
+              {Array.from({ length: maxImages }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </label>
+          {slots.slice(1).map((slot, k) => (
+            <span key={k} className="flex items-center gap-1.5">
+              {slot.url
+                ? <img src={slot.url} alt="" className="w-14 h-[40px] object-cover rounded-md border border-slate-200" />
+                : <span className="w-14 h-[40px] rounded-md border border-dashed border-slate-300 bg-slate-50 text-[10px] text-slate-400 flex items-center justify-center">Image {k + 2}</span>}
+              <label className={`${smallBtn} cursor-pointer`}>Image {k + 2}<input type="file" accept="image/*" hidden onChange={pick(k + 1)} /></label>
+              {slot.url && <button type="button" onClick={() => onRemove(k + 1)} className="text-[11px] font-semibold text-rose-600 hover:underline">Remove</button>}
+            </span>
+          ))}
+        </div>
       )}
+
+      {generating && (
+        <div className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-[11px] font-semibold text-blue-700">
+          <Loader2 size={13} className="animate-spin shrink-0" />
+          {stock ? 'Waiting for your pick on the stock site…' : 'Generating image, this can take up to a minute…'}
+        </div>
+      )}
+
+      {stock ? (
+        <input
+          value={keyword}
+          onChange={(e) => setImageSource({ keyword: e.target.value })}
+          placeholder="Search keywords (leave empty: AI analyzes the exercise and picks short keywords)"
+          className={`${fieldCls} text-[11px]`}
+        />
+      ) : (
+        <PromptBox value={prompt} onChange={onPromptChange} />
+      )}
+      <ImageRunConfigDialog open={cfgOpen} onClose={() => setCfgOpen(false)} generating={generating} prompt={prompt} onPromptChange={onPromptChange} defaultPrompt={defaultPrompt} onRun={onGenerate} />
       {message && (
         <p className={`text-[11.5px] rounded-md px-2 py-1 border ${generating ? 'text-blue-700 bg-blue-50 border-blue-100' : 'text-amber-700 bg-amber-50 border-amber-100'}`}>{message}</p>
       )}

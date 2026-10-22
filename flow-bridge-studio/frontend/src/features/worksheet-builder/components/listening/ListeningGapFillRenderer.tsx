@@ -1,5 +1,7 @@
 import React from 'react';
 import { Headphones } from 'lucide-react';
+import { segmentText, sliceMarks, attrsToStyle, attrsInRange } from '../../services/listening/textMarks';
+import { A4DocHost, A4ParagraphSurface, type A4DocEditing } from './A4DocHost';
 import type {
   ListeningGapFillData,
   ListeningExtra,
@@ -28,34 +30,77 @@ interface ListeningGapFillRendererProps {
   selectedExtraId?: string | null;
   onSelectExtra?: (extraId: string) => void;
   /** Có giá trị: tiêu đề sửa trực tiếp được trên trang (Edit Mode) */
-  editable?: { onTitle?: (v: string) => void; onPassageTitle?: (v: string) => void };
+  /** Có giá trị = Edit Mode: mọi chữ trên trang (trừ header/footer) sửa trực tiếp được và ghi thẳng vào dữ liệu chung */
+  editable?: {
+    onTitle?: (v: string) => void;
+    onPassageTitle?: (v: string) => void;
+    onIntro?: (v: string) => void;
+    onExerciseNumber?: (n: number) => void;
+    onExtraText?: (id: string, text: string) => void;
+    onExtraCell?: (id: string, row: number, col: number, value: string) => void;
+    onQuestion?: (id: string, text: string) => void;
+    /** Sửa chữ của một đoạn bằng hàm biến đổi (tên người nói, tiêu đề cột "## ...", từng dòng của layout điền form) */
+    onParagraphText?: (paraId: string, fn: (text: string) => string) => void;
+    paragraphs?: A4DocEditing;
+  };
   editableParagraph?: {
     paragraphIndex: number;
     onChange: (newText: string) => void;
   };
 }
 
-/** Chữ sửa trực tiếp như Word: bấm là có con trỏ; bấm ra ngoài hoặc Enter để lưu, Esc để hủy */
-const EditableSpan: React.FC<{ value: string; onCommit?: (v: string) => void }> = ({ value, onCommit }) => {
+/** Chữ sửa trực tiếp như Word: bấm là có con trỏ; bấm ra ngoài để lưu, Esc để hủy. `multiline`: Enter xuống dòng; `block`: chiếm cả ô. */
+const EditableSpan: React.FC<{
+  value: string;
+  onCommit?: (v: string) => void;
+  multiline?: boolean;
+  block?: boolean;
+  placeholder?: string;
+  style?: React.CSSProperties;
+}> = ({ value, onCommit, multiline = false, block = false, placeholder, style }) => {
+  const ref = React.useRef<HTMLSpanElement>(null);
+  const read = (el: HTMLElement) => {
+    // M\u1ed9t d\u00f2ng: textContent (innerText b\u1ecb CSS text-transform \u0111\u1ed5i ch\u1eef hoa/th\u01b0\u1eddng, vd. ti\u00eau \u0111\u1ec1 c\u1ed9t); nhi\u1ec1u d\u00f2ng c\u1ea7n innerText \u0111\u1ec3 c\u00f3 xu\u1ed1ng d\u00f2ng
+    if (!multiline) return (el.textContent || '').replace(/\u00a0/g, ' ').replace(/\s*\n+\s*/g, ' ').trim();
+    return el.innerText.replace(/\u00a0/g, ' ').replace(/\n+$/, '');
+  };
+  // Nội dung do mình đặt (không dùng React children) để gõ nhiều dòng không làm lệch DOM; đang gõ thì không ghi đè
+  React.useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || !onCommit || document.activeElement === el) return;
+    if (read(el) !== value || (!value && el.firstChild)) el.textContent = value;
+  });
   if (!onCommit) return <>{value}</>;
   return (
     <span
+      ref={ref}
       contentEditable
       suppressContentEditableWarning
       spellCheck={false}
-      className="inline-block min-w-[3ch] rounded-[2px] cursor-text caret-blue-600 hover:bg-blue-50 focus:bg-blue-50/60 focus:outline focus:outline-1 focus:outline-blue-400 focus:outline-offset-2"
+      data-placeholder={placeholder}
+      style={{ minHeight: '1.15em', verticalAlign: 'bottom', ...(multiline ? { whiteSpace: 'pre-wrap' } : null), ...(block ? { display: 'block' } : null), ...style }}
+      className={`${block ? '' : 'inline-block min-w-[3ch]'} rounded-[2px] cursor-text caret-blue-600 hover:bg-blue-50 focus:bg-blue-50/60 focus:outline focus:outline-1 focus:outline-blue-400 focus:outline-offset-2 empty:before:content-[attr(data-placeholder)] empty:before:text-slate-300`}
       onBlur={(e) => {
-        const v = e.currentTarget.innerText.replace(/\u00a0/g, ' ').replace(/\s*\n+\s*/g, ' ').trim();
+        const v = read(e.currentTarget);
         if (v !== value) onCommit(v);
-        else e.currentTarget.innerText = value;
+        else e.currentTarget.textContent = value;
       }}
       onKeyDown={(e) => {
-        if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
-        if (e.key === 'Escape') { e.currentTarget.innerText = value; e.currentTarget.blur(); }
+        // Ctrl+A chỉ chọn chữ của ô này (trình duyệt có thể nhảy ra chọn cả vùng soạn bao ngoài)
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+          e.preventDefault();
+          e.stopPropagation();
+          const r = document.createRange();
+          r.selectNodeContents(e.currentTarget);
+          const sel = window.getSelection();
+          sel?.removeAllRanges();
+          sel?.addRange(r);
+          return;
+        }
+        if (e.key === 'Enter' && !multiline) { e.preventDefault(); e.currentTarget.blur(); }
+        if (e.key === 'Escape') { e.currentTarget.textContent = value; e.currentTarget.blur(); }
       }}
-    >
-      {value}
-    </span>
+    />
   );
 };
 
@@ -193,13 +238,20 @@ export const ListeningGapFillRenderer: React.FC<ListeningGapFillRendererProps> =
   };
 
   // ── Parse paragraph text and replace (a) ______ with structured blanks ──
-  const renderParagraphContent = (para: ListeningParagraph, pIdx: number, inline = false) => {
+  const renderParagraphContent = (para: ListeningParagraph, pIdx: number, inline = false, formLine = -1) => {
     const raw = para.text || '';
     // Match (a) _____ or (1) _____
     const regex = /(\(([a-zA-Z0-9]+)\)\s*_{2,})/g;
-    const parts = [];
+    const parts: React.ReactNode[] = [];
     let lastIdx = 0;
     let match;
+    // Chữ thường: cắt theo định dạng từng từ (para.marks); không có marks thì trả lại chuỗi như cũ
+    const textParts = (from: number, to: number): React.ReactNode[] =>
+      segmentText(para.marks, from, to).map((seg) => {
+        const txt = raw.slice(seg.start, seg.end);
+        const style = attrsToStyle(seg.attrs);
+        return Object.values(style).some((v) => v !== undefined) ? <span key={`m${seg.start}`} style={style}>{txt}</span> : txt;
+      });
 
     while ((match = regex.exec(raw)) !== null) {
       const start = match.index;
@@ -207,22 +259,48 @@ export const ListeningGapFillRenderer: React.FC<ListeningGapFillRendererProps> =
       const blankKey = match[2];
 
       if (start > lastIdx) {
-        parts.push(raw.slice(lastIdx, start));
+        parts.push(...textParts(lastIdx, start));
       }
 
-      parts.push(renderBlankSpan(blankKey, `p${pIdx}_b${match.index}`));
+      const blank = renderBlankSpan(blankKey, `p${pIdx}_b${match.index}`);
+      const gapStyle = para.marks?.length ? attrsToStyle(attrsInRange(para.marks, raw.length, start, start + 1)) : null;
+      parts.push(gapStyle && Object.values(gapStyle).some((v) => v !== undefined) ? <span key={`gm${start}`} style={gapStyle}>{blank}</span> : blank);
       lastIdx = end;
     }
 
     if (lastIdx < raw.length) {
-      parts.push(raw.slice(lastIdx));
+      parts.push(...textParts(lastIdx, raw.length));
     }
+
+    // Edit Mode: đoạn văn sửa trực tiếp trên trang (theo ID đoạn). Layout nào cắt tiền tố khỏi chữ thì ô chỉ sửa phần sau tiền tố;
+    // form_completion tách dòng riêng nên giữ chữ tĩnh (sửa ở cột trái).
+    const pe = editable?.paragraphs;
+    const fullPara = pe && !showKey && !formMode ? data.paragraphs.find((x) => x.id === para.id) : undefined;
+    const prefixLen = fullPara ? fullPara.text.length - raw.length : -1;
+    const formLineEdit = editable?.onParagraphText && formMode && formLine >= 0 && !showKey;
+    const body: React.ReactNode = formLineEdit
+      ? (
+        <EditableSpan
+          value={raw}
+          onCommit={(v) => editable!.onParagraphText!(para.id, (t) => {
+            const lines = t.split('\n');
+            let k = -1;
+            const at = lines.findIndex((l) => l.trim() && ++k === formLine);
+            if (at < 0) return t;
+            if (v.trim()) lines[at] = v; else lines.splice(at, 1);
+            return lines.join('\n');
+          })}
+        />
+      )
+      : fullPara && prefixLen >= 0 && fullPara.text.endsWith(raw)
+      ? <A4ParagraphSurface paraId={fullPara.id} offset={prefixLen} text={raw} marks={prefixLen ? sliceMarks(fullPara.marks, prefixLen, fullPara.text.length) : fullPara.marks} />
+      : parts;
 
     const f = para.format || {};
     if (inline) {
       return (
         <span style={{ fontWeight: f.bold ? 700 : undefined, fontStyle: f.italic ? 'italic' : undefined, textDecoration: f.underline ? 'underline' : undefined, color: f.color, backgroundColor: f.highlight }}>
-          {parts}
+          {body}
         </span>
       );
     }
@@ -242,7 +320,7 @@ export const ListeningGapFillRenderer: React.FC<ListeningGapFillRendererProps> =
             backgroundColor: f.highlight,
           }}
         >
-          {parts}
+          {body}
         </span>
       </div>
     );
@@ -274,7 +352,7 @@ export const ListeningGapFillRenderer: React.FC<ListeningGapFillRendererProps> =
     if (x.type === 'text') {
       body = (
         <div style={{ border: '0.8pt solid #94a3b8', borderRadius: '1.5mm', padding: '2mm 3mm', whiteSpace: 'pre-wrap', textAlign: 'left' }}>
-          {x.text}
+          <EditableSpan value={x.text || ''} onCommit={editable?.onExtraText ? (v) => editable.onExtraText!(x.id, v) : undefined} multiline block placeholder="Text box" />
         </div>
       );
     } else if (x.type === 'line') {
@@ -294,7 +372,7 @@ export const ListeningGapFillRenderer: React.FC<ListeningGapFillRendererProps> =
             textAlign: 'center',
           }}
         >
-          {x.text}
+          <EditableSpan value={x.text || ''} onCommit={editable?.onExtraText ? (v) => editable.onExtraText!(x.id, v) : undefined} multiline placeholder="Text" />
         </div>
       );
     } else if (x.type === 'table') {
@@ -307,7 +385,7 @@ export const ListeningGapFillRenderer: React.FC<ListeningGapFillRendererProps> =
               <tr key={ri}>
                 {Array.from({ length: cols }).map((__, ci) => (
                   <td key={ci} style={{ border: '0.8pt solid #64748b', padding: '1.5mm 2mm', height: '8mm', verticalAlign: 'top' }}>
-                    {x.cells?.[ri]?.[ci] || ''}
+                    <EditableSpan value={x.cells?.[ri]?.[ci] || ''} onCommit={editable?.onExtraCell ? (v) => editable.onExtraCell!(x.id, ri, ci, v) : undefined} multiline block />
                   </td>
                 ))}
               </tr>
@@ -634,11 +712,11 @@ export const ListeningGapFillRenderer: React.FC<ListeningGapFillRendererProps> =
             </div>
           )}
           {(formMode
-            ? data.paragraphs.flatMap((para, idx) => (para.text || '').split('\n').map((t) => t.trim()).filter(Boolean).map((t) => ({ para: { ...para, text: t }, idx })))
-            : data.paragraphs.map((para, idx) => ({ para, idx }))
-          ).map(({ para, idx }, k) => (
+            ? data.paragraphs.flatMap((para, idx) => (para.text || '').split('\n').map((t) => t.trim()).filter(Boolean).map((t, li) => ({ para: { ...para, text: t, marks: undefined }, idx, line: li })))
+            : data.paragraphs.map((para, idx) => ({ para, idx, line: -1 }))
+          ).map(({ para, idx, line }, k) => (
             <div key={`${para.id || idx}_${k}`} style={formMode ? { marginBottom: paragraphSpacingMargin, textAlign: 'left', paddingLeft: /^\s*\(/.test(para.text) ? '6mm' : 0 } : { marginBottom: paragraphSpacingMargin, textAlign: 'justify', textIndent: '8mm' }}>
-              {renderParagraphContent(para, idx, true)}
+              {renderParagraphContent(para, idx, true, line)}
             </div>
           ))}
         </div>
@@ -648,7 +726,7 @@ export const ListeningGapFillRenderer: React.FC<ListeningGapFillRendererProps> =
               <li key={q.id} style={{ breakInside: 'avoid', marginBottom: '4mm' }}>
                 <div className="flex items-start gap-[3mm]">
                   <strong style={{ minWidth: '6mm', fontWeight: 800 }}>{i + 1}.</strong>
-                  <span>{q.text}</span>
+                  <span className="flex-1"><EditableSpan value={q.text} placeholder="Question…" onCommit={editable?.onQuestion ? (v) => editable.onQuestion!(q.id, v) : undefined} /></span>
                 </div>
                 <div style={{ marginLeft: '9mm', marginTop: '5mm', width: '78%', borderBottom: '1pt dashed #444', height: '1px' }} />
               </li>
@@ -668,8 +746,12 @@ export const ListeningGapFillRenderer: React.FC<ListeningGapFillRendererProps> =
           <li key={q.id} style={{ breakInside: 'avoid', marginBottom: '2mm' }}>
             <div className="flex items-baseline gap-[2mm]">
               <strong style={{ minWidth: '6mm', fontWeight: 800 }}>{i + 1}.</strong>
-              {m && <strong style={{ fontStyle: 'italic', fontWeight: 800, minWidth: '30mm' }}>{m[1]}:</strong>}
-              <span className="flex-1">{m ? m[2] : q.text}</span>
+              {m && (
+                <strong style={{ fontStyle: 'italic', fontWeight: 800, minWidth: '30mm' }}>
+                  <EditableSpan value={m[1]} onCommit={editable?.onQuestion ? (v) => editable.onQuestion!(q.id, v.trim() ? `${v.trim()}: ${m[2]}` : m[2]) : undefined} />:
+                </strong>
+              )}
+              <span className="flex-1"><EditableSpan value={m ? m[2] : q.text} placeholder="Question…" onCommit={editable?.onQuestion ? (v) => editable.onQuestion!(q.id, m ? `${m[1]}: ${v}` : v) : undefined} /></span>
             </div>
             <div style={{ marginLeft: '8mm', marginTop: '5mm', marginBottom: '2mm', width: '92%', borderBottom: '1pt dashed #444', height: '1px' }} />
           </li>
@@ -694,7 +776,7 @@ export const ListeningGapFillRenderer: React.FC<ListeningGapFillRendererProps> =
         {data.paragraphs.map((para, idx) => {
           const plus = /^\+\s*/.exec(para.text || '');
           const sub = (para.format?.indentMm || 0) > 0 || !!plus;
-          const shown = plus ? { ...para, text: para.text.slice(plus[0].length) } : para;
+          const shown = plus ? { ...para, text: para.text.slice(plus[0].length), marks: sliceMarks(para.marks, plus[0].length, para.text.length) } : para;
           return (
             <div key={para.id || idx} className="flex items-start gap-[2mm]" style={{ marginBottom: paragraphSpacingMargin, paddingLeft: sub ? `${para.format?.indentMm || 6}mm` : undefined, breakInside: 'avoid' }}>
               <strong style={{ fontWeight: 800, minWidth: '3mm', color: '#0f172a' }}>{sub ? '+' : '•'}</strong>
@@ -737,8 +819,20 @@ export const ListeningGapFillRenderer: React.FC<ListeningGapFillRendererProps> =
           const f = para.format || {};
           return (
             <div key={para.id || idx} style={{ marginBottom: paragraphSpacingMargin, textAlign: f.align || 'justify', paddingLeft: f.indentMm ? `${f.indentMm}mm` : undefined, breakInside: 'avoid' }}>
-              {speaker && <strong style={{ color, fontWeight: 800, marginRight: '2.2mm' }}>{speaker}:</strong>}
-              {renderParagraphContent({ ...para, text: rest }, idx, true)}
+              {speaker && (
+                <strong style={{ color, fontWeight: 800, marginRight: '2.2mm' }}>
+                  <EditableSpan
+                    value={speaker}
+                    onCommit={editable?.onParagraphText ? (v) => editable.onParagraphText!(para.id, (t) => {
+                      const mm = SPEAKER_RE.exec(t);
+                      const rest2 = mm ? t.slice(mm[0].length) : t;
+                      const name = v.trim().replace(/:$/, '').replace(/^./, (c) => c.toUpperCase());
+                      return name ? `${name}: ${rest2}` : rest2;
+                    }) : undefined}
+                  />:
+                </strong>
+              )}
+              {renderParagraphContent({ ...para, text: rest, marks: sliceMarks(para.marks, para.text.length - rest.length, para.text.length) }, idx, true)}
             </div>
           );
         })}
@@ -759,10 +853,10 @@ export const ListeningGapFillRenderer: React.FC<ListeningGapFillRendererProps> =
 
   // ── 12. Cột có tiêu đề: đoạn bắt đầu bằng "## " mở một cột mới; không có tiêu đề nào thì chia hai cột đều
   const renderHeadedColumnsLayout = () => {
-    const cols: { heading?: string; items: { para: ListeningParagraph; idx: number }[] }[] = [];
+    const cols: { heading?: string; headingParaId?: string; items: { para: ListeningParagraph; idx: number }[] }[] = [];
     data.paragraphs.forEach((para, idx) => {
       const m = /^\s*##\s*(.+)$/.exec(para.text || '');
-      if (m) cols.push({ heading: m[1].trim(), items: [] });
+      if (m) cols.push({ heading: m[1].trim(), headingParaId: para.id, items: [] });
       else {
         if (!cols.length) cols.push({ items: [] });
         cols[cols.length - 1].items.push({ para, idx });
@@ -777,7 +871,7 @@ export const ListeningGapFillRenderer: React.FC<ListeningGapFillRendererProps> =
       <div className="grid items-start gap-x-[8mm]" style={{ gridTemplateColumns: `repeat(${Math.max(1, cols.length)}, minmax(0, 1fr))`, fontSize: `${settings.passageFontSizePt}pt`, lineHeight }}>
         {cols.map((col, ci) => (
           <div key={ci}>
-            {col.heading && <div style={{ fontFamily: HEAD_FONT, fontWeight: 800, textTransform: 'uppercase', marginBottom: '2.5mm', color: '#0f172a' }}>{col.heading}</div>}
+            {col.heading && <div style={{ fontFamily: HEAD_FONT, fontWeight: 800, textTransform: 'uppercase', marginBottom: '2.5mm', color: '#0f172a' }}><EditableSpan value={col.heading} onCommit={editable?.onParagraphText && col.headingParaId ? (v) => editable.onParagraphText!(col.headingParaId!, (t) => t.replace(/^(\s*##\s*).*$/m, `$1${v}`)) : undefined} /></div>}
             {col.items.map(({ para, idx }) => (
               <div key={para.id || idx} style={{ marginBottom: paragraphSpacingMargin, breakInside: 'avoid' }}>
                 {renderParagraphContent(para, idx)}
@@ -791,6 +885,12 @@ export const ListeningGapFillRenderer: React.FC<ListeningGapFillRendererProps> =
 
   /** Tiêu đề có nhấn màu: phần đặt trong {{ }} in nghiêng, màu đỏ */
   const richTitle = (t: string) => t.split(/(\{\{[^}]+\}\})/).filter(Boolean).map((p, i) => (/^\{\{[^}]+\}\}$/.test(p) ? <em key={i} style={{ color: '#c8102e', fontWeight: 800 }}>{p.slice(2, -2)}</em> : <span key={i}>{p}</span>));
+
+  // Edit Mode: cả phần bài đọc là một vùng soạn liền mạch (Ctrl+A chọn mọi đoạn, kéo chọn xuyên đoạn...)
+  const wrapDoc = (body: React.ReactNode) =>
+    editable?.paragraphs && !showKey && !formMode
+      ? <A4DocHost paragraphs={data.paragraphs} editing={editable.paragraphs}>{body}</A4DocHost>
+      : body;
 
   return (
     <div style={fontStyle} className="listening-gap-fill-content text-[#111] flow-root">
@@ -819,7 +919,9 @@ export const ListeningGapFillRenderer: React.FC<ListeningGapFillRendererProps> =
                 lineHeight: 1,
               }}
             >
-              {exerciseIndex}
+              {editable?.onExerciseNumber ? (
+                <EditableSpan value={String(exerciseIndex)} onCommit={(v) => { const n = parseInt(v, 10); if (Number.isFinite(n) && n > 0) editable.onExerciseNumber!(n); }} />
+              ) : exerciseIndex}
             </span>
 
             {/* Audio headphone icon */}
@@ -856,8 +958,10 @@ export const ListeningGapFillRenderer: React.FC<ListeningGapFillRendererProps> =
         </div>
       )}
 
-      {data.intro && !hideExerciseHeading && (
-        <p style={{ margin: '0 0 3mm', fontStyle: 'italic', fontWeight: 700, fontSize: '10pt' }}>{data.intro}</p>
+      {(data.intro || editable?.onIntro) && !hideExerciseHeading && (
+        <p style={{ margin: '0 0 3mm', fontStyle: 'italic', fontWeight: 700, fontSize: '10pt' }}>
+          <EditableSpan value={data.intro || ''} onCommit={editable?.onIntro} placeholder="Intro line…" />
+        </p>
       )}
 
       {/* ───── Passage Title: THINGS TO SEE AND DO IN LONDON ───── */}
@@ -880,6 +984,7 @@ export const ListeningGapFillRenderer: React.FC<ListeningGapFillRendererProps> =
       )}
 
       {/* ───── Main Body according to Selected Layout ───── */}
+      {wrapDoc(<>
       {settings.layout === 'numbered' && renderNumberedLayout()}
       {settings.layout === 'two_columns' && renderTwoColumnsLayout()}
       {settings.layout === 'answer_grid' && renderAnswerGridLayout()}
@@ -893,6 +998,7 @@ export const ListeningGapFillRenderer: React.FC<ListeningGapFillRendererProps> =
       {settings.layout === 'passage_image' && renderPassageImageLayout()}
       {outline && renderOutlineLayout()}
       {(settings.layout === 'original' || !settings.layout) && renderOriginalLayout()}
+      </>)}
 
       {renderExtras()}
 

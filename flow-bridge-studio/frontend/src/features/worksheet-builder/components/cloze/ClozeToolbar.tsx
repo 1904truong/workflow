@@ -6,7 +6,8 @@ import {
 } from 'lucide-react';
 import type { ClozeData, ClozeLayoutId } from '../../services/cloze/clozeCore';
 import { CLOZE_LAYOUTS } from '../../services/cloze/clozeCore';
-import { EditorToolbar, type ToolbarGroup } from '../shared/toolbar/EditorToolbar';
+import { type ToolbarGroup } from '../shared/toolbar/EditorToolbar';
+import { RibbonToolbar, type RibbonShell } from '../shared/toolbar/RibbonToolbar';
 
 export type ClozeMoreKey = 'typography' | 'image' | 'advanced';
 const MORE_SETTINGS: { key: ClozeMoreKey; label: string }[] = [
@@ -58,13 +59,15 @@ interface Props {
   onDelete?: () => void;
   layoutThumb: (id: ClozeLayoutId) => React.ReactNode;
   renderMoreSection: (key: ClozeMoreKey) => React.ReactNode;
+  /** Lưu / xuất Word / in / zoom / undo của editor, dùng cho các menu File, Edit, View của thanh công cụ */
+  shell?: RibbonShell;
   locked?: boolean;
 }
 
 /** Thanh công cụ Multiple Choice Cloze: gom các cài đặt của cột Layout & Formatting cũ vào cùng bộ nhóm với các dạng bài khác. */
 export const ClozeToolbar: React.FC<Props> = ({
   data, onSettings, onWrap, onList, onPassageSize, onInsertBlank, onAddQuestion, onSmartPaste, onShuffle, onAutoFit, fitting,
-  onImageFile, onRemoveImage, onGenerateImage, generatingImage, onResetFormatting, onInsertExercise, onDuplicate, onDelete, layoutThumb, renderMoreSection, locked = false,
+  onImageFile, onRemoveImage, onGenerateImage, generatingImage, onResetFormatting, onInsertExercise, onDuplicate, onDelete, layoutThumb, renderMoreSection, locked = false, shell,
 }) => {
   const s = data.settings;
   const hasImage = !!s.imageUrl && s.imagePosition !== 'none';
@@ -166,5 +169,5 @@ export const ClozeToolbar: React.FC<Props> = ({
     },
   ];
 
-  return <EditorToolbar groups={groups} dense locked={locked} />;
+  return <RibbonToolbar groups={groups} locked={locked} shell={shell} />;
 };

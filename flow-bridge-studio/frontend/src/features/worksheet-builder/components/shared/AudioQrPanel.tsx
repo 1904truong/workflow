@@ -5,6 +5,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { AlertCircle, Headphones, Link2, Pause, Play, QrCode, Trash2, Upload } from 'lucide-react';
 import type { ListeningAudio } from '../../services/listening/listeningGapFillCore';
 import { formatAudioDuration, getAudioQrCodeUrl, normalizeAudioLink } from '../../services/listening/listeningGapFillCore';
+import { TtsAudioButton } from './TtsAudioButton';
+import { publicAudioUrl, type StoredAudio } from '../../services/tts/audioStorage';
 
 interface Props {
   audio: ListeningAudio;
@@ -38,6 +40,23 @@ export const AudioQrPanel: React.FC<Props> = ({ audio, showQr, onAudioChange, on
 
   useEffect(() => () => { player.current?.pause(); }, []);
 
+  // Audio lưu trên Supabase: dựng lại link theo cấu hình hiện tại (đổi sang Supabase khác thì link tự theo)
+  useEffect(() => {
+    if (!audio.storagePath) return;
+    const url = publicAudioUrl(audio.storagePath);
+    if (url && (audio.audioUrl !== url || audio.shareUrl !== url)) onAudioChange({ ...audio, audioUrl: url, shareUrl: url, sourceType: 'link' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audio.storagePath]);
+
+  const handleStored = (stored: StoredAudio, file: File) => {
+    stop();
+    setLinkInput(stored.publicUrl);
+    const base: ListeningAudio = { filename: file.name, sizeMb: `${(file.size / (1024 * 1024)).toFixed(1)} MB`, durationStr: '00:00', audioUrl: stored.publicUrl, shareUrl: stored.publicUrl, storagePath: stored.storagePath, sourceType: 'link' };
+    withDuration(stored.publicUrl, base);
+    onShowQrChange(true);
+    setQrOpen(true);
+  };
+
   const stop = () => { player.current?.pause(); player.current = null; setPlaying(false); };
 
   const withDuration = (url: string, base: ListeningAudio) => {
@@ -48,7 +67,10 @@ export const AudioQrPanel: React.FC<Props> = ({ audio, showQr, onAudioChange, on
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
-    if (!file) return;
+    if (file) applyFile(file);
+  };
+
+  const applyFile = (file: File) => {
     stop();
     const url = URL.createObjectURL(file);
     withDuration(url, {
@@ -111,6 +133,7 @@ export const AudioQrPanel: React.FC<Props> = ({ audio, showQr, onAudioChange, on
             <Upload size={16} strokeWidth={1.75} /> Upload
             <input type="file" accept="audio/*" hidden onChange={handleFile} />
           </label>
+          <TtsAudioButton onFile={applyFile} onStored={handleStored} />
           <button type="button" onClick={togglePlay} disabled={!audio.audioUrl} className="w-9 h-9 rounded-full bg-blue-100 hover:bg-blue-200 text-blue-600 flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed transition-colors" title={audio.audioUrl ? (playing ? 'Tạm dừng' : 'Phát audio') : 'Chưa có audio để phát'}>
             {playing ? <Pause size={15} fill="currentColor" /> : <Play size={15} fill="currentColor" className="ml-0.5" />}
           </button>

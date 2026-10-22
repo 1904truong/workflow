@@ -1,5 +1,6 @@
 import { passageParagraphs } from './gap-filling/gapFillingCore';
 import type { Worksheet } from '../types';
+import { listeningPassageHtml } from './listening/listeningDocx';
 
 /**
  * Generates an editable Microsoft Word document (.doc / .docx compatible HTML format)
@@ -156,7 +157,7 @@ export function exportWorksheetToDocx(worksheet: Worksheet, mode: 'student' | 't
           ${escapeXml(ex.title || `Exercise ${exIdx + 1}`)} ${ex.pointsTotal ? `(${ex.pointsTotal} pts)` : ''}
         </div>
         ${ex.instructions ? `<div class="instructions">${escapeXml(ex.instructions)}</div>` : ''}
-        ${ex.passage ? `<div class="passage">${escapeXml(ex.passage).replace(/\n/g, '<br/>')}</div>` : ''}
+        ${ex.listeningGapFill ? listeningPassageHtml(ex.listeningGapFill, escapeXml) : ex.passage ? `<div class="passage">${escapeXml(ex.passage).replace(/\n/g, '<br/>')}</div>` : ''}
 
         <!-- Questions -->
         ${ex.cloze ? `

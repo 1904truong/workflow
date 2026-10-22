@@ -7,7 +7,8 @@ import {
 import type { TextStyle } from '../../services/matching-pictures/matchingPicturesCore';
 import type { ListeningTableData, TableStyleKey } from '../../services/listening-table/listeningTableCore';
 import { TABLE_LAYOUTS, TABLE_STYLE_LABELS } from '../../services/listening-table/listeningTableCore';
-import { EditorToolbar, type ToolbarGroup } from '../shared/toolbar/EditorToolbar';
+import { type ToolbarGroup } from '../shared/toolbar/EditorToolbar';
+import { RibbonToolbar, type RibbonShell } from '../shared/toolbar/RibbonToolbar';
 
 export type TableMoreKey = 'typography' | 'advanced';
 const MORE_SETTINGS: { key: TableMoreKey; label: string }[] = [
@@ -46,6 +47,8 @@ interface Props {
   onDuplicate: () => void;
   onDelete?: () => void;
   renderMoreSection: (key: TableMoreKey) => React.ReactNode;
+  /** Lưu / xuất Word / in / zoom / undo của editor, dùng cho các menu File, Edit, View của thanh công cụ */
+  shell?: RibbonShell;
   locked?: boolean;
 }
 
@@ -53,7 +56,7 @@ interface Props {
 export const ListeningTableToolbar: React.FC<Props> = ({
   data, selKey, onSelKey, curStyle, defaults, onFlag, onSizeDelta, onPatchStyle, onClearStyle, onSettings,
   canDeleteRow, canDeleteColumn, onInsertRow, onInsertColumn, onDeleteRow, onDeleteColumn, onAddQuestion, onSmartAI,
-  onSmartPaste, onInsertExercise, onImageFile, onGenerateImage, generating, onDuplicate, onDelete, renderMoreSection, locked = false,
+  onSmartPaste, onInsertExercise, onImageFile, onGenerateImage, generating, onDuplicate, onDelete, renderMoreSection, locked = false, shell,
 }) => {
   const { settings } = data;
   const bold = curStyle?.bold ?? defaults.bold;
@@ -160,5 +163,5 @@ export const ListeningTableToolbar: React.FC<Props> = ({
     },
   ];
 
-  return <EditorToolbar groups={groups} dense locked={locked} />;
+  return <RibbonToolbar groups={groups} locked={locked} shell={shell} />;
 };
