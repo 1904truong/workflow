@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import { AiRewriteBox } from '../shared/AiRewriteBox';
 import { createPortal } from 'react-dom';
 import {
   ArrowLeft,
@@ -23,7 +24,12 @@ import {
   Save,
   Minimize,
   ChevronLeft,
+  Loader2,
+  Wand2,
 } from 'lucide-react';
+import { useAiImage } from '../../services/ai/useAiImage';
+import { PHOTO_STYLE } from '../../services/matching/autoMatching';
+import { ImageRunConfigDialog } from '../shared/ImageManagerBody';
 import type { LessonFolder, Exercise } from '../../types';
 import type {
   TextStyleKey,
@@ -178,6 +184,35 @@ export const MatchingPicturesEditor: React.FC<MatchingPicturesEditorProps> = ({
   const [openSec, setOpenSec] = useState({ source: true, images: true });
   const toggleSec = (k: 'source' | 'images') => setOpenSec((o) => ({ ...o, [k]: !o[k] }));
   const [showGallery, setShowGallery] = useState(false);
+  // Tạo ảnh AI: mỗi lần tạo một ảnh cho một địa điểm / chủ đề, thêm vào cuối danh sách với nhãn A, B, C... kế tiếp
+  const [aiSubject, setAiSubject] = useState('');
+  const [aiCfgOpen, setAiCfgOpen] = useState(false);
+  const aiSubjectRef = useRef('');
+  aiSubjectRef.current = aiSubject;
+  const { gen: aiGen, generate: generateAiImage } = useAiImage({
+    getPrompt: () => `Realistic travel photograph of ${aiSubjectRef.current.trim()}, one clear main subject, well composed.`,
+    style: PHOTO_STYLE,
+    aspectRatio: '4:3',
+    onPrompt: () => undefined,
+    onImage: (url) => {
+      const caption = aiSubjectRef.current.trim();
+      setData((prev) => {
+        // Có ô ảnh trống cùng tên chủ đề thì điền vào đúng ô đó; không thì thêm ô mới cuối danh sách
+        const slot = prev.images.find((im) => !im.imageUrl && (im.caption || '').trim().toLowerCase() === caption.toLowerCase());
+        const idx = prev.images.length;
+        const images = slot
+          ? prev.images.map((im) => (im.id === slot.id ? { ...im, imageUrl: url } : im))
+          : [...prev.images, { id: `img_${Date.now()}_ai`, order: idx, label: deriveImageLabel(idx), imageUrl: url, caption }];
+        const next = { ...prev, images };
+        setHistory((h) => [...h.slice(0, historyIndex + 1), next]);
+        setHistoryIndex((i) => i + 1);
+        return next;
+      });
+      setAiSubject('');
+      setSaveStatus('saving');
+      setTimeout(() => setSaveStatus('saved'), 600);
+    },
+  });
   const [srcTab, setSrcTab] = useState<'linked' | 'paste' | 'manual'>(() => (data.source.mode === 'linked' ? 'linked' : 'manual'));
   const titleLevel: 'H1' | 'H2' | 'H3' =
     data.settings.headingFontSizePt >= 16 ? 'H1' : data.settings.headingFontSizePt <= 12 ? 'H3' : 'H2';
@@ -1038,6 +1073,7 @@ export const MatchingPicturesEditor: React.FC<MatchingPicturesEditorProps> = ({
                   placeholder={'Paragraph 1: Go on a Big Bus tour...\n\nParagraph 2: Visit the Tate Modern...\n\nParagraph 3: Meet famous sports people...'}
                   className={`${fieldCls} font-mono leading-relaxed`}
                 />
+                <AiRewriteBox kind="Matching Pictures (paragraphs)" hint="Mỗi đoạn văn bắt đầu bằng 'Paragraph N:' hoặc 'N.' và cách nhau một dòng trống." example={'Paragraph 1: Go on a Big Bus tour...\n\nParagraph 2: Visit the Tate Modern...\n\nParagraph 3: Meet famous sports people...'} text={pasteText} onText={setPasteText} />
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[10.5px] text-slate-400">Mỗi đoạn bắt đầu bằng “Paragraph N:” hoặc “N.”. Có thể Undo.</span>
                   <button type="button" onClick={handleApplySmartPaste} disabled={!pasteText.trim()} className="px-3 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-40 rounded-xl shrink-0">Tách đoạn &amp; áp dụng</button>
@@ -1130,6 +1166,53 @@ export const MatchingPicturesEditor: React.FC<MatchingPicturesEditorProps> = ({
               </button>
             </div>
 
+            <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-2.5 space-y-2">
+              <div className="text-[11px] font-bold text-violet-800 flex items-center gap-1.5"><Wand2 size={12} /> Tạo ảnh AI</div>
+              <div className="flex items-center gap-2">
+                <input
+                  value={aiSubject}
+                  onChange={(e) => setAiSubject(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && aiSubject.trim() && !aiGen.busy) setAiCfgOpen(true); }}
+                  placeholder="Địa điểm / chủ đề, ví dụ: Hard Rock Café, London"
+                  className="flex-1 min-w-0 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setAiCfgOpen(true)}
+                  disabled={!aiSubject.trim() || aiGen.busy}
+                  className="px-3 py-1.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-40 shrink-0"
+                >
+                  {aiGen.busy ? <Loader2 size={13} className="animate-spin" /> : <Wand2 size={13} />}
+                  {aiGen.busy ? 'Generating…' : 'Generate AI image'}
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const caption = aiSubject.trim();
+                  if (!caption) return;
+                  update({ images: [...data.images, { id: `img_${Date.now()}_slot`, order: data.images.length, label: deriveImageLabel(data.images.length), imageUrl: '', caption }] });
+                  setAiSubject('');
+                }}
+                disabled={!aiSubject.trim()}
+                className="text-[11px] font-semibold text-violet-700 hover:underline disabled:opacity-40"
+                title="Tạo sẵn ô ảnh có tên chủ đề, ảnh sẽ được tạo ở AI Image Studio (Generate all) và gắn đúng ô này"
+              >
+                + Thêm ô ảnh trống (tạo sau ở AI Image Studio)
+              </button>
+              {aiGen.msg && (
+                <p className={`text-[11px] rounded-md px-2 py-1 border ${aiGen.busy ? 'text-blue-700 bg-blue-50 border-blue-100' : 'text-amber-700 bg-amber-50 border-amber-100'}`}>{aiGen.msg}</p>
+              )}
+              <ImageRunConfigDialog
+                open={aiCfgOpen}
+                onClose={() => setAiCfgOpen(false)}
+                generating={aiGen.busy}
+                prompt={aiSubject}
+                onPromptChange={setAiSubject}
+                onRun={() => { void generateAiImage(); }}
+              />
+            </div>
+
             {data.images.length === 0 ? (
               <div className="text-center py-5 border border-dashed border-slate-300 rounded-2xl text-xs text-slate-400 space-y-2">
                 <p>Chưa có ảnh. Upload hoặc thêm từ Gallery (mỗi ảnh tự có nhãn A, B, C...).</p>
@@ -1160,7 +1243,11 @@ export const MatchingPicturesEditor: React.FC<MatchingPicturesEditorProps> = ({
                       </label>
                       <button type="button" onClick={() => handleDeleteImage(img.id)} className="p-1 rounded-md bg-white/95 border border-slate-300 text-rose-500 hover:text-rose-700" title="Xóa ảnh"><Trash2 size={11} /></button>
                     </div>
-                    <img src={img.imageUrl} alt={img.caption || `Image ${img.label}`} className="w-full h-[84px] object-contain bg-slate-100" onError={(e) => { (e.currentTarget as HTMLImageElement).style.opacity = '0.25'; }} />
+                    {img.imageUrl ? (
+                      <img src={img.imageUrl} alt={img.caption || `Image ${img.label}`} className="w-full h-[84px] object-contain bg-slate-100" onError={(e) => { (e.currentTarget as HTMLImageElement).style.opacity = '0.25'; }} />
+                    ) : (
+                      <div className="w-full h-[84px] bg-slate-100 border-b border-dashed border-slate-300 text-[10px] font-semibold text-slate-400 flex items-center justify-center">Chưa có ảnh</div>
+                    )}
                     <input
                       type="text"
                       placeholder="Caption..."

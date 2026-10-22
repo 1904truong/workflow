@@ -828,6 +828,33 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true;
     }
 
+    case "WEB_REWRITE_WORKSHEET": {
+      // Smart Paste: web gửi đoạn văn teacher dán + mô tả định dạng của dạng bài -> Edge Function rewrite-worksheet viết lại đúng định dạng.
+      // payload.peek = true: chỉ hỏi số lượt AI đã dùng hôm nay (không tốn lượt).
+      (async () => {
+        const settings = await cloud.getSettings();
+        if (!settings.url || !settings.anonKey) return { ok: false, code: "NOT_CONFIGURED", message: "Extension chưa cấu hình Supabase (tab Lịch sử → Cấu hình kết nối)" };
+        const sess = await cloud.getSession();
+        if (!sess) return { ok: false, code: "NOT_SIGNED_IN", message: "Extension chưa đăng nhập Supabase (tab Lịch sử → Đăng nhập)" };
+        const p = payload || {};
+        let res;
+        try {
+          res = await fetch(`${settings.url}/functions/v1/rewrite-worksheet`, {
+            method: "POST",
+            headers: { apikey: settings.anonKey, Authorization: `Bearer ${sess.access_token}`, "Content-Type": "application/json" },
+            body: JSON.stringify(p.peek ? { peek: true } : { text: p.text, kind: p.kind, hint: p.hint, example: p.example }),
+          });
+        } catch (e) {
+          return { ok: false, code: "NETWORK", message: "Không gọi được Supabase: " + (e && e.message || e) };
+        }
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 404) return { ok: false, code: "FUNCTION_NOT_DEPLOYED", message: "Chưa triển khai Edge Function rewrite-worksheet trên Supabase" };
+        if (!res.ok) return { ok: false, code: data.code || ("HTTP_" + res.status), message: data.error || data.message || ("HTTP " + res.status), usage: data.usage };
+        return { ok: true, text: data.text, notes: data.notes || [], usage: data.usage, model: data.model };
+      })().then(sendResponse).catch((e) => sendResponse({ ok: false, code: "ERROR", message: e.message || String(e) }));
+      return true;
+    }
+
     case "WEB_CLOUD_LIST": {
       // Web Studio xin danh sách ảnh đã lưu trên Supabase (kèm link xem có chữ ký 24 giờ)
       (async () => {

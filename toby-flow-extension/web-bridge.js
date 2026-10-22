@@ -47,6 +47,14 @@
       return;
     }
 
+    if (data.type === "REWRITE_WORKSHEET") {
+      const p = data.payload || {};
+      const res = await safeSend({ type: "WEB_REWRITE_WORKSHEET", payload: { text: p.text, kind: p.kind, hint: p.hint, example: p.example, peek: !!p.peek } });
+      if (res.ok) reply(data.id, "REWRITE_WORKSHEET", { text: res.text, notes: res.notes, usage: res.usage });
+      else reply(data.id, "REWRITE_WORKSHEET", { usage: res.usage || null }, { code: res.code || "ERROR", message: res.message || "Viết lại bằng AI thất bại" });
+      return;
+    }
+
     if (data.type === "LIST_CLOUD_IMAGES") {
       const res = await safeSend({ type: "WEB_CLOUD_LIST", payload: data.payload || {} });
       if (res.ok) reply(data.id, "LIST_CLOUD_IMAGES", { images: res.images });

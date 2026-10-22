@@ -96,7 +96,7 @@ const loadPrefs = (): Pick<ImageSourceState, 'filters' | 'flowRatio' | 'stockRat
   return { filters: { ...DEFAULT_FILTERS }, flowRatio: '', stockRatio: '', chatgptEffort: 1 };
 };
 
-let state: ImageSourceState = { provider: loadProvider(), keyword: '', chatgptStyle: '', chatgptPreset: (() => { try { return localStorage.getItem('fb_chatgpt_preset') || ''; } catch { return ''; } })(), chatgptMode: 'create', chatgptStyleRef: '', chatgptBg: 'auto', chatgptRefs: [], flowModel: (() => { try { return localStorage.getItem('fb_flow_model') || 'Nano Banana 2.1'; } catch { return 'Nano Banana 2.1'; } })(), flowCount: 1, ...loadPrefs() };
+let state: ImageSourceState = { provider: loadProvider(), keyword: '', chatgptStyle: '', chatgptPreset: (() => { try { return localStorage.getItem('fb_chatgpt_preset') ?? 'british-textbook'; } catch { return 'british-textbook'; } })(), chatgptMode: 'create', chatgptStyleRef: '', chatgptBg: 'auto', chatgptRefs: [], flowModel: (() => { try { return localStorage.getItem('fb_flow_model') || 'Nano Banana 2.1'; } catch { return 'Nano Banana 2.1'; } })(), flowCount: 1, ...loadPrefs() };
 try { const saved = JSON.parse(localStorage.getItem('fb_image_prov_prefs') || '{}')[state.provider]; if (saved) state = { ...state, ...saved }; } catch { /* bỏ qua */ }
 const listeners = new Set<() => void>();
 

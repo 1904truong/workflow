@@ -349,7 +349,19 @@ export const PreviewExportScreen: React.FC<PreviewExportScreenProps> = ({
         </div>
       </div>
 
-      {editMode && <EditToolbar canUndo={past.length > 0} canRedo={future.length > 0} onUndo={undo} onRedo={redo} />}
+      {editMode && (
+        <EditToolbar
+          canUndo={past.length > 0}
+          canRedo={future.length > 0}
+          onUndo={undo}
+          onRedo={redo}
+          zoom={zoomLevel}
+          onZoom={setZoomLevel}
+          onPrint={handlePrint}
+          onExportDocx={handleExportDocxStudent}
+          onBack={onBackToFolder}
+        />
+      )}
 
       {/* Preview Stage (Scrollable Canvas) */}
       <div className="flex-1 flex min-h-0">

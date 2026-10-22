@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { AiRewriteBox } from '../shared/AiRewriteBox';
 import { createPortal } from 'react-dom';
 import {
   ArrowLeft, Check, Copy, Eye, FileDown, GripVertical, Maximize2, Minimize, Minus, Plus, Printer, X,
@@ -607,6 +608,7 @@ export const MatchingVocabularyEditor: React.FC<Props> = ({ folder, editingExerc
             </div>
             <p className="text-xs text-slate-500">{MODAL_INFO[modal].hint}</p>
             <textarea rows={10} style={{ flex: '1 1 auto', minHeight: '14rem', resize: 'none' }} value={pasteText} onChange={(e) => { setPasteText(e.target.value); setModalMsg(''); }} placeholder={MODAL_INFO[modal].placeholder} className={`${fieldCls} font-mono`} />
+            <AiRewriteBox kind="Matching Vocabulary" hint={MODAL_INFO[modal].hint} example={MODAL_INFO[modal].placeholder} text={pasteText} onText={(v) => { setPasteText(v); setModalMsg(''); }} />
             {modal === 'pairs' && (
               <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer">
                 <input type="checkbox" checked={shuffleOnImport} onChange={(e) => setShuffleOnImport(e.target.checked)} className="rounded text-blue-600 focus:ring-0" />

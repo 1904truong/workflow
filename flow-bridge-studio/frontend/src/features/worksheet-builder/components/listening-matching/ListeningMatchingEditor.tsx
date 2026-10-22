@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { AiRewriteBox } from '../shared/AiRewriteBox';
 import { createPortal } from 'react-dom';
 import {
   ArrowLeft, Check, Copy, Eye, FileDown, GripVertical, Maximize2, Minimize, Minus, Plus, Printer, X, MoreHorizontal,
@@ -503,6 +504,7 @@ export const ListeningMatchingEditor: React.FC<Props> = ({ folder, editingExerci
             <div className="flex items-center justify-between"><h3 className="text-sm font-bold text-slate-900">Smart Paste – dán đề</h3><button type="button" onClick={() => setModal(false)} className="p-1 text-slate-400 hover:text-slate-700"><X size={16} /></button></div>
             <p className="text-xs text-slate-500">Dán tiêu đề, các câu hỏi đánh số 1., 2., … và các lựa chọn a., b., … Hộp đáp án "1. ____" in ở cuối sẽ tự được bỏ.</p>
             <textarea rows={10} style={{ flex: '1 1 auto', minHeight: '14rem', resize: 'none' }} value={pasteText} onChange={(e) => { setPasteText(e.target.value); setModalMsg(''); }} placeholder={PLACEHOLDER} className={`${fieldCls} font-mono`} />
+            <AiRewriteBox kind="Listening Matching" hint={"Dán tiêu đề, các câu hỏi đánh số 1., 2., … và các lựa chọn a., b., … Hộp đáp án \"1. ____\" in ở cuối sẽ tự được bỏ."} example={PLACEHOLDER} text={pasteText} onText={(v) => { setPasteText(v); setModalMsg(''); }} />
             {modalMsg && <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">{modalMsg}</p>}
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setModal(false)} className="h-9 px-3 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg">Hủy</button>

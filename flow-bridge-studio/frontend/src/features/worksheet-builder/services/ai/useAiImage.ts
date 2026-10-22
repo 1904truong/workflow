@@ -36,6 +36,8 @@ export interface UseAiImageOptions {
   aspectRatio: string;
   /** Lưu lại prompt đã dùng (kể cả khi extension chưa sẵn sàng để người dùng sửa và thử lại) */
   onPrompt: (prompt: string) => void;
+  /** Ảnh tham chiếu riêng cho lần tạo này (data URL); có thì dùng thay cho ảnh tham chiếu trong cấu hình chung */
+  refs?: string[];
   /** Ảnh tạo xong */
   onImage: (url: string, prompt: string) => void;
 }
@@ -83,7 +85,7 @@ export const runAiImage = async (opts: UseAiImageOptions, setGen: (s: GenStatus)
         const res = await generateImageViaExtension({
           prompt: buildFinalPrompt([getImageSource().chatgptMode === 'edit' ? `Edit the attached reference image(s): ${p}` : p, getImageSource().chatgptStyle, presetText(getImageSource().chatgptPreset) ? `\n\n${presetText(getImageSource().chatgptPreset)}\n` : '', getImageSource().chatgptStyleRef ? 'The LAST attached image is a STYLE reference only: copy its art style (colors, line work, rendering), not its content' : '', ({ transparent: 'transparent background', white: 'plain white background', black: 'plain black background' } as Record<string, string>)[getImageSource().chatgptBg] || ''].filter(Boolean).join(', '), opts.style),
           aspectRatio: getImageSource().flowRatio || opts.aspectRatio,
-          referenceImages: [...getImageSource().chatgptRefs.slice(0, getImageSource().chatgptStyleRef ? 2 : 3), ...(getImageSource().chatgptStyleRef ? [getImageSource().chatgptStyleRef] : [])],
+          referenceImages: [...(opts.refs?.length ? opts.refs : getImageSource().chatgptRefs).slice(0, getImageSource().chatgptStyleRef ? 2 : 3), ...(getImageSource().chatgptStyleRef ? [getImageSource().chatgptStyleRef] : [])],
           provider: 'chatgpt',
           // ChatGPT tạo tối đa ~4 phút + tải/upload ảnh: chờ lâu hơn mặc định 5 phút để không bỏ cuộc khi extension vẫn đang làm
           timeoutMs: 10 * 60 * 1000,
@@ -140,7 +142,7 @@ export const runAiImage = async (opts: UseAiImageOptions, setGen: (s: GenStatus)
     }
     try {
       const src = getImageSource();
-      const res = await generateImageViaExtension({ prompt: buildFinalPrompt([p, presetText(src.chatgptPreset) ? `\n\n${presetText(src.chatgptPreset)}\n` : ''].filter(Boolean).join(', '), opts.style), aspectRatio: src.flowRatio || opts.aspectRatio, provider: 'flow', ui: { presetId: src.chatgptPreset || '' }, referenceImages: src.chatgptRefs.slice(0, 3), flowModel: src.flowModel, flowCount: src.flowCount || 1 });
+      const res = await generateImageViaExtension({ prompt: buildFinalPrompt([p, presetText(src.chatgptPreset) ? `\n\n${presetText(src.chatgptPreset)}\n` : ''].filter(Boolean).join(', '), opts.style), aspectRatio: src.flowRatio || opts.aspectRatio, provider: 'flow', ui: { presetId: src.chatgptPreset || '' }, referenceImages: (opts.refs?.length ? opts.refs : src.chatgptRefs).slice(0, 3), flowModel: src.flowModel, flowCount: src.flowCount || 1 });
       opts.onImage(res.imageUrl, p);
       setGen({ busy: false, msg: 'Image generated and added to the exercise.' });
       return true;

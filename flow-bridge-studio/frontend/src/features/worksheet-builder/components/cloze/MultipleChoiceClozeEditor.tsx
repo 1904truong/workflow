@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { AiRewriteBox } from '../shared/AiRewriteBox';
 import { createPortal } from 'react-dom';
 import {
   ArrowLeft, Check, Plus, Trash2, Copy, X, ClipboardPaste, GripVertical,
@@ -858,6 +859,7 @@ export const MultipleChoiceClozeEditor: React.FC<Props> = ({
               placeholder={`CIRCLE THE CORRECT WORDS TO COMPLETE THE TEXT.\n\nWALL STREET\nWall Street is a street (1) ________ New York City's financial district...\n\n1. a. at b. in c. on\n2. a. its b. it's c. their`}
               className="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             />
+            <AiRewriteBox kind="Multiple Choice Cloze Test" hint="Dán cả bài: tiêu đề, đoạn văn có chỗ trống (1) ________ và danh sách lựa chọn dạng '1. a. ... b. ... c. ...' hoặc mỗi lựa chọn một dòng." example={'CIRCLE THE CORRECT WORDS TO COMPLETE THE TEXT.\n\nWALL STREET\nWall Street is a street (1) ________ New York City\'s financial district...\n\n1. a. at b. in c. on\n2. a. its b. it\'s c. their'} text={pasteText} onText={(v) => { setPasteText(v); setParsed(null); }} />
             {parsed && (
               <div className={`rounded-xl border p-3 text-xs space-y-1 ${parsed.warnings.length ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-emerald-200 bg-emerald-50 text-emerald-900'}`}>
                 <div className="font-bold">Nhận diện: {parsed.blankCount} chỗ trống · {parsed.questionCount} câu hỏi{parsed.data.passageTitle ? ` · Tiêu đề đoạn: “${parsed.data.passageTitle}”` : ''}</div>

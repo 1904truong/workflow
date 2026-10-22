@@ -1,6 +1,7 @@
 import { TtsAudioButton } from '../shared/TtsAudioButton';
 import { publicAudioUrl, type StoredAudio } from '../../services/tts/audioStorage';
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
+import { AiRewriteBox } from '../shared/AiRewriteBox';
 import { createPortal, flushSync } from 'react-dom';
 import { PageZoomOverlay } from '../shared/PageZoomOverlay';
 import { ArrowLeft, Check, Plus, Trash2, Copy, ImagePlus, X, ClipboardPaste, Maximize2, Minimize, Minus, ChevronLeft, ChevronRight, ChevronDown, Eye, Play, Pause, Headphones, Upload, FileDown, Printer, MoreHorizontal, Undo2, Redo2, Save, Link2, QrCode, AlertCircle } from 'lucide-react';
@@ -2264,6 +2265,7 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
               placeholder={`LISTEN AND FILL IN THE GAP\n\nTHINGS TO SEE AND DO IN LONDON\n\n1. Go on a Big Bus tour and see the famous (a) __________ in London...\n\n2. Visit the Tate Modern and see a fantastic (c) __________ of modern art...`}
               className="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             />
+            <AiRewriteBox kind="Listening Fill in the Gap" hint="Dán bài đọc có tiêu đề (viết hoa), các đoạn văn đánh số 1., 2., 3... và chỗ trống dạng (a) ________ hoặc (1) ________. Hệ thống tách tiêu đề, đoạn văn và danh sách chỗ trống." example={'LISTEN AND FILL IN THE GAP\n\nTHINGS TO SEE AND DO IN LONDON\n\n1. Go on a Big Bus tour and see the famous (a) __________ in London...\n\n2. Visit the Tate Modern and see a fantastic (c) __________ of modern art...'} text={pasteText} onText={setPasteText} />
 
             <div className="flex items-center justify-between pt-2">
               <span className="text-[11px] text-slate-400">

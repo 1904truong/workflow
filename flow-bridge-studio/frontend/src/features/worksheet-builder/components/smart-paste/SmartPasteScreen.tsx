@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { AiRewriteBox } from '../shared/AiRewriteBox';
 import { 
   Sparkles, ClipboardPaste, RotateCcw, ArrowRight, ArrowLeft, 
   CheckCircle2, AlertCircle, Layers, HelpCircle, Image as ImageIcon, 
@@ -380,6 +381,7 @@ Example format:
               style={{ whiteSpace: 'pre-wrap' }}
             />
           </div>
+          <AiRewriteBox kind="Cả đề nhiều bài (Smart Paste)" hint="Cả đề gồm nhiều bài. Mỗi bài bắt đầu bằng dòng 'Exercise N: <hướng dẫn của bài>' rồi đến nội dung (câu hỏi đánh số, lựa chọn a./b./c., chỗ trống ______, khung từ). Đáp án nếu có để cuối đề dưới dòng ANSWER KEY. Có thể có phần đầu đề: trường, Unit, thời gian, tổng điểm." example={'Unit 2 – London   Time: 45 min   Total: 20 points\n\nExercise 1: Choose the correct answer A, B or C.\n1. What is the capital of England?\nA. Paris  B. London  C. Rome\n\nExercise 2: Complete the sentences with the words from the box.\nbig   red   fast\n1. The bus is ______.\n\nANSWER KEY\n1. B'} text={pasteText} onText={setPasteText} />
 
             </>
           )}

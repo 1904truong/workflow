@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { AiRewriteBox } from '../shared/AiRewriteBox';
 import { createPortal } from 'react-dom';
 import {
   ArrowUp, ArrowDown, Copy, Trash2, Plus, Minus, ImagePlus, X, Check, ClipboardPaste, AlertTriangle, GripVertical,
@@ -766,6 +767,7 @@ export const MatchingEditor: React.FC<Props> = ({ value, onChange, onTitleDetect
                 placeholder={'MATCH THE PROBLEM TO ITS SOLUTIONS.\n\n1. Litter in streets\n2. Complain about the kids\n\na. Creating more things for the young to do\nb. Educating people quickly'}
                 className={`${inputCls} font-mono bg-white`}
               />
+              <AiRewriteBox kind="Matching (problems / solutions)" hint="Dán tiêu đề, danh sách vấn đề đánh số 1., 2., ... rồi danh sách giải pháp a., b., ... (mỗi mục một dòng, hai danh sách cách nhau một dòng trống)." example={'MATCH THE PROBLEM TO ITS SOLUTIONS.\n\n1. Litter in streets\n2. Complain about the kids\n\na. Creating more things for the young to do\nb. Educating people quickly'} text={pasteText} onText={(v) => { setPasteText(v); setParsed(null); }} />
               <div className="flex items-center gap-2">
                 <button type="button" onClick={runParse} disabled={!pasteText.trim()} className="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-900 text-white disabled:opacity-40">Phân tích</button>
                 {parsed && parsed.ok && (<>
