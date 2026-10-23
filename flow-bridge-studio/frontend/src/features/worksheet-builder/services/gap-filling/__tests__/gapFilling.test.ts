@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { passageColumns, looksTwoColumns, parseGapFillingText, passageSentences, splitPassage, insertBlankAt, nextBlankLabel, countBlanks, parseWordLines, createGapFilling, validateGapFilling } from '../gapFillingCore.ts';
+import { passageLines, buildGapImagePrompt, passageColumns, looksTwoColumns, parseGapFillingText, passageSentences, splitPassage, insertBlankAt, nextBlankLabel, countBlanks, parseWordLines, createGapFilling, validateGapFilling } from '../gapFillingCore.ts';
 
 const TEXT = `COMPLETE THE PARAGRAPH WITH THE WORDS AND PHRASES FROM THE BOX
 citizens   election   pay a fine   required   vote
@@ -89,4 +89,19 @@ test('đoạn văn thường và danh sách đánh số không bị nhận nhầ
   assert.equal(looksTwoColumns('First (a) ______ paragraph here.\n\nSecond (b) ______ paragraph here.'), false);
   assert.equal(looksTwoColumns('1. I ______ here.\n2. You ______ there.'), false);
   assert.equal(parseGapFillingText(TEXT).layout, 'box_paragraph');
+});
+
+test('passageLines giữ từng dòng và khổ cách nhau dòng trống', () => {
+  assert.deepEqual(passageLines('\n The ___ likes a,\nHe ___ b.\n\n\n\nPeas...\n'), ['The ___ likes a,', 'He ___ b.', '', 'Peas...']);
+});
+
+test('buildGapImagePrompt dùng khung từ làm gợi ý', () => {
+  const d = createGapFilling({ words: [{ id: '1', text: 'zebra' }, { id: '2', text: 'hippo' }], passage: 'The ____ likes peas,' });
+  assert.match(buildGapImagePrompt(d), /zebra, hippo/);
+});
+
+test('khung từ viết thường cách nhau một dấu cách (bài hát zebra) được tách khỏi lời bài hát', () => {
+  const p = parseGapFillingText('LISTEN AND FILL THE GAPS\nzebra peas carrots eat hippo bananas like\nparrot sandwiches pizza.\nThe _____ likes sausages,\nHe doesn\'t like _____.');
+  assert.deepEqual(p.words, ['zebra', 'peas', 'carrots', 'eat', 'hippo', 'bananas', 'like', 'parrot', 'sandwiches', 'pizza']);
+  assert.equal(p.passage.split('\n').length, 2);
 });

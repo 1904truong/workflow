@@ -10,8 +10,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Undo2, Redo2, Save, FilePlus2, FileDown, Printer, ArrowLeft, ZoomIn, ZoomOut, Maximize2, Eye, Pencil, LayoutTemplate, SlidersHorizontal, X,
+  Strikethrough, Highlighter, Superscript, Subscript,
 } from 'lucide-react';
 import type { MoreEntry, ToolbarGroup, ToolbarItem } from './EditorToolbar';
+import { activeFontSizePt, useRichSelection, type RichActive } from '../rich/RichEditable';
 import {
   RibbonRoot, Popover, TbButton, TbFileButton, TbSep, DropdownTrigger, MenuTrigger, MenuList, ColorPalette, type RibbonEntry,
 } from './ribbonKit';
@@ -47,7 +49,63 @@ const tidy = (entries: RibbonEntry[]): RibbonEntry[] => {
   return out;
 };
 
-export const RibbonToolbar: React.FC<{ groups: ToolbarGroup[]; locked?: boolean; shell?: RibbonShell }> = ({ groups, locked = false, shell = {} }) => {
+/**
+ * Có con trỏ / vùng chọn trong một ô chữ trên trang A4: các nút chữ (đậm, nghiêng, gạch chân, gạch ngang, màu, cỡ chữ, xóa định dạng)
+ * áp lên ĐÚNG phần chữ đang chọn thay vì cả thành phần; thêm tô nền và chỉ số trên/dưới. Không có ô nào đang chọn thì giữ nguyên
+ * hành vi định dạng theo thành phần của từng dạng bài.
+ */
+const withRichText = (groups: ToolbarGroup[], rich: RichActive | null): ToolbarGroup[] => {
+  if (!rich) return groups;
+  const { handle, info } = rich;
+  const a = info.attrs;
+  const where = info.collapsed ? 'chữ gõ tiếp tại con trỏ' : 'phần chữ đang chọn';
+  const size = activeFontSizePt(rich);
+  const setSize = (pt: number) => handle.applyFormat({ fontSizePt: Math.min(48, Math.max(6, Math.round(pt * 2) / 2)) });
+  const toggle = (k: 'bold' | 'italic' | 'underline' | 'strike') => handle.applyFormat({ [k]: !a[k] });
+  return groups.map((grp) => {
+    if (grp.id !== 'text') return grp;
+    const items = grp.items.flatMap((it): ToolbarItem[] => {
+      if (it.type === 'button') {
+        const lab = (name: string) => `${name} – ${where}`;
+        switch (it.id) {
+          case 'bold': return [{ ...it, label: lab('Bold'), active: !!a.bold, disabled: false, onClick: () => toggle('bold') }];
+          case 'italic': return [{ ...it, label: lab('Italic'), active: !!a.italic, disabled: false, onClick: () => toggle('italic') }];
+          case 'underline': return [{ ...it, label: lab('Underline'), active: !!a.underline, disabled: false, onClick: () => toggle('underline') }];
+          case 'strike': return [{ ...it, label: lab('Strikethrough'), active: !!a.strike, disabled: false, onClick: () => toggle('strike') }];
+          case 'smaller': return [{ ...it, label: lab('Giảm cỡ chữ'), disabled: size <= 6, onClick: () => setSize(size - 0.5) }];
+          case 'bigger': return [{ ...it, label: lab('Tăng cỡ chữ'), disabled: size >= 48, onClick: () => setSize(size + 0.5) }];
+          default: return [it];
+        }
+      }
+      if (it.type === 'text' && it.id === 'size') return [{ ...it, text: String(size), title: `Cỡ chữ của ${where}` }];
+      if (it.type === 'color' && it.id === 'color') {
+        return [
+          { ...it, label: `Text color – màu ${where}`, value: a.color || '#111111', indicator: a.color || '#111111', onColor: (v) => handle.applyFormat({ color: v === '#111111' ? undefined : v }) },
+          { type: 'color', id: 'rich-highlight', icon: Highlighter, label: `Highlight – tô nền ${where}`, value: a.highlight || '#fde047', indicator: a.highlight || '#fde047', onColor: (v) => handle.applyFormat({ highlight: v }) },
+        ];
+      }
+      return [it];
+    });
+    const has = (id: string) => items.some((x) => 'id' in x && x.id === id);
+    const extra: ToolbarItem[] = [
+      ...(has('strike') ? [] : [{ type: 'button' as const, id: 'rich-strike', icon: Strikethrough, label: `Strikethrough – ${where}`, active: !!a.strike, onClick: () => toggle('strike') }]),
+      ...(has('rich-highlight') ? [] : [{ type: 'color' as const, id: 'rich-highlight', icon: Highlighter, label: `Highlight – tô nền ${where}`, value: a.highlight || '#fde047', indicator: a.highlight || '#fde047', onColor: (v: string) => handle.applyFormat({ highlight: v }) }]),
+      { type: 'button', id: 'rich-sup', icon: Superscript, label: `Superscript – chỉ số trên (${where})`, active: a.script === 'super', onClick: () => handle.applyFormat({ script: a.script === 'super' ? undefined : 'super' }) },
+      { type: 'button', id: 'rich-sub', icon: Subscript, label: `Subscript – chỉ số dưới (${where})`, active: a.script === 'sub', onClick: () => handle.applyFormat({ script: a.script === 'sub' ? undefined : 'sub' }) },
+    ];
+    return { ...grp, items: [...items, ...extra] };
+  }).map((grp) => {
+    // "Xóa định dạng" nằm ở nhóm Paragraph của nhiều dạng bài: khi đang chọn chữ thì xóa định dạng từng từ của vùng chọn
+    if (grp.id !== 'paragraph' && grp.id !== 'text') return grp;
+    return { ...grp, items: grp.items.map((it) => (it.type === 'button' && it.id === 'clear'
+      ? { ...it, label: `Clear formatting – xóa định dạng ${where}`, disabled: false, onClick: () => handle.clearFormat() }
+      : it)) };
+  });
+};
+
+export const RibbonToolbar: React.FC<{ groups: ToolbarGroup[]; locked?: boolean; shell?: RibbonShell }> = ({ groups: baseGroups, locked = false, shell = {} }) => {
+  const rich = useRichSelection();
+  const groups = withRichText(baseGroups, locked ? null : rich);
   const g = (id: string) => groups.find((x) => x.id === id);
   const textG = g('text');
   const paraG = g('paragraph');

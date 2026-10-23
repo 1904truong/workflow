@@ -5,6 +5,7 @@ import type { ListeningMcqData } from '../../services/listening-mcq/listeningMcq
 import { getAudioQrCodeUrl } from '../../services/listening/listeningGapFillCore';
 import { optionLabel, resolveOptionColumns, splitBlanks } from '../../services/grammar-mcq/grammarMcqCore';
 import { textStyleToCss } from '../../services/matching-pictures/matchingPicturesCore';
+import { RichEditable } from '../shared/rich/RichEditable';
 
 const NAVY = '#16295f';
 const HEAD_FONT = '"Roboto Condensed", "Arial Narrow", Arial, sans-serif';
@@ -35,31 +36,9 @@ const EditableText: React.FC<{
   css?: React.CSSProperties;
   selected?: boolean;
   onSelect?: () => void;
-}> = ({ value, onCommit, css, selected, onSelect }) => {
-  if (!onCommit) return <span style={css}>{value}</span>;
-  return (
-    <span
-      contentEditable
-      suppressContentEditableWarning
-      spellCheck={false}
-      className="rounded-[2px] cursor-text caret-blue-600 hover:bg-blue-50 focus:bg-blue-50/60 focus:outline focus:outline-1 focus:outline-blue-400 focus:outline-offset-2"
-      style={{ ...css, display: 'inline-block', minWidth: '3ch', outline: selected ? '1px solid #8b5cf6' : undefined, outlineOffset: '2px' }}
-      onFocus={onSelect}
-      onClick={onSelect}
-      onBlur={(e) => {
-        const v = e.currentTarget.innerText.replace(/ /g, ' ').replace(/\s*\n+\s*/g, ' ').trim();
-        if (v !== value) onCommit(v);
-        else e.currentTarget.innerText = value;
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
-        if (e.key === 'Escape') { e.currentTarget.innerText = value; e.currentTarget.blur(); }
-      }}
-    >
-      {value}
-    </span>
-  );
-};
+}> = ({ value, onCommit, css, selected, onSelect }) => (
+  <RichEditable value={value} onCommit={onCommit} css={css} selected={selected} onSelect={onSelect} />
+);
 
 export const ListeningMcqRenderer: React.FC<Props> = ({ data, exerciseIndex = 1, hideExerciseHeading = false, editable }) => {
   const { settings, questions, audio } = data;

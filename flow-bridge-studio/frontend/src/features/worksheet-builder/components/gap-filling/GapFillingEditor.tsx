@@ -1,14 +1,16 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AiRewriteBox } from '../shared/AiRewriteBox';
+import { SmartLayoutBar } from '../shared/SmartLayoutBar';
+import { GAP_LAYOUTS as SMART_LAYOUTS } from '../../services/gap-filling/gapFillingCore';
 import { createPortal } from 'react-dom';
 import {
-  ArrowLeft, Check, Copy, Eye, FileDown, GripVertical, Maximize2, Minimize, Minus, Plus, Printer, X,
-  MoreHorizontal, RotateCcw, RotateCw, Save, Trash2, ChevronLeft, ChevronRight, ChevronDown, HelpCircle, SquareDashed, FileUp,
+  ArrowLeft, Copy, Eye, FileDown, GripVertical, Maximize2, Minimize, Minus, Plus, Printer, X,
+  MoreHorizontal, RotateCcw, RotateCw, Save, Trash2, ChevronDown, HelpCircle, SquareDashed, FileUp,
 } from 'lucide-react';
 import { PageZoomOverlay } from '../shared/PageZoomOverlay';
 import type { Exercise, LessonFolder, Worksheet } from '../../types';
 import {
-  bumpGapSize, countBlanks, createGapFilling, insertBlankAt, moveGapItem, newGapId, parseGapFillingText, parseWordLines,
+  buildGapImagePrompt, extractLeadingWordBank, bumpGapSize, countBlanks, createGapFilling, insertBlankAt, moveGapItem, newGapId, parseGapFillingText, parseWordLines,
   setGapStyle, validateGapFilling,
   type GapFillingData, type GapStyleKey, type GapWord,
 } from '../../services/gap-filling/gapFillingCore';
@@ -22,6 +24,12 @@ import { resolveBranding } from '../../types/branding';
 import { exportWorksheetToDocx } from '../../services/docxExportService';
 import { useAppHeaderSlot } from '../shared/hooks/useAppHeaderSlot';
 import { useSplitPane } from '../shared/hooks/useSplitPane';
+import { ImageManagerBody } from '../shared/ImageManagerBody';
+import { useAiImage } from '../../services/ai/useAiImage';
+import { PHOTO_STYLE } from '../../services/matching/autoMatching';
+import { fileToSmallDataUrl } from '../../types/branding';
+import { SaveStatusBadge, useSaveShortcut, type SaveStatus } from '../shared/SaveStatusBadge';
+import { RichMarksProvider } from '../shared/rich/RichEditable';
 
 interface Props {
   folder: LessonFolder;
@@ -79,7 +87,7 @@ const MODAL_INFO: Record<ModalMode, { title: string; hint: string; placeholder: 
 export const GapFillingEditor: React.FC<Props> = ({ folder, editingExercise, onSaveExercise, onCancel, onDeleteExercise }) => {
   const [data, setDataRaw] = useState<GapFillingData>(() =>
     editingExercise?.gapFilling
-      ? createGapFilling(editingExercise.gapFilling)
+      ? extractLeadingWordBank(createGapFilling(editingExercise.gapFilling))
       : createGapFilling({ ...(editingExercise?.title ? { exerciseTitle: editingExercise.title } : {}), ...(editingExercise?.instructions ? { instruction: editingExercise.instructions } : {}) }),
   );
   const exerciseIdRef = useRef(editingExercise?.id || `ex_gap_filling_${Date.now()}`);
@@ -92,7 +100,7 @@ export const GapFillingEditor: React.FC<Props> = ({ folder, editingExercise, onS
   const pastRef = useRef<GapFillingData[]>([]);
   const futureRef = useRef<GapFillingData[]>([]);
   const lastPushRef = useRef(0);
-  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
   const setData = (next: React.SetStateAction<GapFillingData>) => {
     const prev = dataRef.current;
     const val = typeof next === 'function' ? (next as (p: GapFillingData) => GapFillingData)(prev) : next;
@@ -106,8 +114,7 @@ export const GapFillingEditor: React.FC<Props> = ({ folder, editingExercise, onS
     futureRef.current = [];
     dataRef.current = val;
     setDataRaw(val);
-    setSaveStatus('saving');
-    window.setTimeout(() => setSaveStatus('saved'), 600);
+    setSaveStatus('unsaved');
   };
   const jump = (from: GapFillingData[], to: GapFillingData[]) => {
     const target = from.pop();
@@ -116,6 +123,7 @@ export const GapFillingEditor: React.FC<Props> = ({ folder, editingExercise, onS
     dataRef.current = target;
     lastPushRef.current = 0;
     setDataRaw(target);
+    setSaveStatus('unsaved');
   };
   const handleUndo = () => jump(pastRef.current, futureRef.current);
   const handleRedo = () => jump(futureRef.current, pastRef.current);
@@ -123,7 +131,7 @@ export const GapFillingEditor: React.FC<Props> = ({ folder, editingExercise, onS
   const canRedo = futureRef.current.length > 0;
 
   const update = (patch: Partial<GapFillingData>) => setData((p) => ({ ...p, ...patch }));
-  const updateSettings = (patch: Partial<GapFillingData['settings']>) => setData((p) => ({ ...p, settings: { ...p.settings, ...patch } }));
+  const updateSettings = (patch: Partial<GapFillingData["settings"]>) => setData((p) => { const n = { ...p, settings: { ...p.settings, ...patch } }; return patch.layout === "text_image" ? extractLeadingWordBank(n) : n; });
 
   // ── Giao diện: header, hai cột kéo được, xem trước vừa khung
   const slot = useAppHeaderSlot();
@@ -186,6 +194,29 @@ export const GapFillingEditor: React.FC<Props> = ({ folder, editingExercise, onS
       if (t) { t.focus(); t.setSelectionRange(r.caret, r.caret); }
     }, 0);
   };
+
+  // ── Ảnh minh họa (layout bài hát + ảnh): khối Image Manager và hàm tạo ảnh dùng chung
+  const handleImageSlot = async (_idx: number, file: File) => {
+    try {
+      const url = await fileToSmallDataUrl(file, 900, 'image/jpeg');
+      const ratio = await new Promise<number>((resolve) => {
+        const im = new Image();
+        im.onload = () => resolve(im.naturalWidth && im.naturalHeight ? Math.round((im.naturalWidth / im.naturalHeight) * 100) / 100 : 4 / 3);
+        im.onerror = () => resolve(4 / 3);
+        im.src = url;
+      });
+      update({ image: { ...dataRef.current.image, url, ratio } });
+    } catch {
+      window.alert('Không đọc được ảnh này.');
+    }
+  };
+  const { gen, generate: generateImage } = useAiImage({
+    getPrompt: () => dataRef.current.image?.prompt || buildGapImagePrompt(dataRef.current),
+    style: PHOTO_STYLE,
+    aspectRatio: '4:3',
+    onPrompt: (p) => setData((d) => ({ ...d, image: { ...d.image, prompt: p } })),
+    onImage: (url, p) => setData((d) => ({ ...d, image: { ...d.image, url, ratio: 4 / 3, prompt: p } })),
+  });
 
   // ── Smart Paste / Import
   const [modal, setModal] = useState<ModalMode | null>(null);
@@ -264,6 +295,8 @@ export const GapFillingEditor: React.FC<Props> = ({ folder, editingExercise, onS
     gapFilling: { ...data, exerciseNumber },
   });
 
+  useSaveShortcut(() => handleSave('stay'));
+
   const handleSave = (next: 'return' | 'add_another' | 'stay' = 'return') => {
     const v = validateGapFilling(data);
     if (v.errors.length > 0 && next !== 'stay') {
@@ -340,6 +373,7 @@ export const GapFillingEditor: React.FC<Props> = ({ folder, editingExercise, onS
     <div className="bg-white text-[#111] shadow-xl mx-auto" style={{ width: '210mm', minHeight: '297mm', padding: '15mm', zoom: scale, display: 'flex', flexDirection: 'column' }}>
       {brand.enabled && <BrandHeader b={brand} />}
       <div className="mt-[4mm]">
+        <RichMarksProvider marks={data.richMarks} onChange={editable ? (fn) => setData((p) => ({ ...p, richMarks: fn(p.richMarks) })) : undefined}>
         <GapFillingRenderer
           data={{ ...data, exerciseNumber }}
           exerciseIndex={exerciseNumber}
@@ -351,6 +385,7 @@ export const GapFillingEditor: React.FC<Props> = ({ folder, editingExercise, onS
             onSelectKey: setSelKey,
           } : undefined}
         />
+        </RichMarksProvider>
       </div>
       {brand.enabled && <div className="mt-auto pt-[8mm]"><BrandFooter b={brand} pageNumber={1} totalPages={1} /></div>}
     </div>
@@ -376,9 +411,7 @@ export const GapFillingEditor: React.FC<Props> = ({ folder, editingExercise, onS
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 text-xs text-emerald-700 font-medium bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100">
-              <Check size={13} strokeWidth={2.5} /> {saveStatus === 'saving' ? 'Saving...' : 'Saved a few seconds ago'}
-            </div>
+            <SaveStatusBadge status={saveStatus} />
             <div className="relative">
               <button type="button" onClick={() => setShowExportMenu((v) => !v)} className="w-9 h-9 text-slate-600 hover:text-slate-900 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg flex items-center justify-center" title="Tùy chọn xuất file">
                 <MoreHorizontal size={16} />
@@ -527,6 +560,27 @@ export const GapFillingEditor: React.FC<Props> = ({ folder, editingExercise, onS
               <AudioQrPanel audio={data.audio} showQr={data.settings.showQrCode} onAudioChange={(audio) => update({ audio })} onShowQrChange={(v) => updateSettings({ showQrCode: v })} />
             )}
           </section>
+
+          {data.settings.layout === 'text_image' && (
+            <section className="shrink-0 bg-white/60 border border-slate-100 rounded-2xl p-4 shadow-xs space-y-2.5">
+              <SectionHead n={5} title="Image Manager" help="Ảnh minh họa bên phải lời bài hát (layout 4). Tải ảnh hoặc tạo bằng AI qua extension." />
+              <ImageManagerBody
+                slots={[{ url: data.image?.url }]}
+                previewRatio={4 / 3}
+                onFile={(idx, f) => { void handleImageSlot(idx, f); }}
+                onRemove={() => update({ image: { ...data.image, url: undefined, ratio: undefined } })}
+                onGenerate={() => { void generateImage(); }}
+                generating={gen.busy}
+                prompt={data.image?.prompt || ''}
+                onPromptChange={(v) => update({ image: { ...data.image, prompt: v } })}
+                defaultPrompt={() => buildGapImagePrompt(dataRef.current)}
+                message={gen.msg}
+              />
+              <label className="flex items-center justify-between gap-3 text-[11.5px] text-slate-700">Độ rộng cột ảnh
+                <span className="flex items-center gap-2"><input type="range" min={30} max={60} step={2} value={data.settings.imageWidthPct} onChange={(e) => updateSettings({ imageWidthPct: Number(e.target.value) })} className="accent-blue-600" /><span className="font-mono w-12 text-right">{data.settings.imageWidthPct}%</span></span>
+              </label>
+            </section>
+          )}
         </div>
 
         {/* ── Thanh kéo chia 2 cột ── */}
@@ -551,11 +605,6 @@ export const GapFillingEditor: React.FC<Props> = ({ folder, editingExercise, onS
               {locked && <span className="hidden 2xl:inline ml-1 text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-md px-2 py-1">Chỉ xem – chọn Edit Mode để chỉnh sửa</span>}
             </div>
             <div className="flex items-center gap-1.5 text-xs text-slate-700 shrink-0 [&_button]:!w-7 [&_button]:!h-7">
-              <div className={`${box} px-0.5`}>
-                <button type="button" className={btn} title="Trang trước"><ChevronLeft size={15} /></button>
-                <span className="px-2 whitespace-nowrap">Page 1 / 1</span>
-                <button type="button" className={btn} title="Trang sau"><ChevronRight size={15} /></button>
-              </div>
               <div className={`${box} px-0.5`}>
                 <button type="button" onClick={() => setZoom((z) => Math.max(50, z - 10))} className={btn} title="Thu nhỏ"><Minus size={14} /></button>
                 <span className="w-11 text-center">{zoom}%</span>
@@ -582,6 +631,7 @@ export const GapFillingEditor: React.FC<Props> = ({ folder, editingExercise, onS
             </div>
             <p className="text-xs text-slate-500">{MODAL_INFO[modal].hint}</p>
             <textarea rows={10} style={{ flex: '1 1 auto', minHeight: '14rem', resize: 'none' }} value={pasteText} onChange={(e) => { setPasteText(e.target.value); setModalMsg(''); }} placeholder={MODAL_INFO[modal].placeholder} className={`${fieldCls} font-mono`} />
+            <SmartLayoutBar kind="Gap Filling (word bank)" hint={MODAL_INFO[modal].hint} example={MODAL_INFO[modal].placeholder} text={pasteText} onText={(v) => { setPasteText(v); setModalMsg(''); }} layouts={SMART_LAYOUTS} current={String(data.settings.layout)} onLayout={(id) => updateSettings({ layout: id } as never)} />
             <AiRewriteBox kind="Gap Filling (word bank)" hint={MODAL_INFO[modal].hint} example={MODAL_INFO[modal].placeholder} text={pasteText} onText={(v) => { setPasteText(v); setModalMsg(''); }} />
             {modalMsg && <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">{modalMsg}</p>}
             <div className="flex justify-end gap-2">

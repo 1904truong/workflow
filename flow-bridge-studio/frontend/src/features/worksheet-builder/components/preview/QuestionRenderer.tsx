@@ -158,7 +158,7 @@ const QuestionBody: React.FC<QuestionRendererProps> = ({
   }
 
   // Sentence Construction or Short Answer
-  if (exerciseType === 'sentence_construction' || exerciseType === 'reading_short_answer') {
+  if (exerciseType === 'sentence_construction' || exerciseType === 'reading_short_answer' || exerciseType === 'reading_comic') {
     const lines = question.linesCount || 2;
     return (
       <div className="mb-[4mm] text-[11pt]" style={{ fontFamily: PRINT_TOKENS.typography.fontFamily }}>

@@ -80,4 +80,5 @@ Thumbs.db
 
 # Local layout references & PDFs
 ZLayout/
+Ribbon/
 *.pdf

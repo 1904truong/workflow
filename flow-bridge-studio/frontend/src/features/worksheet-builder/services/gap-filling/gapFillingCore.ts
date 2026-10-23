@@ -5,7 +5,7 @@
 import type { ListeningAudio } from '../listening/listeningGapFillCore.ts';
 import type { TextStyle } from '../matching-pictures/matchingPicturesCore.ts';
 
-export type GapLayoutId = 'box_paragraph' | 'numbered_list' | 'two_columns';
+export type GapLayoutId = 'box_paragraph' | 'numbered_list' | 'two_columns' | 'text_image';
 
 export interface GapLayoutMeta {
   id: GapLayoutId;
@@ -17,7 +17,16 @@ export const GAP_LAYOUTS: GapLayoutMeta[] = [
   { id: 'box_paragraph', label: '1. Khung từ + đoạn văn', desc: 'Khung từ có viền bo tròn ở trên, đoạn văn giãn dòng rộng bên dưới, mã QR góc phải tiêu đề' },
   { id: 'numbered_list', label: '2. Khung từ + câu đánh số', desc: 'Khung từ xếp lưới ba cột, bên dưới là các câu 1., 2., … mỗi câu một chỗ trống, tự tách đoạn theo từng dòng' },
   { id: 'two_columns', label: '3. Khung từ + hai cột', desc: 'Khung từ trải ngang, bên dưới hai cột có tiêu đề (ví dụ Positive ✓ / Negative ✗), mỗi dòng một câu không đánh số, chỗ trống là đường kẻ ngắn' },
+  { id: 'text_image', label: '4. Khung từ + bài hát / thơ + ảnh', desc: 'Khung từ trải ngang, bên dưới bên trái là lời bài hát / thơ giữ nguyên từng dòng (không đánh số), bên phải là ảnh minh họa, mã QR đặt phía trên ảnh' },
 ];
+
+export interface GapImage {
+  url?: string;
+  /** Tỉ lệ rộng/cao của ảnh (tự theo ảnh thật khi có ảnh) */
+  ratio?: number;
+  /** Prompt tạo ảnh (tự sinh từ nội dung, sửa được) */
+  prompt?: string;
+}
 
 export interface GapWord {
   id: string;
@@ -44,10 +53,14 @@ export interface GapFillingSettings {
   showInstruction: boolean;
   showWordBank: boolean;
   showQrCode: boolean;
+  /** Chiều rộng cột ảnh (% bề ngang) ở layout bài hát + ảnh */
+  imageWidthPct: number;
   pageBreakBefore: boolean;
 }
 
 export interface GapFillingData {
+  /** Định dạng từng từ của các ô chữ sửa trên trang A4 (xem services/richFields.ts) */
+  richMarks?: import('../richFields.ts').RichMarks;
   exerciseTitle: string;
   instruction: string;
   exerciseNumber?: number;
@@ -55,6 +68,7 @@ export interface GapFillingData {
   /** Đoạn văn; chỗ trống viết dạng "(a) ______"; các đoạn cách nhau một dòng trống */
   passage: string;
   audio: ListeningAudio;
+  image?: GapImage;
   textStyles?: GapTextStyles;
   settings: GapFillingSettings;
 }
@@ -70,6 +84,7 @@ export const DEFAULT_GAP_SETTINGS: GapFillingSettings = {
   showInstruction: false,
   showWordBank: true,
   showQrCode: false,
+  imageWidthPct: 56,
   pageBreakBefore: false,
 };
 
@@ -149,6 +164,20 @@ export const looksTwoColumns = (passage: string): boolean => {
   return cols.every((c) => c.heading.length > 0 && c.heading.length <= 30 && !/^\d{1,3}\s*[.)]/.test(c.heading) && !/[.!?]$/.test(c.heading) && c.lines.length >= 2 && c.lines.every(hasBlankLine));
 };
 
+/** Bài hát / thơ: giữ nguyên từng dòng; dòng trống giữa các khổ thành chuỗi rỗng để chừa khoảng cách */
+export const passageLines = (passage: string): string[] => {
+  const lines = passage.replace(/\r\n?/g, '\n').split('\n').map((l) => l.trim());
+  while (lines.length && !lines[0]) lines.shift();
+  while (lines.length && !lines[lines.length - 1]) lines.pop();
+  return lines.filter((l, i) => l || lines[i - 1]);
+};
+
+/** Prompt dự phòng cho ảnh minh họa của bài hát / thơ, dựng từ các dòng đầu và khung từ */
+export const buildGapImagePrompt = (d: GapFillingData): string => {
+  const hint = [d.words.slice(0, 10).map((w) => w.text).filter(Boolean).join(', '), passageLines(d.passage).slice(0, 3).join(' ').replace(/_{3,}/g, '…')].filter(Boolean).join('. ');
+  return `Colorful children's textbook illustration for an English song, cute cartoon characters in a scene, clean background, no text.${hint ? ` Topic hints: ${hint}` : ''}`.trim();
+};
+
 export const passageParagraphs = (passage: string): string[] =>
   passage.replace(/\r\n?/g, '\n').split(/\n\s*\n/).map((p) => p.replace(/\s*\n\s*/g, ' ').trim()).filter(Boolean);
 
@@ -207,6 +236,9 @@ const isBankLine = (l: string) => {
   return splitWordList(l).length >= 2;
 };
 
+/** Dòng chỉ gồm các từ đơn viết thường (cho phép dấu chấm cuối), không chỗ trống: dòng khung từ bị dính dấu cách */
+const isPlainWordRow = (l: string) => !!l && !hasBlank(l) && l.split(/\s+/).every((w) => /^[a-z][a-z'’-]*[.,]?$/.test(w));
+
 /**
  * Smart Paste: [tiêu đề viết hoa, có thể xuống 2 dòng] [khung từ, có thể nhiều dòng] đoạn văn / các câu có chỗ trống.
  * Khung từ: bắt đầu bằng "Word bank:", hoặc là các dòng ngắn liền nhau, không có chỗ trống và không đánh số.
@@ -236,6 +268,13 @@ export const parseGapFillingText = (raw: string): ParsedGapFilling => {
       const bank: string[] = [];
       while (j < lines.length && isBankLine(lines[j])) { bank.push(...splitWordList(lines[j])); j++; }
       if (bank.length >= 3) { words.push(...bank); i = j; }
+      else {
+        // Khung từ chép từ PDF: các từ viết thường cách nhau một dấu cách (có thể xuống dòng), câu bài hát phía sau có chỗ trống
+        let k = i;
+        const flat: string[] = [];
+        while (k < lines.length && isPlainWordRow(lines[k])) { flat.push(...lines[k].split(/\s+/).map((w) => w.replace(/[.,]$/, ''))); k++; }
+        if (flat.length >= 5 && lines.slice(k).some(hasBlank)) { words.push(...flat); i = k; }
+      }
     }
   }
   const passage = lines.slice(i).join('\n').replace(/\n{3,}/g, '\n\n').trim();
@@ -283,4 +322,12 @@ export const setGapStyle = (styles: GapTextStyles | undefined, key: GapStyleKey,
 export const bumpGapSize = (styles: GapTextStyles | undefined, key: GapStyleKey, base: number, delta: number): GapTextStyles => {
   const cur = styles?.[key]?.sizePt ?? base;
   return setGapStyle(styles, key, { sizePt: Math.min(30, Math.max(7, Math.round((cur + delta) * 2) / 2)) });
+};
+
+/** Bài đã dán trước đó mà dòng khung từ nằm lẫn đầu đoạn văn: tách ra khung từ (chỉ khi khung từ đang trống) */
+export const extractLeadingWordBank = (d: GapFillingData): GapFillingData => {
+  if (d.words.length > 0 || !d.passage.trim()) return d;
+  const p = parseGapFillingText(d.passage);
+  if (!p.ok || p.words.length === 0 || p.passage === d.passage.trim()) return d;
+  return { ...d, passage: p.passage, words: p.words.map((text): GapWord => ({ id: newGapId(), text })) };
 };

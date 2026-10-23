@@ -53,6 +53,14 @@ const Thumb: React.FC<{ id: string }> = ({ id }) => {
       </div>
     );
   }
+  if (id === 'dialogue_gap_fill') {
+    return (
+      <div className={frame}>
+        <span className="h-1 w-3/5 rounded bg-orange-500" />
+        {[0, 1, 2].map((i) => <div key={i} className="flex items-center gap-1"><span className="w-2 h-0.5 rounded bg-slate-800" />{line(i === 1 ? 'flex-1' : 'w-4/5')}<span className="w-2 h-px border-b border-dashed border-slate-600" /></div>)}
+      </div>
+    );
+  }
   if (id === 'rewrite') {
     return (
       <div className={frame}>

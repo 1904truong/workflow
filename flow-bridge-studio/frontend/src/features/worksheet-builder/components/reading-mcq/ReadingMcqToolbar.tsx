@@ -2,7 +2,7 @@ import React from 'react';
 import {
   Bold, Italic, Underline, Strikethrough, Baseline, AlignLeft, AlignCenter, AlignRight, ListFilter, RemoveFormatting,
   Plus, ListPlus, FileUp, ClipboardPaste, Shuffle, FilePlus2, ListOrdered, Square, CaseUpper, Columns3, FilePlus,
-  Ellipsis, SlidersHorizontal, Copy, Trash2, ALargeSmall, ImageIcon, AlignJustify,
+  Ellipsis, SlidersHorizontal, Copy, Trash2, ALargeSmall, ImageIcon, AlignJustify, Palette,
 } from 'lucide-react';
 import type { TextStyle } from '../../services/matching-pictures/matchingPicturesCore';
 import type { McqLayoutId } from '../../services/grammar-mcq/grammarMcqCore';
@@ -45,6 +45,22 @@ const Thumb: React.FC<{ id: McqLayoutId }> = ({ id }) => {
       return <div className={`${box} space-y-1`}>{[0, 1].map((i) => <div key={i} className="border border-slate-300 rounded-sm bg-white p-0.5">{line}{opt}</div>)}</div>;
     case 'exam_style':
       return <div className={`${box} space-y-1`}>{[0, 1, 2].map((i) => <div key={i}><div className="flex items-center gap-0.5"><span className="w-2 h-1.5 border border-slate-500 rounded-xs" />{line}</div><div className="flex gap-1 pl-3 mt-px">{[0, 1, 2, 3].map((j) => <span key={j} className="block h-px flex-1 bg-slate-300" />)}</div></div>)}</div>;
+    case 'comic_story':
+      return (
+        <div className={`${box} flex gap-1 p-1`}>
+          <div className="w-1/2 h-full bg-amber-100 border border-amber-300 rounded-xs flex items-center justify-center text-[7px] text-amber-800 font-bold">
+            Comic
+          </div>
+          <div className="w-1/2 flex flex-col justify-between py-0.5 space-y-1">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="space-y-0.5">
+                <span className="block h-0.5 w-3/4 bg-slate-500 rounded" />
+                <span className="block h-px w-full border-b border-dashed border-slate-400" />
+              </div>
+            ))}
+          </div>
+        </div>
+      );
     case 'original':
     default:
       return <div className={`${box} space-y-1`}>{[0, 1].map((i) => <div key={i}>{line}{opt}</div>)}</div>;
@@ -159,6 +175,24 @@ export const ReadingMcqToolbar: React.FC<Props> = ({
           sections: [{ value: settings.optionColumns, options: COLUMNS, onChange: (v) => onSettings({ optionColumns: v as ReadingMcqData['settings']['optionColumns'] }) }],
         },
         { type: 'button', id: 'pagebreak', icon: FilePlus, label: settings.pageBreakBefore ? 'Page break – bài này đang bắt đầu ở trang mới, bấm để bỏ' : 'Page break – bắt đầu bài này ở một trang mới', active: settings.pageBreakBefore, onClick: () => onSettings({ pageBreakBefore: !settings.pageBreakBefore }) },
+        ...(settings.layout === 'comic_story' ? [
+          {
+            type: 'button' as const,
+            id: 'themeColor',
+            icon: Palette,
+            label: settings.themeColor === 'orange' ? 'Màu chủ đề: Cam (Orange) – bấm để đổi sang Navy' : 'Màu chủ đề: Xanh Navy – bấm để đổi sang Cam',
+            active: settings.themeColor === 'orange',
+            onClick: () => onSettings({ themeColor: settings.themeColor === 'orange' ? 'navy' : 'orange' }),
+          },
+          {
+            type: 'button' as const,
+            id: 'linesCount',
+            icon: Square,
+            label: `Dòng kẻ trả lời: ${settings.answerLineCount || 1} dòng – bấm để đổi 1/2 dòng`,
+            active: (settings.answerLineCount || 1) > 1,
+            onClick: () => onSettings({ answerLineCount: (settings.answerLineCount || 1) === 1 ? 2 : 1 }),
+          },
+        ] : []),
       ],
     },
     {

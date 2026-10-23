@@ -83,6 +83,15 @@ export const EXERCISE_REGISTRY: Record<ExerciseType, ExerciseTypeMeta> = {
     slotPreset: 'readingIllustration',
     description: 'Passage with questions requiring concise written answers on ruled lines.',
   },
+  reading_comic: {
+    type: 'reading_comic',
+    label: 'Comic Story – Read & Answer',
+    category: 'Reading',
+    defaultTemplate: 'template_d',
+    defaultSlotsCount: 1,
+    slotPreset: 'readingIllustration',
+    description: 'Truyện tranh (comic strip / minh họa) bên trái, câu hỏi tự luận với dòng kẻ chấm bên phải.',
+  },
   matching_headings: {
     type: 'matching_headings',
     label: 'Matching Headings / Main Ideas',
@@ -98,6 +107,14 @@ export const EXERCISE_REGISTRY: Record<ExerciseType, ExerciseTypeMeta> = {
     defaultTemplate: 'template_d',
     defaultSlotsCount: 0,
     description: 'Match two groups of related information or facts.',
+  },
+  draw_lines_match: {
+    type: 'draw_lines_match',
+    label: 'Draw Lines and Match',
+    category: 'Reading',
+    defaultTemplate: 'template_a',
+    defaultSlotsCount: 0,
+    description: 'Hai bảng đối xứng (1–10 và A–J) có viền ô, khoảng trống ở giữa để học sinh kẻ đường nối.',
   },
   matching_vocabulary: {
     type: 'matching_vocabulary',
@@ -163,6 +180,14 @@ export const EXERCISE_REGISTRY: Record<ExerciseType, ExerciseTypeMeta> = {
     defaultTemplate: 'template_a',
     defaultSlotsCount: 0,
     description: 'Câu ngắn có chỗ trống với từ / cấu trúc ngữ pháp trọng tâm: khung từ, từ trong ngoặc, viết lại với gợi ý, hoặc hai cột at / on / in. Có mã QR khi bài có nghe.',
+  },
+  table_sentences: {
+    type: 'table_sentences',
+    label: 'Table → Write Sentences',
+    category: 'Writing',
+    defaultTemplate: 'template_a',
+    defaultSlotsCount: 0,
+    description: 'Bảng ảnh với mặt cười / mặt buồn (thích / không thích); học sinh nhìn bảng và viết câu vào các dòng kẻ bên cạnh.',
   },
   sentence_construction: {
     type: 'sentence_construction',

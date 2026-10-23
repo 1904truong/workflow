@@ -2,7 +2,7 @@ import React from 'react';
 import {
   Bold, Italic, Underline, Strikethrough, Baseline, AlignLeft, AlignCenter, AlignRight,
   ListFilter, RemoveFormatting, Plus, ClipboardPaste, FileUp, Shuffle, FilePlus2, ImageUp, ImageOff, ImagePlus, Heading,
-  SeparatorVertical, FilePlus, Ellipsis, SlidersHorizontal, Copy, Trash2, ALargeSmall,
+  FilePlus, Ellipsis, SlidersHorizontal, Copy, Trash2, ALargeSmall,
 } from 'lucide-react';
 import type { TextStyle } from '../../services/matching-pictures/matchingPicturesCore';
 import type { MatchingHeadingsData, HeadingStyleKey } from '../../services/matching-headings/matchingHeadingsCore';

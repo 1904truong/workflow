@@ -82,6 +82,7 @@ export const ContentEditorTab = ({
 
   const isRuledLinesType =
     exercise.type === 'reading_short_answer' ||
+    exercise.type === 'reading_comic' ||
     exercise.type === 'sentence_construction' ||
     exercise.type === 'sentence_rearrangement';
 

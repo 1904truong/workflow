@@ -7,8 +7,10 @@ export type ExerciseType =
   | 'reading_multiple_choice'
   | 'true_false_not_given'
   | 'reading_short_answer'
+  | 'reading_comic'
   | 'matching_headings'
   | 'matching_information'
+  | 'draw_lines_match'
   | 'matching_vocabulary'
   | 'matching_pictures'
   | 'grammar_vocab_multiple_choice'
@@ -17,7 +19,8 @@ export type ExerciseType =
   | 'gap_filling_word_formation'
   | 'sentence_rearrangement'
   | 'sentence_construction'
-  | 'sentence_completion';
+  | 'sentence_completion'
+  | 'table_sentences';
 
 export type TemplateLayoutType =
   | 'template_a' // Text Only
@@ -128,6 +131,8 @@ export interface Exercise {
   /** Dữ liệu bài Reading Multiple Choice (bài đọc + ảnh bài báo + câu hỏi A/B/C). */
   readingMcq?: import('../services/reading-mcq/readingMcqCore').ReadingMcqData;
   grammarMcq?: import('../services/grammar-mcq/grammarMcqCore').GrammarMcqData;
+  /** Dữ liệu bài Table → Write Sentences (bảng ảnh + mặt cười/buồn, dòng kẻ để viết câu). */
+  tableSentences?: import('../services/table-sentences/tableSentencesCore').TableSentencesData;
   order: number;
 }
 

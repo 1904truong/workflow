@@ -11,6 +11,7 @@ export const AI_EXERCISE_TYPES = [
   'reading_multiple_choice',
   'true_false_not_given',
   'reading_short_answer',
+  'reading_comic',
   'matching_headings',
   'matching_information',
   'matching_vocabulary',

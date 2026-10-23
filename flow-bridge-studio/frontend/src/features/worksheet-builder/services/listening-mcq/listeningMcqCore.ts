@@ -18,6 +18,8 @@ export interface ListeningMcqSettings extends GrammarMcqSettings {
 }
 
 export interface ListeningMcqData extends Omit<GrammarMcqData, 'settings'> {
+  /** Định dạng từng từ của các ô chữ sửa trên trang A4 (xem services/richFields.ts) */
+  richMarks?: import('../richFields.ts').RichMarks;
   audio: ListeningAudio;
   settings: ListeningMcqSettings;
 }

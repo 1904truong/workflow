@@ -10,6 +10,7 @@
 // (verify_jwt mặc định BẬT: chỉ người dùng đã đăng nhập Supabase mới gọi được. SUPABASE_URL và SUPABASE_SERVICE_ROLE_KEY do Supabase tự cấp.)
 
 import { buildGeminiRequest, checkInput, GEMINI_MODEL, parseResult, type RewriteInput } from './core.ts';
+import { buildVisionRequest, checkVisionInput, parseVisionResult, type VisionInput } from './vision.ts';
 
 declare const Deno: { env: { get(k: string): string | undefined }; serve(h: (req: Request) => Promise<Response> | Response): void };
 
@@ -54,12 +55,12 @@ async function userIdOf(req: Request): Promise<string | null> {
   return typeof u?.id === 'string' ? u.id : null;
 }
 
-async function callGemini(apiKey: string, input: RewriteInput, attempt = 0): Promise<unknown> {
+async function callGemini(apiKey: string, input: RewriteInput | VisionInput, attempt = 0): Promise<unknown> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-    body: JSON.stringify(buildGeminiRequest(input)),
+    body: JSON.stringify('data' in input ? buildVisionRequest(input) : buildGeminiRequest(input)),
   });
   if ((res.status === 429 || res.status >= 500) && attempt < 2) {
     await new Promise((r) => setTimeout(r, 1500 * (attempt + 1) ** 2));
@@ -97,8 +98,12 @@ Deno.serve(async (req) => {
   const apiKey = Deno.env.get('GEMINI_API_KEY');
   if (!apiKey) return json(500, { code: 'NO_API_KEY', error: 'Server chưa cấu hình GEMINI_API_KEY' });
 
-  const input = checkInput(body);
-  if (!input.ok) return json(input.status, { code: 'BAD_INPUT', error: input.error });
+  // Có ảnh đề: nhận dạng layout + chép đề thành văn bản (dùng chung hạn mức lượt AI mỗi ngày)
+  const vision = (body as any)?.image ? checkVisionInput(body) : null;
+  if (vision && !vision.ok) return json(vision.status, { code: 'BAD_INPUT', error: vision.error });
+
+  const input = vision ? null : checkInput(body);
+  if (input && !input.ok) return json(input.status, { code: 'BAD_INPUT', error: input.error });
 
   // Giữ chỗ một lượt trước khi gọi AI; lỗi thì hoàn lại
   let used = 0;
@@ -113,6 +118,12 @@ Deno.serve(async (req) => {
   const refund = async () => { try { await rpc('ai_usage_refund', { p_user: uid }); used = Math.max(0, used - 1); } catch { /* bỏ qua */ } };
 
   try {
+    if (vision && vision.ok) {
+      const resp = await callGemini(apiKey, vision.input);
+      const r = parseVisionResult(resp, vision.input.layouts.map((l) => l.id));
+      return json(200, { ok: true, model: 'gemini-2.5-flash', layout: r.layout, confidence: r.confidence, text: r.text, notes: r.notes, usage: { used, limit } });
+    }
+    if (!input || !input.ok) throw new Error('Thiếu đoạn văn');
     const resp = await callGemini(apiKey, input.input);
     const result = parseResult(resp, input.input.text);
     return json(200, { ok: true, model: 'gemini-2.5-flash', text: result.text, notes: result.notes, usage: { used, limit } });

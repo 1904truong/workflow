@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
+import { SaveStatusBadge, useSaveShortcut, type SaveStatus } from '../shared/SaveStatusBadge';
 import { AiRewriteBox } from '../shared/AiRewriteBox';
+import { SmartLayoutBar } from '../shared/SmartLayoutBar';
+import { MATCHING_PICTURES_LAYOUTS as SMART_LAYOUTS } from '../../services/matching-pictures/matchingPicturesCore';
 import { createPortal } from 'react-dom';
 import {
   ArrowLeft,
-  Check,
   RotateCcw,
   RotateCw,
   Eye,
@@ -23,7 +25,7 @@ import {
   HelpCircle,
   Save,
   Minimize,
-  ChevronLeft,
+  
   Loader2,
   Wand2,
 } from 'lucide-react';
@@ -48,6 +50,7 @@ import {
   shuffleImages,
 } from '../../services/matching-pictures/matchingPicturesCore';
 import { MatchingPicturesRenderer } from './MatchingPicturesRenderer';
+import { RichMarksProvider } from '../shared/rich/RichEditable';
 import { MatchingPicturesGalleryPicker } from './MatchingPicturesGalleryPicker';
 import { MatchingToolbar } from './MatchingToolbar';
 import { BrandHeader } from '../preview/BrandHeader';
@@ -189,6 +192,8 @@ export const MatchingPicturesEditor: React.FC<MatchingPicturesEditorProps> = ({
   const [aiCfgOpen, setAiCfgOpen] = useState(false);
   const aiSubjectRef = useRef('');
   aiSubjectRef.current = aiSubject;
+  // Ảnh AI về sau khi tạo xong: đi qua `apply` (khai báo phía dưới) để ghi lịch sử Undo đúng
+  const applyRef = useRef<(fn: (prev: MatchingPicturesData) => MatchingPicturesData) => void>(() => undefined);
   const { gen: aiGen, generate: generateAiImage } = useAiImage({
     getPrompt: () => `Realistic travel photograph of ${aiSubjectRef.current.trim()}, one clear main subject, well composed.`,
     style: PHOTO_STYLE,
@@ -196,21 +201,16 @@ export const MatchingPicturesEditor: React.FC<MatchingPicturesEditorProps> = ({
     onPrompt: () => undefined,
     onImage: (url) => {
       const caption = aiSubjectRef.current.trim();
-      setData((prev) => {
+      applyRef.current((prev) => {
         // Có ô ảnh trống cùng tên chủ đề thì điền vào đúng ô đó; không thì thêm ô mới cuối danh sách
         const slot = prev.images.find((im) => !im.imageUrl && (im.caption || '').trim().toLowerCase() === caption.toLowerCase());
         const idx = prev.images.length;
         const images = slot
           ? prev.images.map((im) => (im.id === slot.id ? { ...im, imageUrl: url } : im))
           : [...prev.images, { id: `img_${Date.now()}_ai`, order: idx, label: deriveImageLabel(idx), imageUrl: url, caption }];
-        const next = { ...prev, images };
-        setHistory((h) => [...h.slice(0, historyIndex + 1), next]);
-        setHistoryIndex((i) => i + 1);
-        return next;
+        return { ...prev, images };
       });
       setAiSubject('');
-      setSaveStatus('saving');
-      setTimeout(() => setSaveStatus('saved'), 600);
     },
   });
   const [srcTab, setSrcTab] = useState<'linked' | 'paste' | 'manual'>(() => (data.source.mode === 'linked' ? 'linked' : 'manual'));
@@ -222,12 +222,35 @@ export const MatchingPicturesEditor: React.FC<MatchingPicturesEditorProps> = ({
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [showExportMenu, setShowExportMenu] = useState<boolean>(false);
   const [pasteText, setPasteText] = useState<string>('');
-  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
   const [expandedParaIds, setExpandedParaIds] = useState<Record<string, boolean>>({});
 
-  // History stack for Undo / Redo
-  const [history, setHistory] = useState<MatchingPicturesData[]>([data]);
-  const [historyIndex, setHistoryIndex] = useState<number>(0);
+  // Lịch sử Undo / Redo: giữ trong ref và cập nhật đồng bộ, nên nhiều thay đổi liền nhau trong một lần bấm
+  // (vd. lưu chữ rồi lưu định dạng của cùng ô) vẫn đúng thứ tự, không đọc chỉ số cũ
+  const dataRef = useRef(data);
+  dataRef.current = data;
+  const histRef = useRef<{ list: MatchingPicturesData[]; idx: number }>({ list: [data], idx: 0 });
+  const [, setHistTick] = useState(0);
+  const histPushAt = useRef(0);
+  const historyIndex = histRef.current.idx;
+  const history = histRef.current.list;
+  /** Áp một thay đổi lên dữ liệu mới nhất và ghi vào lịch sử */
+  const apply = (fn: (prev: MatchingPicturesData) => MatchingPicturesData) => {
+    const next = fn(dataRef.current);
+    if (next === dataRef.current) return;
+    dataRef.current = next;
+    const h = histRef.current;
+    // Các thay đổi liền nhau trong 500ms (gõ liên tục, lưu chữ + định dạng cùng ô) gộp thành một bước Undo như các trình soạn khác
+    const now = Date.now();
+    const merge = now - histPushAt.current < 500 && h.idx > 0 && h.idx === h.list.length - 1;
+    histPushAt.current = now;
+    h.list = merge ? [...h.list.slice(0, h.idx), next] : [...h.list.slice(0, h.idx + 1), next].slice(-100);
+    h.idx = h.list.length - 1;
+    setData(next);
+    setHistTick((n) => n + 1);
+    setSaveStatus('unsaved');
+  };
+  applyRef.current = apply;
 
   const brand = resolveBranding(folder.printSettings.branding);
 
@@ -256,43 +279,29 @@ export const MatchingPicturesEditor: React.FC<MatchingPicturesEditorProps> = ({
   }, [data.source.mode, data.source.exerciseId, folder.exercises]);
 
   // Update helper
-  const update = (patch: Partial<MatchingPicturesData>) => {
-    setData((prev) => {
-      const next = { ...prev, ...patch };
-      // push to history
-      setHistory((h) => [...h.slice(0, historyIndex + 1), next]);
-      setHistoryIndex((i) => i + 1);
-      return next;
-    });
-    setSaveStatus('saving');
-    setTimeout(() => setSaveStatus('saved'), 600);
-  };
+  const update = (patch: Partial<MatchingPicturesData>) => apply((prev) => ({ ...prev, ...patch }));
 
-  const updateSettings = (patch: Partial<MatchingPicturesData['settings']>) => {
-    setData((prev) => {
-      const next = { ...prev, settings: { ...prev.settings, ...patch } };
-      setHistory((h) => [...h.slice(0, historyIndex + 1), next]);
-      setHistoryIndex((i) => i + 1);
-      return next;
-    });
-    setSaveStatus('saving');
-    setTimeout(() => setSaveStatus('saved'), 600);
-  };
+  // Định dạng từng từ của các ô chữ trên trang (đọc giá trị mới nhất vì đi liền sau lần lưu chữ của cùng ô)
+  const updateRich = (fn: (prev: MatchingPicturesData['richMarks']) => MatchingPicturesData['richMarks']) =>
+    apply((prev) => ({ ...prev, richMarks: fn(prev.richMarks) }));
+
+  const updateSettings = (patch: Partial<MatchingPicturesData['settings']>) =>
+    apply((prev) => ({ ...prev, settings: { ...prev.settings, ...patch } }));
 
   // Undo / Redo
-  const handleUndo = () => {
-    if (historyIndex > 0) {
-      setHistoryIndex(historyIndex - 1);
-      setData(history[historyIndex - 1]);
-    }
+  const jumpHistory = (delta: number) => {
+    const h = histRef.current;
+    const target = h.list[h.idx + delta];
+    if (!target) return;
+    histPushAt.current = 0; // thay đổi tiếp theo sau Undo/Redo luôn là một bước mới
+    h.idx += delta;
+    dataRef.current = target;
+    setData(target);
+    setHistTick((n) => n + 1);
+    setSaveStatus('unsaved');
   };
-
-  const handleRedo = () => {
-    if (historyIndex < history.length - 1) {
-      setHistoryIndex(historyIndex + 1);
-      setData(history[historyIndex + 1]);
-    }
-  };
+  const handleUndo = () => jumpHistory(-1);
+  const handleRedo = () => jumpHistory(1);
 
   // Paragraph operations
   const toggleParaExpand = (id: string) => {
@@ -427,6 +436,8 @@ export const MatchingPicturesEditor: React.FC<MatchingPicturesEditorProps> = ({
   };
 
   // Save to Folder / Supabase
+  useSaveShortcut(() => handleSave('stay'));
+
   const handleSave = (nextAction: 'return' | 'add_another' | 'stay' = 'return') => {
     const exerciseToSave: Exercise = {
       id: exerciseIdRef.current,
@@ -507,6 +518,7 @@ export const MatchingPicturesEditor: React.FC<MatchingPicturesEditorProps> = ({
       style={{ width: '210mm', minHeight: '297mm', padding: '15mm', zoom: scale, display: 'flex', flexDirection: 'column' }}
     >
       {brand.enabled && <BrandHeader b={brand} />}
+      <RichMarksProvider marks={data.richMarks} onChange={editable ? updateRich : undefined}>
       <MatchingPicturesRenderer
         data={{ ...data, exerciseNumber }}
         exerciseIndex={exerciseNumber}
@@ -524,6 +536,7 @@ export const MatchingPicturesEditor: React.FC<MatchingPicturesEditorProps> = ({
             : undefined
         }
       />
+      </RichMarksProvider>
       {brand.enabled && (
         <div className="mt-auto pt-[8mm]"><BrandFooter b={brand} pageNumber={1} totalPages={1} /></div>
       )}
@@ -797,10 +810,7 @@ export const MatchingPicturesEditor: React.FC<MatchingPicturesEditorProps> = ({
           </div>
 
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 text-xs text-emerald-700 font-medium bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100">
-              <Check size={13} strokeWidth={2.5} />
-              {saveStatus === 'saving' ? 'Saving...' : 'Saved a few seconds ago'}
-            </div>
+            <SaveStatusBadge status={saveStatus} />
 
           {/* More / Export Dropdown */}
           <div className="relative">
@@ -1073,6 +1083,7 @@ export const MatchingPicturesEditor: React.FC<MatchingPicturesEditorProps> = ({
                   placeholder={'Paragraph 1: Go on a Big Bus tour...\n\nParagraph 2: Visit the Tate Modern...\n\nParagraph 3: Meet famous sports people...'}
                   className={`${fieldCls} font-mono leading-relaxed`}
                 />
+                <SmartLayoutBar kind="Matching Pictures (paragraphs)" hint="Mỗi đoạn văn bắt đầu bằng 'Paragraph N:' hoặc 'N.' và cách nhau một dòng trống." example={'Paragraph 1: Go on a Big Bus tour...\n\nParagraph 2: Visit the Tate Modern...\n\nParagraph 3: Meet famous sports people...'} text={pasteText} onText={setPasteText} layouts={SMART_LAYOUTS} current={String(data.settings.layout)} onLayout={(id) => updateSettings({ layout: id } as never)} />
                 <AiRewriteBox kind="Matching Pictures (paragraphs)" hint="Mỗi đoạn văn bắt đầu bằng 'Paragraph N:' hoặc 'N.' và cách nhau một dòng trống." example={'Paragraph 1: Go on a Big Bus tour...\n\nParagraph 2: Visit the Tate Modern...\n\nParagraph 3: Meet famous sports people...'} text={pasteText} onText={setPasteText} />
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[10.5px] text-slate-400">Mỗi đoạn bắt đầu bằng “Paragraph N:” hoặc “N.”. Có thể Undo.</span>
@@ -1299,11 +1310,6 @@ export const MatchingPicturesEditor: React.FC<MatchingPicturesEditorProps> = ({
             <div className="flex items-center gap-1.5 text-xs text-slate-700 shrink-0 [&_button]:!w-7 [&_button]:!h-7">
               {fitMsg && !fitting && <span className="text-[11px] text-slate-500 mr-1 hidden 2xl:inline">{fitMsg}</span>}
               <div className="inline-flex items-center bg-white border border-slate-200 rounded-lg shadow-xs px-0.5">
-                <button type="button" className="w-8 h-8 flex items-center justify-center text-slate-600 hover:bg-slate-50 rounded-lg" title="Trang trước"><ChevronLeft size={15} /></button>
-                <span className="px-2 whitespace-nowrap">Page 1 / 1</span>
-                <button type="button" className="w-8 h-8 flex items-center justify-center text-slate-600 hover:bg-slate-50 rounded-lg" title="Trang sau"><ChevronRight size={15} /></button>
-              </div>
-              <div className="inline-flex items-center bg-white border border-slate-200 rounded-lg shadow-xs px-0.5">
                 <button type="button" onClick={() => setZoom((z) => Math.max(50, z - 10))} className="w-8 h-8 flex items-center justify-center text-slate-600 hover:bg-slate-50 rounded-lg" title="Thu nhỏ"><Minus size={14} /></button>
                 <span className="w-11 text-center">{zoom}%</span>
                 <button type="button" onClick={() => setZoom((z) => Math.min(150, z + 10))} className="w-8 h-8 flex items-center justify-center text-slate-600 hover:bg-slate-50 rounded-lg" title="Phóng to"><Plus size={14} /></button>
@@ -1364,11 +1370,13 @@ export const MatchingPicturesEditor: React.FC<MatchingPicturesEditorProps> = ({
             >
               <BrandHeader b={brand} />
               <div className="mt-4">
+                <RichMarksProvider marks={data.richMarks}>
                 <MatchingPicturesRenderer
                   data={data}
                   isTeacherKey={data.settings.showTeacherKey}
                   exerciseIndex={data.exerciseNumber || 4}
                 />
+                </RichMarksProvider>
               </div>
               <div className="mt-8 pt-4 border-t border-slate-200">
                 <BrandFooter b={brand} pageNumber={1} totalPages={1} />

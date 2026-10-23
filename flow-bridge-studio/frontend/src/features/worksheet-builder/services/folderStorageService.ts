@@ -1,5 +1,6 @@
 import type { LessonFolder, ExportHistoryItem } from '../types';
 import { DEFAULT_SAMPLE_WORKSHEET } from './sampleWorksheets';
+import { DEFAULT_BRANDING } from '../types/branding';
 import { createListeningGapFill } from './listening/listeningGapFillCore';
 import { createMatchingPictures } from './matching-pictures/matchingPicturesCore';
 
@@ -29,6 +30,7 @@ const INITIAL_SAMPLE_FOLDERS: LessonFolder[] = [
       ...DEFAULT_SAMPLE_WORKSHEET.printSettings,
       paperSize: 'A4',
       branding: {
+        ...DEFAULT_BRANDING,
         ...DEFAULT_SAMPLE_WORKSHEET.printSettings.branding,
         enabled: true,
         docTitle: 'DAILY WORKSHEET',

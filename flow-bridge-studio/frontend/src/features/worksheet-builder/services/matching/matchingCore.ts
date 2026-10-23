@@ -4,6 +4,7 @@
 export type MatchingLayoutId =
   | 'two_columns'
   | 'connect_lines'
+  | 'facing_tables'
   | 'answer_table'
   | 'inline_answer'
   | 'cut_paste'
@@ -13,6 +14,7 @@ export type MatchingLayoutId =
 export const MATCHING_LAYOUTS: { id: MatchingLayoutId; label: string }[] = [
   { id: 'two_columns', label: 'Two Columns' },
   { id: 'connect_lines', label: 'Connect Lines' },
+  { id: 'facing_tables', label: 'Facing Tables (Draw Lines)' },
   { id: 'answer_table', label: 'Answer Table' },
   { id: 'inline_answer', label: 'Inline Answer' },
   { id: 'cut_paste', label: 'Cut & Paste' },
@@ -300,6 +302,8 @@ export const matchingFromParsed = (parsed: ParsedMatching, base?: MatchingData):
     // Văn bản là bài đọc có ảnh → tự chọn layout Reading + Images; ảnh để trống, áp sau
     ...(parsed.reading && parsed.reading.length
       ? { layout: 'reading_images' as const, reading: parsed.reading, readingHeading: parsed.readingHeading, readingIntro: parsed.readingIntro }
+      : parsed.title && /draw\s+lines?/i.test(parsed.title)
+      ? { layout: 'facing_tables' as const }
       : {}),
     problems: parsed.problems.map((text) => ({ id: newId('p'), text })),
     solutions: parsed.solutions.map((text) => ({ id: newId('s'), text })),

@@ -1,9 +1,12 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { SaveStatusBadge, useSaveShortcut, type SaveStatus } from '../shared/SaveStatusBadge';
 import { AiRewriteBox } from '../shared/AiRewriteBox';
+import { SmartLayoutBar } from '../shared/SmartLayoutBar';
+import { MCQ_LAYOUTS as SMART_LAYOUTS } from '../../services/grammar-mcq/grammarMcqCore';
 import { createPortal } from 'react-dom';
 import {
-  ArrowLeft, Check, Copy, Eye, FileDown, GripVertical, Maximize2, Minimize, Minus, Plus, Printer, X, MoreHorizontal,
-  RotateCcw, RotateCw, Save, Trash2, ChevronLeft, ChevronRight, ArrowUp, ArrowDown, HelpCircle,
+  ArrowLeft, Copy, Eye, FileDown, GripVertical, Maximize2, Minimize, Minus, Plus, Printer, X, MoreHorizontal,
+  RotateCcw, RotateCw, Save, Trash2, ArrowUp, ArrowDown, HelpCircle,
 } from 'lucide-react';
 import { PageZoomOverlay } from '../shared/PageZoomOverlay';
 import type { Exercise, LessonFolder, Worksheet } from '../../types';
@@ -21,6 +24,7 @@ import { resolveBranding } from '../../types/branding';
 import { exportWorksheetToDocx } from '../../services/docxExportService';
 import { useAppHeaderSlot } from '../shared/hooks/useAppHeaderSlot';
 import { useSplitPane } from '../shared/hooks/useSplitPane';
+import { RichMarksProvider } from '../shared/rich/RichEditable';
 
 interface Props {
   folder: LessonFolder;
@@ -115,7 +119,7 @@ export const GrammarMcqEditor: React.FC<Props> = ({ folder, editingExercise, onS
   const pastRef = useRef<GrammarMcqData[]>([]);
   const futureRef = useRef<GrammarMcqData[]>([]);
   const lastPushRef = useRef(0);
-  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
   const setData = (next: React.SetStateAction<GrammarMcqData>) => {
     const prev = dataRef.current;
     const val = typeof next === 'function' ? (next as (p: GrammarMcqData) => GrammarMcqData)(prev) : next;
@@ -129,8 +133,7 @@ export const GrammarMcqEditor: React.FC<Props> = ({ folder, editingExercise, onS
     futureRef.current = [];
     dataRef.current = val;
     setDataRaw(val);
-    setSaveStatus('saving');
-    window.setTimeout(() => setSaveStatus('saved'), 600);
+    setSaveStatus('unsaved');
   };
   const jump = (from: GrammarMcqData[], to: GrammarMcqData[]) => {
     const target = from.pop();
@@ -139,6 +142,7 @@ export const GrammarMcqEditor: React.FC<Props> = ({ folder, editingExercise, onS
     dataRef.current = target;
     lastPushRef.current = 0;
     setDataRaw(target);
+    setSaveStatus('unsaved');
   };
   const canUndo = pastRef.current.length > 0;
   const canRedo = futureRef.current.length > 0;
@@ -305,6 +309,9 @@ export const GrammarMcqEditor: React.FC<Props> = ({ folder, editingExercise, onS
     grammarMcq: { ...data, exerciseNumber },
   });
 
+  useSaveShortcut(() => handleSave('stay'));
+
+
   const handleSave = (next: 'return' | 'add_another' | 'stay' = 'return') => {
     const v = validateGrammarMcq(data);
     if (v.errors.length > 0 && next !== 'stay') {
@@ -378,6 +385,7 @@ export const GrammarMcqEditor: React.FC<Props> = ({ folder, editingExercise, onS
     <div className="bg-white text-[#111] shadow-xl mx-auto" style={{ width: '210mm', minHeight: '297mm', padding: '15mm', zoom: scale, display: 'flex', flexDirection: 'column' }}>
       {brand.enabled && <BrandHeader b={brand} />}
       <div className="mt-[4mm]">
+        <RichMarksProvider marks={data.richMarks} onChange={editable ? (fn) => setData((p) => ({ ...p, richMarks: fn(p.richMarks) })) : undefined}>
         <GrammarMcqRenderer
           data={{ ...data, exerciseNumber }}
           exerciseIndex={exerciseNumber}
@@ -392,6 +400,7 @@ export const GrammarMcqEditor: React.FC<Props> = ({ folder, editingExercise, onS
             onSelectQuestion: setSelectedQid,
           } : undefined}
         />
+        </RichMarksProvider>
       </div>
       {brand.enabled && <div className="mt-auto pt-[8mm]"><BrandFooter b={brand} pageNumber={1} totalPages={1} /></div>}
     </div>
@@ -412,7 +421,7 @@ export const GrammarMcqEditor: React.FC<Props> = ({ folder, editingExercise, onS
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 text-xs text-emerald-700 font-medium bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100"><Check size={13} strokeWidth={2.5} /> {saveStatus === 'saving' ? 'Saving...' : 'Saved a few seconds ago'}</div>
+            <SaveStatusBadge status={saveStatus} />
             <div className="relative">
               <button type="button" onClick={() => setShowExportMenu((v) => !v)} className="w-9 h-9 text-slate-600 hover:text-slate-900 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg flex items-center justify-center" title="Tùy chọn xuất file"><MoreHorizontal size={16} /></button>
               {showExportMenu && (
@@ -606,7 +615,6 @@ export const GrammarMcqEditor: React.FC<Props> = ({ folder, editingExercise, onS
               {locked && <span className="hidden 2xl:inline ml-1 text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-md px-2 py-1">Chỉ xem – chọn Edit Mode để chỉnh sửa</span>}
             </div>
             <div className="flex items-center gap-1.5 text-xs text-slate-700 shrink-0 [&_button]:!w-7 [&_button]:!h-7">
-              <div className={`${box} px-0.5`}><button type="button" className={btn} title="Trang trước"><ChevronLeft size={15} /></button><span className="px-2 whitespace-nowrap">Page 1 / 1</span><button type="button" className={btn} title="Trang sau"><ChevronRight size={15} /></button></div>
               <div className={`${box} px-0.5`}><button type="button" onClick={() => setZoom((z) => Math.max(50, z - 10))} className={btn} title="Thu nhỏ"><Minus size={14} /></button><span className="w-11 text-center">{zoom}%</span><button type="button" onClick={() => setZoom((z) => Math.min(150, z + 10))} className={btn} title="Phóng to"><Plus size={14} /></button></div>
               <button type="button" onClick={() => setPageFull(true)} className={`${box} ${btn}`} title="Phóng to trang đang soạn"><Maximize2 size={14} /></button>
               <button type="button" onClick={() => { setZoom(100); setPageFull(false); }} className={`${box} ${btn}`} title="Thu nhỏ về 100%"><Minimize size={14} /></button>
@@ -625,6 +633,7 @@ export const GrammarMcqEditor: React.FC<Props> = ({ folder, editingExercise, onS
             <div className="flex items-center justify-between"><h3 className="text-sm font-bold text-slate-900">{modalInfo.title}</h3><button type="button" onClick={() => setModal(null)} className="p-1 text-slate-400 hover:text-slate-700"><X size={16} /></button></div>
             <p className="text-xs text-slate-500">{modalInfo.hint}</p>
             <textarea rows={11} style={{ flex: '1 1 auto', minHeight: '14rem', resize: 'none' }} value={pasteText} onChange={(e) => { setPasteText(e.target.value); setModalMsg(''); }} placeholder={modalInfo.placeholder} className={`${fieldCls} font-mono`} />
+            <SmartLayoutBar kind="Grammar & Vocabulary Multiple Choice" hint={modalInfo.hint} example={modalInfo.placeholder} text={pasteText} onText={(v) => { setPasteText(v); setModalMsg(''); }} layouts={SMART_LAYOUTS} current={String(data.settings.layout)} onLayout={(id) => updateSettings({ layout: id } as never)} />
             <AiRewriteBox kind="Grammar & Vocabulary Multiple Choice" hint={modalInfo.hint} example={modalInfo.placeholder} text={pasteText} onText={(v) => { setPasteText(v); setModalMsg(''); }} />
             {modalMsg && <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">{modalMsg}</p>}
             <div className="flex justify-end gap-2">

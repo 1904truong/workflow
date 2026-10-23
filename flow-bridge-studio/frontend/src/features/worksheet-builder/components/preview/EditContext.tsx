@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react';
 import type { ReactNode } from 'react';
+import { MarkedText, useRichMarks } from '../shared/rich/RichEditable';
 
 /** Các thao tác sửa trực tiếp trên trang xem trước. Mặc định: không sửa (editing = false). */
 export interface EditApi {
@@ -45,7 +46,9 @@ interface EditableProps {
 export const Editable = ({ value, onCommit, as = 'span', className = '', multiline = false, placeholder }: EditableProps): ReactNode => {
   const { editing } = useEdit();
   const Tag = as as 'span';
-  if (!editing) return <Tag className={className || undefined}>{value}</Tag>;
+  // Ô đã định dạng từng từ ở trình soạn (Edit Mode) thì in đúng định dạng đó
+  const marks = useRichMarks(value);
+  if (!editing) return <Tag className={className || undefined}>{marks ? <MarkedText text={value} marks={marks} /> : value}</Tag>;
   return (
     <Tag
       className={`${className} edit-field`}

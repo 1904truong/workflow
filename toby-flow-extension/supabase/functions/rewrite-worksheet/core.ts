@@ -60,7 +60,7 @@ export function checkInput(body: unknown): { ok: true; input: RewriteInput } | {
   return { ok: true, input: { text, kind, hint, example } };
 }
 
-function extractJson(resp: any): unknown {
+export function extractJson(resp: any): unknown {
   const cand = resp?.candidates?.[0];
   if (!cand) {
     const reason = resp?.promptFeedback?.blockReason;

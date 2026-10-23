@@ -279,7 +279,7 @@ export const ContentEditor: React.FC<ContentEditorProps> = ({
                 />
               </div>
 
-              {(exercise.type === 'reading_short_answer' || exercise.type === 'sentence_construction') && (
+              {(exercise.type === 'reading_short_answer' || exercise.type === 'reading_comic' || exercise.type === 'sentence_construction') && (
                 <div className="flex items-center gap-2">
                   <span className="text-slate-500">Writing lines:</span>
                   <input

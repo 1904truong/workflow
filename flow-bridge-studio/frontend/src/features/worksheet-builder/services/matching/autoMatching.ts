@@ -69,6 +69,9 @@ export function decideLayout(
   if (parsed.reading && parsed.reading.length > 0) {
     return { layout: 'reading_images', reason: `Có ${parsed.reading.length} khối bài đọc (Name/Location) → Reading + Images` };
   }
+  if (parsed.title && /draw\s+lines?/i.test(parsed.title)) {
+    return { layout: 'facing_tables', reason: 'Tiêu đề có "Draw Lines" → Facing Tables' };
+  }
   const ex = plan?.exercises[0];
   if (plan && ex?.needsImages && plan.images.length > 0) {
     return { layout: 'image_matching', reason: `AI: ${ex.reason || 'bài cần ảnh minh họa'} → Image Matching` };

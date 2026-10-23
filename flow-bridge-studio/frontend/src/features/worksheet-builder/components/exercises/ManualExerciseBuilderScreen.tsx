@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   ArrowLeft, Check, Plus, Trash2, Copy, Search, Sparkles, BookOpen, 
   Headphones, PenTool, Image as ImageIcon, HelpCircle
@@ -16,6 +16,10 @@ import { TfngEditor } from '../tfng/TfngEditor';
 import { GapFillingEditor } from '../gap-filling/GapFillingEditor';
 import { ReadingMcqEditor } from '../reading-mcq/ReadingMcqEditor';
 import { ListeningMcqEditor } from '../listening-mcq/ListeningMcqEditor';
+import { SmartAddPanel } from './SmartAddPanel';
+import type { SmartDraft } from '../../services/smartAdd';
+import { MatchingInfoEditor } from '../matching/MatchingInfoEditor';
+import { TableSentencesEditor } from '../table-sentences/TableSentencesEditor';
 import { SentenceCompletionEditor } from '../sentence-completion/SentenceCompletionEditor';
 import { MatchingVocabularyEditor } from '../matching-vocabulary/MatchingVocabularyEditor';
 import { ListeningTrueFalseEditor } from '../listening-true-false/ListeningTrueFalseEditor';
@@ -45,6 +49,8 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
 }) => {
   // If editing an existing exercise, start directly in editor mode; otherwise start in type selection
   const [step, setStep] = useState<'select_type' | 'editor'>(editingExercise ? 'editor' : 'select_type');
+  /** Bản nháp từ Smart (Add exercise): trình soạn dạng bài tương ứng mở với nội dung điền sẵn */
+  const [smartDraft, setSmartDraft] = useState<SmartDraft | null>(null);
   
   // Exercise state
   const [exerciseType, setExerciseType] = useState<ExerciseType>(
@@ -80,11 +86,14 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
     ]
   );
 
-  // Matching Information: dữ liệu 6 layout. Bài cũ chưa có thì dựng từ danh sách câu hỏi.
+  // Matching Information / Draw Lines: dữ liệu 7 layout. Bài cũ chưa có thì dựng từ danh sách câu hỏi.
   const [matching, setMatching] = useState<MatchingData | undefined>(
     editingExercise?.matching ??
-      (editingExercise?.type === 'matching_information'
-        ? createMatching({ problems: editingExercise.questions.map((q) => ({ id: q.id, text: q.text })) })
+      (editingExercise?.type === 'matching_information' || editingExercise?.type === 'draw_lines_match'
+        ? createMatching({
+            layout: editingExercise?.type === 'draw_lines_match' ? 'facing_tables' : 'two_columns',
+            problems: editingExercise.questions.map((q) => ({ id: q.id, text: q.text })),
+          })
         : undefined)
   );
   const isMatchingInfo = exerciseType === 'matching_information';
@@ -97,22 +106,30 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
   const [ribbonSlot, setRibbonSlot] = useState<HTMLDivElement | null>(null);
   const [typeCategory, setTypeCategory] = useState<string>('all');
 
-  const categories = [
-    { id: 'all', label: 'All (16)' },
-    { id: 'Listening', label: 'Listening (5)', icon: Headphones },
-    { id: 'Reading', label: 'Reading (5)', icon: BookOpen },
-    { id: 'Grammar & Vocab', label: 'Grammar & Vocab (4)', icon: Sparkles },
-    { id: 'Writing', label: 'Writing (2)', icon: PenTool },
-  ];
+  const categories = useMemo(() => {
+    const all = Object.values(EXERCISE_REGISTRY).filter((m) => !m.hidden);
+    const count = (cat: string) => all.filter((m) => m.category === cat).length;
+    return [
+      { id: 'all', label: `All (${all.length})` },
+      { id: 'Listening', label: `Listening (${count('Listening')})`, icon: Headphones },
+      { id: 'Reading', label: `Reading (${count('Reading')})`, icon: BookOpen },
+      { id: 'Grammar & Vocab', label: `Grammar & Vocab (${count('Grammar & Vocab')})`, icon: Sparkles },
+      { id: 'Writing', label: `Writing (${count('Writing')})`, icon: PenTool },
+    ];
+  }, []);
 
   const handleSelectType = (type: ExerciseType) => {
     const meta = EXERCISE_REGISTRY[type];
     setExerciseType(type);
-    setTitle(`Exercise ${folder.exercises.length + 1}: ${meta?.label || 'New Exercise'}`);
-    setInstructions(meta?.description || 'Answer the questions according to instructions.');
+    const defaultTitle = type === 'draw_lines_match' ? 'DRAW LINES AND MATCH' : type === 'reading_comic' ? 'READ AND ANSWER THE QUESTIONS' : `Exercise ${folder.exercises.length + 1}: ${meta?.label || 'New Exercise'}`;
+    const defaultInstr = type === 'draw_lines_match' ? 'Draw lines to match the questions with the correct answers.' : type === 'reading_comic' ? 'Look at the pictures and answer the questions.' : (meta?.description || 'Answer the questions according to instructions.');
+    setTitle(defaultTitle);
+    setInstructions(defaultInstr);
     setLayoutType(meta?.defaultTemplate || 'template_a');
-    if (type === 'matching_information') {
-      setMatching((m) => m ?? createMatching());
+    if (type === 'matching_information' || type === 'draw_lines_match') {
+      setMatching((m) => m ?? createMatching({
+        layout: type === 'draw_lines_match' ? 'facing_tables' : 'two_columns',
+      }));
     }
     setStep('editor');
   };
@@ -282,8 +299,11 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
   const isTfng = exerciseType === 'true_false_not_given' || (editingExercise?.tfng !== undefined);
   const isGapFilling = exerciseType === 'gap_filling_word_formation' || (editingExercise?.gapFilling !== undefined);
   const isListeningMcq = exerciseType === 'listening_multiple_choice' || (editingExercise?.listeningMcq !== undefined);
-  const isReadingMcq = exerciseType === 'reading_multiple_choice' || exerciseType === 'reading_short_answer' || (editingExercise?.readingMcq !== undefined);
+  const isReadingMcq = exerciseType === 'reading_multiple_choice' || exerciseType === 'reading_short_answer' || exerciseType === 'reading_comic' || (editingExercise?.readingMcq !== undefined);
   const isSentenceCompletion = exerciseType === 'sentence_completion' || (editingExercise?.sentenceCompletion !== undefined);
+  const isDrawLines = exerciseType === 'draw_lines_match' || editingExercise?.type === 'draw_lines_match';
+  const isMatchingInfoNew = exerciseType === 'matching_information' || editingExercise?.type === 'matching_information';
+  const isTableSentences = exerciseType === 'table_sentences' || (editingExercise?.tableSentences !== undefined);
   const isMatchingVocabulary = exerciseType === 'matching_vocabulary' || (editingExercise?.matchingVocabulary !== undefined);
 
   // Dòng "Dạng bài" trên cùng mọi trình soạn: đổi dạng được khi bài chưa làm, khóa khi bài đã lưu
@@ -361,6 +381,33 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
     );
   }
 
+  if (step === 'editor' && (isDrawLines || isMatchingInfoNew)) {
+    const variant = isDrawLines ? 'draw_lines_match' : 'matching_information';
+    return withTypeBar(
+      <MatchingInfoEditor
+        key={variant}
+        variant={variant}
+        folder={folder}
+        editingExercise={editingExercise}
+        onSaveExercise={onSaveExercise}
+        onCancel={!editingExercise ? () => setStep('select_type') : onCancel}
+        onDeleteExercise={onDeleteExercise}
+      />
+    );
+  }
+
+  if (step === 'editor' && isTableSentences) {
+    return withTypeBar(
+      <TableSentencesEditor
+        folder={folder}
+        editingExercise={editingExercise}
+        onSaveExercise={onSaveExercise}
+        onCancel={!editingExercise ? () => setStep('select_type') : onCancel}
+        onDeleteExercise={onDeleteExercise}
+      />
+    );
+  }
+
   if (step === 'editor' && isListeningTrueFalse) {
     return withTypeBar(
       <ListeningTrueFalseEditor
@@ -424,7 +471,8 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
   if (step === 'editor' && isReadingMcq) {
     return withTypeBar(
       <ReadingMcqEditor
-        shortAnswer={exerciseType === 'reading_short_answer' || editingExercise?.readingMcq?.shortAnswer === true}
+        shortAnswer={exerciseType === 'reading_short_answer' || exerciseType === 'reading_comic' || editingExercise?.readingMcq?.shortAnswer === true}
+        comic={exerciseType === 'reading_comic' || editingExercise?.type === 'reading_comic'}
         folder={folder}
         editingExercise={editingExercise}
         onSaveExercise={onSaveExercise}
@@ -442,6 +490,7 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
         onSaveExercise={onSaveExercise}
         onCancel={!editingExercise ? () => setStep('select_type') : onCancel}
         onDeleteExercise={onDeleteExercise}
+        draft={smartDraft?.type === 'sentence_completion' ? smartDraft.data : undefined}
       />
     );
   }
@@ -525,6 +574,13 @@ export const ManualExerciseBuilderScreen: React.FC<ManualExerciseBuilderScreenPr
               Choose one of the 15 standard English exercise types. The editor will automatically configure matching layout and input fields.
             </p>
           </div>
+
+          <SmartAddPanel
+            onAnalyzed={(type, draft) => {
+              setSmartDraft(draft);
+              handleSelectType(type);
+            }}
+          />
 
           {/* Search & Categories Filter */}
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col sm:flex-row gap-3">

@@ -103,3 +103,20 @@ test('validate: bắt mục trống và ID trùng', () => {
   assert.ok(v.errors.some((e) => e.includes('Problem 2')));
   assert.ok(v.errors.some((e) => e.includes('trùng')));
 });
+
+test('smart paste: tự nhận diện layout facing_tables khi tiêu đề có "DRAW LINES AND MATCH"', () => {
+  const text = `DRAW LINES AND MATCH
+
+1. When's Tom's birthday?
+2. How are you?
+
+a. I'm ten.
+b. It's my brother. Nick.`;
+  const parsed = parseMatchingText(text);
+  assert.equal(parsed.ok, true);
+  const data = matchingFromParsed(parsed);
+  assert.equal(data.layout, 'facing_tables');
+  assert.equal(data.problems.length, 2);
+  assert.equal(data.solutions.length, 2);
+});
+

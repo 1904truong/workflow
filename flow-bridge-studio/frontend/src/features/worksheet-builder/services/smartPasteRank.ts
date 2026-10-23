@@ -99,6 +99,12 @@ const SCORERS: Partial<Record<ExerciseType, Scorer>> = {
     if (f.passageWords >= 30 && f.shortQuestions >= 2 && f.optionQuestions === 0) { s = 88; r.push('Bài đọc kèm câu hỏi trả lời ngắn'); }
     return { score: s, reasons: r };
   },
+  reading_comic: (f) => {
+    const r: string[] = [];
+    let s = 0;
+    if (f.shortQuestions >= 2 && f.optionQuestions === 0) { s = 45; r.push('Câu hỏi trả lời ngắn tự luận'); }
+    return { score: s, reasons: r };
+  },
   grammar_vocab_multiple_choice: (f) => {
     const r: string[] = [];
     let s = 0;
@@ -111,6 +117,7 @@ const SCORERS: Partial<Record<ExerciseType, Scorer>> = {
   sentence_construction: (f) => ({ score: f.slashLines >= 2 ? 58 : 0, reasons: ['Các câu gồm từ gợi ý cách nhau bằng dấu /'] }),
   sentence_completion: (f) => ({ score: f.blanks >= 2 && f.passageWords < 30 && f.optionQuestions === 0 ? 55 : 0, reasons: ['Câu ngắn có chỗ trống'] }),
   matching_vocabulary: (f) => ({ score: f.numberedLines >= 3 && f.letteredLines >= 3 && f.optionQuestions === 0 && f.passageWords < 20 ? 72 : 0, reasons: ['Cột số 1, 2, 3 và cột chữ a, b, c để nối'] }),
+  draw_lines_match: (f) => ({ score: f.numberedLines >= 3 && f.letteredLines >= 3 && f.optionQuestions === 0 && f.passageWords < 20 ? 76 : 0, reasons: ['Cột câu hỏi 1, 2, 3 và cột câu trả lời A, B, C để kẻ đường nối'] }),
   true_false_not_given: (f) => ({ score: f.notGiven ? 75 : f.tfWords && !f.audio ? 45 : 0, reasons: [f.notGiven ? 'Có "Not Given"' : 'Có True / False'] }),
   listening_true_false: (f) => ({ score: f.audio && f.tfWords ? 80 : 0, reasons: ['Bài nghe có True / False'] }),
   listening_gap_fill: (f) => ({ score: f.audio && f.blanks >= 2 ? 82 : 0, reasons: ['Bài nghe có chỗ trống cần điền'] }),

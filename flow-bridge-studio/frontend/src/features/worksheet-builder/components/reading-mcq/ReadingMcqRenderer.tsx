@@ -4,6 +4,7 @@ import { optionLabel, splitBlanks } from '../../services/grammar-mcq/grammarMcqC
 import type { ReadingMcqData, ReadingStyleKey } from '../../services/reading-mcq/readingMcqCore';
 import { splitParagraphs } from '../../services/reading-mcq/readingMcqCore';
 import { textStyleToCss } from '../../services/matching-pictures/matchingPicturesCore';
+import { RichEditable } from '../shared/rich/RichEditable';
 
 const NAVY = '#16295f';
 const HEAD_FONT = '"Roboto Condensed", "Arial Narrow", Arial, sans-serif';
@@ -42,41 +43,11 @@ const EditableText: React.FC<{
   block?: boolean;
   /** [[chữ]] -> nghiêng, đỏ, đậm (TRUE (T) / FALSE (F) trong tiêu đề) */
   rich?: boolean;
-}> = ({ value, onCommit, css, selected, onSelect, block, rich }) => {
-  if (!onCommit) {
-    return (
-      <span style={css}>
-        {rich
-          ? value.split(/(\[\[[^\]]+\]\]|\b(?:TRUE|FALSE)\s*\([TF]\))/g).map((part, i) => (/^(\[\[.*\]\]|(?:TRUE|FALSE)\s*\([TF]\))$/.test(part)
-            ? <em key={i} style={{ color: '#c81e1e', fontWeight: 800 }}>{part.startsWith('[[') ? part.slice(2, -2) : part}</em>
-            : <span key={i}>{part}</span>))
-          : value}
-      </span>
-    );
-  }
-  return (
-    <span
-      contentEditable
-      suppressContentEditableWarning
-      spellCheck={false}
-      className="rounded-[2px] cursor-text caret-blue-600 hover:bg-blue-50 focus:bg-blue-50/60 focus:outline focus:outline-1 focus:outline-blue-400 focus:outline-offset-2"
-      style={{ ...css, display: block ? 'inline' : 'inline-block', minWidth: '3ch', outline: selected ? '1px solid #8b5cf6' : undefined, outlineOffset: '2px' }}
-      onFocus={onSelect}
-      onClick={onSelect}
-      onBlur={(e) => {
-        const v = e.currentTarget.innerText.replace(/ /g, ' ').replace(/\s*\n+\s*/g, ' ').trim();
-        if (v !== value) onCommit(v);
-        else e.currentTarget.innerText = value;
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
-        if (e.key === 'Escape') { e.currentTarget.innerText = value; e.currentTarget.blur(); }
-      }}
-    >
-      {value}
-    </span>
-  );
-};
+}> = ({ value, onCommit, css, selected, onSelect, block, rich }) => (
+  <RichEditable value={value} onCommit={onCommit} css={css} selected={selected} onSelect={onSelect} display={block ? 'inline' : 'inline-block'} fallback={rich ? value.split(/(\[\[[^\]]+\]\]|\b(?:TRUE|FALSE)\s*\([TF]\))/g).map((part, i) => (/^(\[\[.*\]\]|(?:TRUE|FALSE)\s*\([TF]\))$/.test(part)
+      ? <em key={i} style={{ color: '#c81e1e', fontWeight: 800 }}>{part.startsWith('[[') ? part.slice(2, -2) : part}</em>
+      : <span key={i}>{part}</span>)) : undefined} />
+);
 
 export const ReadingMcqRenderer: React.FC<Props> = ({ data, exerciseIndex = 1, hideExerciseHeading = false, editable }) => {
   const { settings, questions } = data;
@@ -86,6 +57,9 @@ export const ReadingMcqRenderer: React.FC<Props> = ({ data, exerciseIndex = 1, h
   const paragraphs = splitParagraphs(data.passage);
   const showImage = settings.showPassageImage && !!data.imageUrl;
   const showFrame = settings.showPassageImage && !data.imageUrl;
+  const isComic = settings.layout === 'comic_story';
+  const isOrange = settings.themeColor === 'orange' || (isComic && settings.themeColor !== 'navy');
+  const themeColor = isOrange ? '#e66428' : NAVY;
 
   const blankSpan = (key: string) => (
     <span key={key} style={{ display: 'inline-block', width: '22mm', borderBottom: '1pt dashed #222', margin: '0 0.6mm', lineHeight: 1, verticalAlign: 'baseline' }}>&nbsp;</span>
@@ -148,14 +122,132 @@ export const ReadingMcqRenderer: React.FC<Props> = ({ data, exerciseIndex = 1, h
     </div>
   );
 
+  if (isComic) {
+    const colRatio = settings.columnRatio === '50_50' ? '1fr 1fr' : settings.columnRatio === '60_40' ? '1.5fr 1fr' : '1.2fr 1fr';
+    return (
+      <div style={{ fontFamily: `${settings.fontFamily || 'Arial'}, sans-serif`, fontSize: `${settings.fontSizePt}pt`, lineHeight: settings.lineHeight, color: '#111' }}>
+        {!hideExerciseHeading && settings.showExerciseTitle && (
+          <div className="flex items-center gap-[2.5mm] mb-[3mm]">
+            <span style={{ width: '5.4mm', height: '5.4mm', background: themeColor, color: '#fff', borderRadius: '1mm', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '11pt', fontFamily: HEAD_FONT, lineHeight: 1, flexShrink: 0 }}>
+              {data.exerciseNumber || exerciseIndex}
+            </span>
+            <h2 style={{ margin: 0, color: themeColor, fontFamily: HEAD_FONT, fontWeight: 800, fontSize: `${settings.headingFontSizePt}pt`, textTransform: 'uppercase', lineHeight: 1.3, ...css('title') }}>
+              <EditableText value={data.exerciseTitle} onCommit={editable?.onTitle} selected={sel('title')} onSelect={pick('title')} rich />
+            </h2>
+          </div>
+        )}
+        {settings.showInstruction && data.instruction && !hideExerciseHeading && (
+          <p className="italic mb-[3mm]" style={{ fontSize: '10pt', fontWeight: 700, ...css('instruction') }}>
+            <EditableText value={data.instruction} onCommit={editable?.onInstruction} selected={sel('instruction')} onSelect={pick('instruction')} />
+          </p>
+        )}
+        <div style={{ display: 'grid', gridTemplateColumns: colRatio, columnGap: '6mm', alignItems: 'start' }}>
+          {/* Cột trái: Tranh truyện Comic / Minh họa */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '2.5mm' }}>
+            {data.imageUrl ? (
+              <div style={{ position: 'relative', width: '100%' }}>
+                <img
+                  src={data.imageUrl}
+                  alt="Comic Story"
+                  style={{ width: '100%', borderRadius: '2mm', border: '0.75pt solid #cbd5e1', objectFit: 'contain', display: 'block' }}
+                />
+                {editable?.onPickImage && (
+                  <label
+                    className="cursor-pointer absolute top-2 right-2 px-2 py-1 bg-white/90 hover:bg-white text-slate-700 text-[10px] font-bold rounded shadow border border-slate-200 transition-opacity"
+                    title="Đổi ảnh truyện tranh"
+                  >
+                    Đổi ảnh
+                    <input type="file" accept="image/*" hidden onChange={editable.onPickImage} />
+                  </label>
+                )}
+              </div>
+            ) : (
+              <label
+                className={`w-full flex flex-col items-center justify-center border-2 border-dashed border-amber-300 bg-amber-50/40 rounded-xl p-8 text-center transition-all ${
+                  editable?.onPickImage ? 'cursor-pointer hover:bg-amber-50 hover:border-amber-400' : ''
+                }`}
+                style={{ minHeight: '80mm' }}
+              >
+                <div className="w-12 h-12 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mb-2">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+                </div>
+                <div className="text-xs font-bold text-amber-800">Ảnh truyện tranh (Comic Strip)</div>
+                <div className="text-[11px] text-amber-600/80 mt-1">
+                  {editable?.onPickImage ? 'Bấm để tải ảnh 4 khung truyện tranh' : 'Chưa có ảnh truyện tranh'}
+                </div>
+                {editable?.onPickImage && <input type="file" accept="image/*" hidden onChange={editable.onPickImage} />}
+              </label>
+            )}
+
+            {/* Ảnh phụ nếu có */}
+            {data.extraImages?.filter(Boolean).map((src, i) => (
+              <img key={i} src={src} alt="" style={{ width: '100%', borderRadius: '2mm', border: '0.75pt solid #cbd5e1', objectFit: 'cover' }} />
+            ))}
+
+            {/* Đoạn văn đi kèm nếu có */}
+            {paragraphs.map((p, i) => (
+              <p key={i} style={{ margin: '0 0 2mm', textAlign: settings.justifyPassage ? 'justify' : 'left', ...css('passage') }}>
+                <EditableText block value={p} onCommit={editable?.onParagraph ? (v) => editable.onParagraph!(i, v) : undefined} css={css('passage')} selected={sel('passage')} onSelect={pick('passage')} />
+              </p>
+            ))}
+          </div>
+
+          {/* Cột phải: Danh sách câu hỏi kèm dòng kẻ ngang chấm bên dưới */}
+          <div>
+            {questions.map((q, i) => (
+              <div
+                key={q.id}
+                onClick={() => editable?.onSelectQuestion?.(q.id)}
+                style={{ breakInside: 'avoid', marginBottom: `${settings.questionGapMm || 5.5}mm`, outline: editable?.selectedQuestionId === q.id ? '1px dashed #3b82f6' : undefined, outlineOffset: '1.5mm' }}
+              >
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '2mm', marginBottom: '2.5mm' }}>
+                  {settings.showNumbering && (
+                    <strong style={{ fontWeight: 800, minWidth: '4.5mm', color: '#111' }}>
+                      {i + 1}.
+                    </strong>
+                  )}
+                  <div style={{ flex: 1, ...css('questions') }}>
+                    {renderText(q)}
+                  </div>
+                </div>
+
+                {data.shortAnswer ? (
+                  <div style={{ width: '100%' }}>
+                    {Array.from({ length: settings.answerLineCount || 1 }).map((_, lineIdx) => (
+                      <div
+                        key={lineIdx}
+                        style={{
+                          width: '100%',
+                          height: '6.5mm',
+                          borderBottom: '1.1pt dashed #71717a',
+                          marginTop: lineIdx > 0 ? '4mm' : 0,
+                        }}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  q.options.length > 0 && (
+                    <div style={{ paddingLeft: '5mm', marginTop: '1mm' }}>
+                      {q.options.map((_, oi) => renderOption(q, oi))}
+                    </div>
+                  )
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ fontFamily: `${settings.fontFamily || 'Arial'}, sans-serif`, fontSize: `${settings.fontSizePt}pt`, lineHeight: settings.lineHeight, color: '#111' }}>
       {!hideExerciseHeading && settings.showExerciseTitle && (
         <div className="flex items-center gap-[2.5mm] mb-[3mm]">
-          <span style={{ width: '5.4mm', height: '5.4mm', background: NAVY, color: '#fff', borderRadius: '1mm', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '11pt', fontFamily: HEAD_FONT, lineHeight: 1, flexShrink: 0 }}>
+          <span style={{ width: '5.4mm', height: '5.4mm', background: themeColor, color: '#fff', borderRadius: '1mm', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '11pt', fontFamily: HEAD_FONT, lineHeight: 1, flexShrink: 0 }}>
             {data.exerciseNumber || exerciseIndex}
           </span>
-          <h2 style={{ margin: 0, color: NAVY, fontFamily: HEAD_FONT, fontWeight: 800, fontSize: `${settings.headingFontSizePt}pt`, textTransform: 'uppercase', lineHeight: 1.3, ...css('title') }}>
+          <h2 style={{ margin: 0, color: themeColor, fontFamily: HEAD_FONT, fontWeight: 800, fontSize: `${settings.headingFontSizePt}pt`, textTransform: 'uppercase', lineHeight: 1.3, ...css('title') }}>
             <EditableText value={data.exerciseTitle} onCommit={editable?.onTitle} selected={sel('title')} onSelect={pick('title')} rich />
           </h2>
         </div>

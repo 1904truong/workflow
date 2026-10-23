@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { AiRewriteBox } from '../shared/AiRewriteBox';
+import { SmartLayoutBar } from '../shared/SmartLayoutBar';
+import { CLOZE_LAYOUTS as SMART_LAYOUTS } from '../../services/cloze/clozeCore';
 import { createPortal } from 'react-dom';
 import {
   ArrowLeft, Check, Plus, Trash2, Copy, X, ClipboardPaste, GripVertical,
-  Maximize2, Minimize, Minus, Eye, Save, Printer, ChevronLeft, ChevronRight,
+  Maximize2, Minimize, Minus, Eye, Save, Printer, 
   MoreHorizontal, FileDown, Undo2, Redo2, AlertTriangle,
 } from 'lucide-react';
 import type { LessonFolder, Exercise, Worksheet } from '../../types';
@@ -803,11 +805,6 @@ export const MultipleChoiceClozeEditor: React.FC<Props> = ({
             </div>
             <div className="flex items-center gap-1.5 text-xs text-slate-700 shrink-0 [&_button]:!w-7 [&_button]:!h-7">
               <div className={`${box} px-0.5`}>
-                <button type="button" className={btn} title="Trang trước"><ChevronLeft size={15} /></button>
-                <span className="px-2 whitespace-nowrap">Page 1 / 1</span>
-                <button type="button" className={btn} title="Trang sau"><ChevronRight size={15} /></button>
-              </div>
-              <div className={`${box} px-0.5`}>
                 <button type="button" onClick={() => setZoom((z) => Math.max(50, z - 10))} className={btn} title="Thu nhỏ"><Minus size={14} /></button>
                 <span className="w-11 text-center">{zoom}%</span>
                 <button type="button" onClick={() => setZoom((z) => Math.min(150, z + 10))} className={btn} title="Phóng to"><Plus size={14} /></button>
@@ -859,6 +856,7 @@ export const MultipleChoiceClozeEditor: React.FC<Props> = ({
               placeholder={`CIRCLE THE CORRECT WORDS TO COMPLETE THE TEXT.\n\nWALL STREET\nWall Street is a street (1) ________ New York City's financial district...\n\n1. a. at b. in c. on\n2. a. its b. it's c. their`}
               className="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             />
+            <SmartLayoutBar kind="Multiple Choice Cloze Test" hint="Dán cả bài: tiêu đề, đoạn văn có chỗ trống (1) ________ và danh sách lựa chọn dạng '1. a. ... b. ... c. ...' hoặc mỗi lựa chọn một dòng." example={'CIRCLE THE CORRECT WORDS TO COMPLETE THE TEXT.\n\nWALL STREET\nWall Street is a street (1) ________ New York City\'s financial district...\n\n1. a. at b. in c. on\n2. a. its b. it\'s c. their'} text={pasteText} onText={(v) => { setPasteText(v); setParsed(null); }} layouts={SMART_LAYOUTS} current={String(data.settings.layout)} onLayout={(id) => setSettings({ layout: id } as never)} />
             <AiRewriteBox kind="Multiple Choice Cloze Test" hint="Dán cả bài: tiêu đề, đoạn văn có chỗ trống (1) ________ và danh sách lựa chọn dạng '1. a. ... b. ... c. ...' hoặc mỗi lựa chọn một dòng." example={'CIRCLE THE CORRECT WORDS TO COMPLETE THE TEXT.\n\nWALL STREET\nWall Street is a street (1) ________ New York City\'s financial district...\n\n1. a. at b. in c. on\n2. a. its b. it\'s c. their'} text={pasteText} onText={(v) => { setPasteText(v); setParsed(null); }} />
             {parsed && (
               <div className={`rounded-xl border p-3 text-xs space-y-1 ${parsed.warnings.length ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-emerald-200 bg-emerald-50 text-emerald-900'}`}>

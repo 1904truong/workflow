@@ -1,9 +1,9 @@
-﻿// Dữ liệu và hàm thuần cho bài Grammar & Vocabulary Multiple Choice dạng danh sách câu:
+// Dữ liệu và hàm thuần cho bài Grammar & Vocabulary Multiple Choice dạng danh sách câu:
 // mỗi câu có chỗ trống ________ và các lựa chọn a, b, c, d. Giáo trình: KHÔNG có đáp án, học sinh tự khoanh.
 
 import type { TextStyle } from '../matching-pictures/matchingPicturesCore.ts';
 
-export type McqLayoutId = 'original' | 'two_columns' | 'compact' | 'answer_grid' | 'question_blocks' | 'exam_style' | 'pictures';
+export type McqLayoutId = 'original' | 'two_columns' | 'compact' | 'answer_grid' | 'question_blocks' | 'exam_style' | 'pictures' | 'comic_story';
 
 export interface McqLayoutMeta { id: McqLayoutId; label: string; desc: string }
 export const MCQ_LAYOUTS: McqLayoutMeta[] = [
@@ -47,6 +47,8 @@ export interface GrammarMcqSettings {
 }
 
 export interface GrammarMcqData {
+  /** Định dạng từng từ của các ô chữ sửa trên trang A4 (xem services/richFields.ts) */
+  richMarks?: import('../richFields.ts').RichMarks;
   /** Bài phát âm: lựa chọn là từ ngắn, phần đặt trong [ ] được gạch chân */
   pronunciation?: boolean;
   /** Sentence Rearrangement / Sentence Construction: mỗi câu là các từ cách nhau bằng " / ", kèm dòng kẻ để viết lại, không có lựa chọn */

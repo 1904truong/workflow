@@ -12,6 +12,7 @@ import { TfngRenderer } from '../tfng/TfngRenderer';
 import { GapFillingRenderer } from '../gap-filling/GapFillingRenderer';
 import { ReadingMcqRenderer } from '../reading-mcq/ReadingMcqRenderer';
 import { ListeningMcqRenderer } from '../listening-mcq/ListeningMcqRenderer';
+import { TableSentencesRenderer } from '../table-sentences/TableSentencesRenderer';
 import { SentenceCompletionRenderer } from '../sentence-completion/SentenceCompletionRenderer';
 import { MatchingVocabularyRenderer } from '../matching-vocabulary/MatchingVocabularyRenderer';
 import { ListeningMatchingRenderer } from '../listening-matching/ListeningMatchingRenderer';
@@ -19,6 +20,16 @@ import { ListeningTrueFalseRenderer } from '../listening-true-false/ListeningTru
 import { ListeningTableRenderer } from '../listening-table/ListeningTableRenderer';
 import { GrammarMcqRenderer } from '../grammar-mcq/GrammarMcqRenderer';
 import { MatchingPicturesRenderer } from '../matching-pictures/MatchingPicturesRenderer';
+import { RichMarksProvider } from '../shared/rich/RichEditable';
+import type { RichMarks } from '../../services/richFields';
+
+/** Định dạng từng từ đã lưu trong dữ liệu riêng của dạng bài (gapFilling, tfng, …) */
+const richMarksOf = (ex: Exercise): RichMarks | undefined => {
+  for (const v of Object.values(ex)) {
+    if (v && typeof v === 'object' && !Array.isArray(v) && 'richMarks' in v) return (v as { richMarks?: RichMarks }).richMarks;
+  }
+  return undefined;
+};
 
 interface ExerciseBlockProps {
   exercise: Exercise;
@@ -40,6 +51,7 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
   const field = (f: 'title' | 'instructions' | 'passage') => (v: string) => edit.setExerciseField(exercise.id, f, v);
 
   return (
+    <RichMarksProvider marks={richMarksOf(exercise)}>
     <section
       className={`w-full mb-[5mm] text-[#111111] ${edit.editing ? 'relative group/ex rounded hover:outline hover:outline-1 hover:outline-dashed hover:outline-violet-300 hover:outline-offset-4' : ''}`}
       style={{ fontFamily: PRINT_TOKENS.typography.fontFamily }}
@@ -87,6 +99,10 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
         <SentenceCompletionRenderer data={{ ...exercise.sentenceCompletion, exerciseNumber: undefined }} exerciseIndex={exerciseIndex + 1} />
       )}
 
+      {exercise.tableSentences && (
+        <TableSentencesRenderer data={{ ...exercise.tableSentences, exerciseNumber: undefined }} exerciseIndex={exerciseIndex + 1} />
+      )}
+
       {exercise.gapFilling && (
         <GapFillingRenderer data={{ ...exercise.gapFilling, exerciseNumber: undefined }} exerciseIndex={exerciseIndex + 1} />
       )}
@@ -105,7 +121,7 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
         <ListeningTableRenderer data={{ ...exercise.listeningTable, exerciseNumber: undefined }} exerciseIndex={exerciseIndex + 1} />
       )}
 
-      {!exercise.listeningTrueFalse && !exercise.listeningMatching && !exercise.tfng && !exercise.sentenceCompletion && !exercise.listeningMcq && !exercise.readingMcq && !exercise.gapFilling && !exercise.listeningTable && !exercise.grammarMcq && !exercise.listeningGapFill && !exercise.listeningTable && !exercise.grammarMcq && (
+      {!exercise.listeningTrueFalse && !exercise.listeningMatching && !exercise.tfng && !exercise.sentenceCompletion && !exercise.listeningMcq && !exercise.readingMcq && !exercise.gapFilling && !exercise.listeningTable && !exercise.grammarMcq && !exercise.tableSentences && !exercise.listeningGapFill && !exercise.listeningTable && !exercise.grammarMcq && !exercise.tableSentences && (
       <>
       {/* Exercise Heading: ô số tự động (1, 2, 3...) + tiêu đề xanh */}
       <div className="flex items-center gap-[1.2mm] mb-[2.5mm]">
@@ -141,7 +157,7 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
       {exercise.matchingPictures && <MatchingPicturesRenderer data={exercise.matchingPictures} exerciseIndex={exerciseIndex + 1} isTeacherKey={isTeacherKey} hideExerciseHeading={true} />}
 
       {/* TEMPLATE A: Text Only */}
-      {!exercise.matching && !exercise.cloze && !exercise.listeningGapFill && !exercise.matchingPictures && !exercise.matchingVocabulary && !exercise.sentenceCompletion && !exercise.listeningMcq && !exercise.readingMcq && !exercise.gapFilling && !exercise.tfng && !exercise.matchingHeadings && !exercise.listeningTrueFalse && !exercise.listeningMatching && !exercise.listeningTable && !exercise.grammarMcq && layout === 'template_a' && (
+      {!exercise.matching && !exercise.cloze && !exercise.listeningGapFill && !exercise.matchingPictures && !exercise.matchingVocabulary && !exercise.sentenceCompletion && !exercise.listeningMcq && !exercise.readingMcq && !exercise.gapFilling && !exercise.tfng && !exercise.matchingHeadings && !exercise.listeningTrueFalse && !exercise.listeningMatching && !exercise.listeningTable && !exercise.grammarMcq && !exercise.tableSentences && layout === 'template_a' && (
         <div className="space-y-[3mm]">
           {exercise.passage && (
             <div className="p-3 bg-[#fafafa] border border-[#e5e7eb] rounded text-[11pt] leading-[1.35] whitespace-pre-line mb-[3mm]">
@@ -164,7 +180,7 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
       )}
 
       {/* TEMPLATE B: Text + Image Grid */}
-      {!exercise.matching && !exercise.cloze && !exercise.listeningGapFill && !exercise.matchingPictures && !exercise.matchingVocabulary && !exercise.sentenceCompletion && !exercise.listeningMcq && !exercise.readingMcq && !exercise.gapFilling && !exercise.tfng && !exercise.matchingHeadings && !exercise.listeningTrueFalse && !exercise.listeningMatching && !exercise.listeningTable && !exercise.grammarMcq && layout === 'template_b' && (
+      {!exercise.matching && !exercise.cloze && !exercise.listeningGapFill && !exercise.matchingPictures && !exercise.matchingVocabulary && !exercise.sentenceCompletion && !exercise.listeningMcq && !exercise.readingMcq && !exercise.gapFilling && !exercise.tfng && !exercise.matchingHeadings && !exercise.listeningTrueFalse && !exercise.listeningMatching && !exercise.listeningTable && !exercise.grammarMcq && !exercise.tableSentences && layout === 'template_b' && (
         <div className="space-y-[3mm]">
           {/* Image Grid */}
           {exercise.imageSlots.length > 0 && (
@@ -195,7 +211,7 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
       )}
 
       {/* TEMPLATE C: Text + Single Image */}
-      {!exercise.matching && !exercise.cloze && !exercise.listeningGapFill && !exercise.matchingPictures && !exercise.matchingVocabulary && !exercise.sentenceCompletion && !exercise.listeningMcq && !exercise.readingMcq && !exercise.gapFilling && !exercise.tfng && !exercise.matchingHeadings && !exercise.listeningTrueFalse && !exercise.listeningMatching && !exercise.listeningTable && !exercise.grammarMcq && layout === 'template_c' && (
+      {!exercise.matching && !exercise.cloze && !exercise.listeningGapFill && !exercise.matchingPictures && !exercise.matchingVocabulary && !exercise.sentenceCompletion && !exercise.listeningMcq && !exercise.readingMcq && !exercise.gapFilling && !exercise.tfng && !exercise.matchingHeadings && !exercise.listeningTrueFalse && !exercise.listeningMatching && !exercise.listeningTable && !exercise.grammarMcq && !exercise.tableSentences && layout === 'template_c' && (
         <div>
           {/* Top image position */}
           {exercise.imagePosition === 'top' && exercise.imageSlots[0] && (
@@ -268,7 +284,7 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
       )}
 
       {/* TEMPLATE D: Two-Column (Reading + Questions) */}
-      {!exercise.matching && !exercise.cloze && !exercise.listeningGapFill && !exercise.matchingPictures && !exercise.matchingVocabulary && !exercise.sentenceCompletion && !exercise.listeningMcq && !exercise.readingMcq && !exercise.gapFilling && !exercise.tfng && !exercise.matchingHeadings && !exercise.listeningTrueFalse && !exercise.listeningMatching && !exercise.listeningTable && !exercise.grammarMcq && layout === 'template_d' && (
+      {!exercise.matching && !exercise.cloze && !exercise.listeningGapFill && !exercise.matchingPictures && !exercise.matchingVocabulary && !exercise.sentenceCompletion && !exercise.listeningMcq && !exercise.readingMcq && !exercise.gapFilling && !exercise.tfng && !exercise.matchingHeadings && !exercise.listeningTrueFalse && !exercise.listeningMatching && !exercise.listeningTable && !exercise.grammarMcq && !exercise.tableSentences && layout === 'template_d' && (
         <div className="grid grid-cols-2 gap-[5mm] items-start">
           {/* Left Column: Passage / Primary Content / Single Illustration */}
           <div className="border-r border-[#e5e7eb] pr-[2.5mm] space-y-[2mm]">
@@ -307,7 +323,7 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
       )}
 
       {/* TEMPLATE E: Image + Table */}
-      {!exercise.matching && !exercise.cloze && !exercise.listeningGapFill && !exercise.matchingPictures && !exercise.matchingVocabulary && !exercise.sentenceCompletion && !exercise.listeningMcq && !exercise.readingMcq && !exercise.gapFilling && !exercise.tfng && !exercise.matchingHeadings && !exercise.listeningTrueFalse && !exercise.listeningMatching && !exercise.listeningTable && !exercise.grammarMcq && layout === 'template_e' && (
+      {!exercise.matching && !exercise.cloze && !exercise.listeningGapFill && !exercise.matchingPictures && !exercise.matchingVocabulary && !exercise.sentenceCompletion && !exercise.listeningMcq && !exercise.readingMcq && !exercise.gapFilling && !exercise.tfng && !exercise.matchingHeadings && !exercise.listeningTrueFalse && !exercise.listeningMatching && !exercise.listeningTable && !exercise.grammarMcq && !exercise.tableSentences && layout === 'template_e' && (
         <div className="space-y-[3mm]">
           {exercise.imageSlots[0] && (
             <div className="flex justify-center">
@@ -342,5 +358,6 @@ export const ExerciseBlock: React.FC<ExerciseBlockProps> = ({
       )}
       </div>
     </section>
+    </RichMarksProvider>
   );
 };

@@ -43,6 +43,12 @@ interface Props {
   placeholder?: string;
   className?: string;
   style?: React.CSSProperties;
+  /** Thẻ bao ngoài: 'span' để đặt được trong tiêu đề / đoạn văn trên trang A4 */
+  as?: 'div' | 'span';
+  /** Ô một dòng (tiêu đề, từ, câu hỏi): Enter / Esc rời ô, dán nhiều dòng thì nối bằng dấu cách */
+  singleLine?: boolean;
+  onFocus?: () => void;
+  onBlur?: () => void;
 }
 
 const GAP_RE = /\(([A-Za-z0-9_]+)\)\s*_{2,}/g;
@@ -344,7 +350,12 @@ export const RichParagraphInput = forwardRef<RichParagraphHandle, Props>(functio
       const t = e.inputType;
       const s = readSelection() ?? sel.current ?? { start: cur.current.text.length, end: cur.current.text.length };
       if (t === 'insertText') { e.preventDefault(); if (e.data) doEdit(s.start, s.end, e.data); return; }
-      if (t === 'insertParagraph' || t === 'insertLineBreak') { e.preventDefault(); doEdit(s.start, s.end, '\n'); return; }
+      if (t === 'insertParagraph' || t === 'insertLineBreak') {
+        e.preventDefault();
+        if (propsRef.current.singleLine) root.blur();
+        else doEdit(s.start, s.end, '\n');
+        return;
+      }
       if (t === 'insertReplacementText') {
         e.preventDefault();
         const r = rangeOf(e) ?? s;
@@ -401,7 +412,8 @@ export const RichParagraphInput = forwardRef<RichParagraphHandle, Props>(functio
       e.preventDefault();
       const cd = e.clipboardData;
       if (!cd) return;
-      const plain = cd.getData('text/plain').replace(/\r\n?/g, '\n');
+      let plain = cd.getData('text/plain').replace(/\r\n?/g, '\n');
+      if (propsRef.current.singleLine) plain = plain.replace(/\s*\n+\s*/g, ' ').trim();
       if (!plain) return;
       let runs: TextMark[] | undefined;
       try {
@@ -413,8 +425,11 @@ export const RichParagraphInput = forwardRef<RichParagraphHandle, Props>(functio
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && propsRef.current.singleLine) { e.preventDefault(); root.blur(); return; }
       if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
       const k = e.key.toLowerCase();
+      // Ctrl+A trong ô một dòng: chỉ chọn chữ trong ô (không chọn cả trang)
+      if (k === 'a' && !e.shiftKey && propsRef.current.singleLine) { e.preventDefault(); setSel(0, cur.current.text.length); report(); return; }
       const key = k === 'b' ? 'bold' : k === 'i' ? 'italic' : k === 'u' ? 'underline' : null;
       if (!key) return;
       e.preventDefault();
@@ -457,16 +472,20 @@ export const RichParagraphInput = forwardRef<RichParagraphHandle, Props>(functio
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const Tag = props.as ?? 'div';
   return (
-    <div
-      ref={rootRef}
+    <Tag
+      ref={rootRef as React.RefObject<HTMLDivElement>}
       contentEditable
       suppressContentEditableWarning
       spellCheck={false}
       role="textbox"
-      aria-multiline="true"
+      aria-multiline={props.singleLine ? 'false' : 'true'}
       data-placeholder={props.placeholder}
       className={props.className}
+      onFocus={props.onFocus}
+      onClick={props.onFocus}
+      onBlur={props.onBlur}
       style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', ...props.style }}
     />
   );

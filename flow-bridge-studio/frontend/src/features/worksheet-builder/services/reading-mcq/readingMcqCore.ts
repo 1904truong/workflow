@@ -4,10 +4,14 @@
 
 import type { TextStyle } from '../matching-pictures/matchingPicturesCore.ts';
 import type { GrammarMcqData, GrammarMcqSettings, McqLayoutMeta, McqStyleKey } from '../grammar-mcq/grammarMcqCore.ts';
-import { parseMcqText, DEFAULT_MCQ_SETTINGS, MCQ_LAYOUTS, MCQ_STYLE_LABELS, createGrammarMcq, validateGrammarMcq } from '../grammar-mcq/grammarMcqCore.ts';
+import { parseMcqText, DEFAULT_MCQ_SETTINGS, MCQ_STYLE_LABELS, createGrammarMcq, validateGrammarMcq } from '../grammar-mcq/grammarMcqCore.ts';
 
-export const READING_MCQ_LAYOUTS: McqLayoutMeta[] = MCQ_LAYOUTS.filter((l) => l.id === 'original')
-  .map((l) => ({ ...l, label: 'Original (bài đọc + ảnh)', desc: 'Bài đọc có ảnh bài báo ở góc phải, chữ chạy quanh; câu hỏi A / B / C xếp dọc bên dưới' }));
+export const READING_MCQ_LAYOUTS: McqLayoutMeta[] = [
+  { id: 'original', label: 'Original (bài đọc + ảnh)', desc: 'Bài đọc có ảnh bài báo ở góc phải, chữ chạy quanh; câu hỏi xếp bên dưới' },
+  { id: 'comic_story', label: 'Comic Story (Truyện tranh 2 cột)', desc: 'Truyện tranh bên trái, câu hỏi tự luận dòng kẻ chấm bên phải' },
+];
+
+
 
 export type ReadingStyleKey = McqStyleKey | 'passageTitle' | 'passageAuthor' | 'passage';
 export const READING_STYLE_LABELS: Record<ReadingStyleKey, string> = {
@@ -25,9 +29,17 @@ export interface ReadingMcqSettings extends GrammarMcqSettings {
   justifyPassage: boolean;
   /** Reading Short Answer / True-False: độ dài dòng kẻ trả lời (mm), mặc định 68; 26 cho dòng ngắn viết T / F */
   answerLineWidthMm?: number;
+  /** Theme màu cho tiêu đề & số bài: 'orange' (#ea580c) hoặc 'navy' (#16295f) */
+  themeColor?: 'orange' | 'navy';
+  /** Số dòng kẻ chấm tự luận dưới mỗi câu (comic layout): mặc định 1 dòng */
+  answerLineCount?: number;
+  /** Tỉ lệ 2 cột: '55_45' (mặc định), '50_50', '60_40' */
+  columnRatio?: '50_50' | '55_45' | '60_40';
 }
 
 export interface ReadingMcqData extends Omit<GrammarMcqData, 'settings' | 'textStyles'> {
+  /** Định dạng từng từ của các ô chữ sửa trên trang A4 (xem services/richFields.ts) */
+  richMarks?: import('../richFields.ts').RichMarks;
   /** Reading Short Answer: câu hỏi tự luận ngắn, mỗi câu một dòng kẻ trả lời, không có lựa chọn */
   shortAnswer?: boolean;
   passageTitle: string;
@@ -52,6 +64,9 @@ export const DEFAULT_READING_MCQ_SETTINGS: ReadingMcqSettings = {
   showPassageImage: true,
   imageWidthMm: 66,
   justifyPassage: true,
+  themeColor: 'navy',
+  answerLineCount: 1,
+  columnRatio: '55_45',
 };
 
 export const createReadingMcq = (partial?: Partial<ReadingMcqData>): ReadingMcqData => {
@@ -67,9 +82,31 @@ export const createReadingMcq = (partial?: Partial<ReadingMcqData>): ReadingMcqD
     passage: passage ?? '',
     imageUrl,
     ...(textStyles ? { textStyles } : {}),
-    settings: { ...DEFAULT_READING_MCQ_SETTINGS, ...(settings || {}), layout: 'original' },
+    settings: { ...DEFAULT_READING_MCQ_SETTINGS, ...(settings || {}), layout: settings?.layout || 'original' },
   };
 };
+
+export const createComicStory = (partial?: Partial<ReadingMcqData>): ReadingMcqData =>
+  createReadingMcq({
+    exerciseTitle: 'READ AND ANSWER THE QUESTIONS',
+    instruction: 'Look at the pictures and answer the questions.',
+    shortAnswer: true,
+    questions: [
+      { id: 'q_comic_1', text: "What's her name?", options: [] },
+      { id: 'q_comic_2', text: 'Does Vicky like chocolate cake?', options: [] },
+      { id: 'q_comic_3', text: 'Does she like music?', options: [] },
+      { id: 'q_comic_4', text: 'What does Dave buy for Vicky?', options: [] },
+      { id: 'q_comic_5', text: 'Who is very naughty?', options: [] },
+    ],
+    settings: {
+      ...DEFAULT_READING_MCQ_SETTINGS,
+      layout: 'comic_story',
+      themeColor: 'orange',
+      questionGapMm: 6,
+      answerLineCount: 1,
+    },
+    ...partial,
+  });
 
 /** Tách bài đọc thành các đoạn (dòng trống hoặc xuống dòng) */
 export const splitParagraphs = (passage: string): string[] =>

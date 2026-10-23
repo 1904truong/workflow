@@ -6,12 +6,18 @@
   --font-geist-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+/* Font của shadcn/typeset: Noto Sans (chữ) + Inter (tiêu đề), tải qua Google Fonts trong index.html */
+:root {
+  --font-noto-sans: 'Noto Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-inter: 'Inter', ui-sans-serif, system-ui, sans-serif;
+}
+
 .typeset-docs {
-  --typeset-font-body: var(--font-geist);
-  --typeset-font-heading: var(--font-geist);
-  --typeset-font-mono: var(--font-geist-mono);
-  --typeset-size: 18px;
-  --typeset-leading: 1.7;
+  --typeset-font-body: var(--font-noto-sans);
+  --typeset-font-heading: var(--font-inter);
+  --typeset-font-mono: var(--font-noto-sans);
+  --typeset-size: 15px;
+  --typeset-leading: 1.75;
   --typeset-flow: 1.25em;
 }
 

@@ -1,15 +1,17 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { SaveStatusBadge, useSaveShortcut, type SaveStatus } from '../shared/SaveStatusBadge';
 import { AiRewriteBox } from '../shared/AiRewriteBox';
+import { AiImageReader } from '../shared/AiImageReader';
 import { createPortal } from 'react-dom';
 import {
-  ArrowLeft, Check, Copy, Eye, FileDown, GripVertical, Maximize2, Minimize, Minus, Plus, Printer, X,
-  MoreHorizontal, RotateCcw, RotateCw, Save, Trash2, ChevronLeft, ChevronRight, ChevronDown, HelpCircle, FileUp,
+  ArrowLeft, Copy, Eye, FileDown, GripVertical, Maximize2, Minimize, Minus, Plus, Printer, X,
+  MoreHorizontal, RotateCcw, RotateCw, Save, Trash2, ChevronDown, HelpCircle, FileUp,
 } from 'lucide-react';
 import { PageZoomOverlay } from '../shared/PageZoomOverlay';
 import type { Exercise, LessonFolder, Worksheet } from '../../types';
 import {
   bumpSentenceSize, createSentenceCompletion, moveSentenceItem, newSentenceId, parseSentenceCompletionText,
-  setSentenceStyle, validateSentenceCompletion, SENTENCE_LAYOUTS,
+  setSentenceStyle, validateSentenceCompletion, SENTENCE_LAYOUTS, SENTENCE_PASTE_FORMATS, type SentenceLayoutId,
   type SentenceCompletionData, type SentenceItem, type SentenceStyleKey,
 } from '../../services/sentence-completion/sentenceCompletionCore';
 import { parseWordLines } from '../../services/gap-filling/gapFillingCore';
@@ -23,6 +25,7 @@ import { resolveBranding } from '../../types/branding';
 import { exportWorksheetToDocx } from '../../services/docxExportService';
 import { useAppHeaderSlot } from '../shared/hooks/useAppHeaderSlot';
 import { useSplitPane } from '../shared/hooks/useSplitPane';
+import { RichMarksProvider } from '../shared/rich/RichEditable';
 
 interface Props {
   folder: LessonFolder;
@@ -30,6 +33,8 @@ interface Props {
   onSaveExercise: (exercise: Exercise, nextAction: 'return' | 'add_another' | 'stay') => void;
   onCancel: () => void;
   onDeleteExercise?: (exerciseId: string) => void;
+  /** Bản nháp điền sẵn từ Smart ở màn hình Add exercise (chỉ dùng khi tạo bài mới) */
+  draft?: SentenceCompletionData;
 }
 
 const fieldCls =
@@ -83,10 +88,12 @@ const MODAL_INFO: Record<ModalMode, { title: string; hint: string; placeholder: 
   },
 };
 
-export const SentenceCompletionEditor: React.FC<Props> = ({ folder, editingExercise, onSaveExercise, onCancel, onDeleteExercise }) => {
+export const SentenceCompletionEditor: React.FC<Props> = ({ folder, editingExercise, onSaveExercise, onCancel, onDeleteExercise, draft }) => {
   const [data, setDataRaw] = useState<SentenceCompletionData>(() =>
     editingExercise?.sentenceCompletion
       ? createSentenceCompletion(editingExercise.sentenceCompletion)
+      : !editingExercise && draft
+      ? createSentenceCompletion(draft)
       : createSentenceCompletion({ ...(editingExercise?.title ? { exerciseTitle: editingExercise.title } : {}) }),
   );
   const exerciseIdRef = useRef(editingExercise?.id || `ex_sentence_completion_${Date.now()}`);
@@ -99,7 +106,7 @@ export const SentenceCompletionEditor: React.FC<Props> = ({ folder, editingExerc
   const pastRef = useRef<SentenceCompletionData[]>([]);
   const futureRef = useRef<SentenceCompletionData[]>([]);
   const lastPushRef = useRef(0);
-  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
   const setData = (next: React.SetStateAction<SentenceCompletionData>) => {
     const prev = dataRef.current;
     const val = typeof next === 'function' ? (next as (p: SentenceCompletionData) => SentenceCompletionData)(prev) : next;
@@ -113,8 +120,7 @@ export const SentenceCompletionEditor: React.FC<Props> = ({ folder, editingExerc
     futureRef.current = [];
     dataRef.current = val;
     setDataRaw(val);
-    setSaveStatus('saving');
-    window.setTimeout(() => setSaveStatus('saved'), 600);
+    setSaveStatus('unsaved');
   };
   const jump = (from: SentenceCompletionData[], to: SentenceCompletionData[]) => {
     const target = from.pop();
@@ -123,6 +129,7 @@ export const SentenceCompletionEditor: React.FC<Props> = ({ folder, editingExerc
     dataRef.current = target;
     lastPushRef.current = 0;
     setDataRaw(target);
+    setSaveStatus('unsaved');
   };
   const handleUndo = () => jump(pastRef.current, futureRef.current);
   const handleRedo = () => jump(futureRef.current, pastRef.current);
@@ -189,9 +196,15 @@ export const SentenceCompletionEditor: React.FC<Props> = ({ folder, editingExerc
   // ── Smart Paste / Import
   const [modal, setModal] = useState<ModalMode | null>(null);
   const [pasteText, setPasteText] = useState('');
+  /** Layout chọn sẵn cho Smart Paste: 'auto' = tự đoán */
+  const [pasteLayout, setPasteLayout] = useState<'auto' | SentenceLayoutId>('auto');
   const [modalMsg, setModalMsg] = useState('');
-  const openModal = (m: ModalMode) => { setModal(m); setPasteText(''); setModalMsg(''); };
+  const openModal = (m: ModalMode) => { setModal(m); setPasteLayout('auto'); setPasteText(''); setModalMsg(''); };
   const hasContent = data.sentences.length > 0 || data.words.length > 0;
+  const pasteFmt = modal === 'smart' && pasteLayout !== 'auto'
+    ? { hint: SENTENCE_PASTE_FORMATS[pasteLayout].hint, placeholder: SENTENCE_PASTE_FORMATS[pasteLayout].example }
+    : { hint: MODAL_INFO[modal ?? 'smart'].hint, placeholder: MODAL_INFO[modal ?? 'smart'].placeholder };
+
   const applyModal = () => {
     if (!modal) return;
     if (modal === 'words') {
@@ -209,13 +222,14 @@ export const SentenceCompletionEditor: React.FC<Props> = ({ folder, editingExerc
       });
       update({ sentences: list });
     } else {
-      const parsed = parseSentenceCompletionText(pasteText);
+      const parsed = parseSentenceCompletionText(pasteText, pasteLayout === 'auto' ? undefined : pasteLayout);
       if (!parsed.ok) { setModalMsg(parsed.warnings[0] || 'Không nhận ra câu nào.'); return; }
       if (hasContent && !window.confirm('Thay toàn bộ tiêu đề, khung từ và các câu hiện có bằng nội dung vừa dán? (Có thể Hoàn tác)')) return;
       setData((p) => ({
         ...p,
         exerciseTitle: parsed.title || p.exerciseTitle,
         targetWord: parsed.targetWord || p.targetWord,
+        ...(parsed.columnHeaders ? { columnHeaders: parsed.columnHeaders } : {}),
         words: parsed.words.map((text) => ({ id: newSentenceId(), text })),
         sentences: parsed.sentences.map((s): SentenceItem => ({ id: newSentenceId(), text: s.text, ...(s.hint ? { hint: s.hint } : {}), ...(s.starter ? { starter: s.starter } : {}) })),
         settings: { ...p.settings, layout: parsed.layout, showWordBank: parsed.words.length > 0 },
@@ -257,6 +271,9 @@ export const SentenceCompletionEditor: React.FC<Props> = ({ folder, editingExerc
     pageBreakBefore: data.settings.pageBreakBefore || undefined,
     sentenceCompletion: { ...data, exerciseNumber },
   });
+
+  useSaveShortcut(() => handleSave('stay'));
+
 
   const handleSave = (next: 'return' | 'add_another' | 'stay' = 'return') => {
     const v = validateSentenceCompletion(data);
@@ -334,6 +351,7 @@ export const SentenceCompletionEditor: React.FC<Props> = ({ folder, editingExerc
     <div className="bg-white text-[#111] shadow-xl mx-auto" style={{ width: '210mm', minHeight: '297mm', padding: '15mm', zoom: scale, display: 'flex', flexDirection: 'column' }}>
       {brand.enabled && <BrandHeader b={brand} />}
       <div className="mt-[4mm]">
+        <RichMarksProvider marks={data.richMarks} onChange={editable ? (fn) => setData((p) => ({ ...p, richMarks: fn(p.richMarks) })) : undefined}>
         <SentenceCompletionRenderer
           data={{ ...data, exerciseNumber }}
           exerciseIndex={exerciseNumber}
@@ -343,10 +361,12 @@ export const SentenceCompletionEditor: React.FC<Props> = ({ folder, editingExerc
             onSentence: (id, v) => patchSentence(id, { text: v }),
             onHint: (id, v) => patchSentence(id, { hint: v.replace(/^\(|\)$/g, '') }),
             onStarter: (id, v) => patchSentence(id, { starter: v || undefined }),
+            onColumnHeader: (idx, v) => update({ columnHeaders: idx === 0 ? [v, data.columnHeaders?.[1] ?? 'NEGATIVE'] : [data.columnHeaders?.[0] ?? 'POSITIVE', v] }),
             selectedKey: selKey,
             onSelectKey: setSelKey,
           } : undefined}
         />
+        </RichMarksProvider>
       </div>
       {brand.enabled && <div className="mt-auto pt-[8mm]"><BrandFooter b={brand} pageNumber={1} totalPages={1} /></div>}
     </div>
@@ -355,7 +375,6 @@ export const SentenceCompletionEditor: React.FC<Props> = ({ folder, editingExerc
   const box = 'inline-flex items-center bg-white border border-slate-200 rounded-lg shadow-xs';
   const btn = 'w-8 h-8 flex items-center justify-center text-slate-600 hover:bg-slate-50 rounded-lg';
   const locked = activeTab === 'preview';
-  const layoutMeta = SENTENCE_LAYOUTS.find((l) => l.id === data.settings.layout);
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-100 select-text">
@@ -373,9 +392,7 @@ export const SentenceCompletionEditor: React.FC<Props> = ({ folder, editingExerc
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 text-xs text-emerald-700 font-medium bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100">
-              <Check size={13} strokeWidth={2.5} /> {saveStatus === 'saving' ? 'Saving...' : 'Saved a few seconds ago'}
-            </div>
+            <SaveStatusBadge status={saveStatus} />
             <div className="relative">
               <button type="button" onClick={() => setShowExportMenu((v) => !v)} className="w-9 h-9 text-slate-600 hover:text-slate-900 bg-white border border-slate-200 hover:bg-slate-50 rounded-lg flex items-center justify-center" title="Tùy chọn xuất file">
                 <MoreHorizontal size={16} />
@@ -460,21 +477,6 @@ export const SentenceCompletionEditor: React.FC<Props> = ({ folder, editingExerc
                 <label className="text-[11px] font-semibold text-slate-600 block mb-1">Instruction <span className="font-normal text-slate-400">(optional, không in)</span></label>
                 <input value={data.instruction} onChange={(e) => update({ instruction: e.target.value })} className={fieldCls} />
               </div>
-              <div>
-                <label className="text-[11px] font-semibold text-slate-600 block mb-1">Exercise Type</label>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {SENTENCE_LAYOUTS.map((l) => {
-                    const on = data.settings.layout === l.id;
-                    return (
-                      <button key={l.id} type="button" title={l.desc} onClick={() => updateSettings({ layout: l.id, ...(l.id === 'word_bank' ? { showWordBank: true } : {}) })} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-[11.5px] font-semibold text-left ${on ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
-                        <span className={`w-3 h-3 rounded-full border shrink-0 ${on ? 'border-blue-600 bg-blue-600 ring-2 ring-white ring-inset' : 'border-slate-400'}`} />
-                        {l.typeLabel}
-                      </button>
-                    );
-                  })}
-                </div>
-                {layoutMeta && <p className="mt-1 text-[10.5px] text-slate-400">{layoutMeta.desc}</p>}
-              </div>
               <div className="flex items-center justify-between gap-6 text-[11.5px] text-slate-700">
                 <label className="flex items-center gap-2">Show Word Bank <Switch checked={data.settings.showWordBank} onChange={(v) => updateSettings({ showWordBank: v })} label="Show Word Bank" /></label>
                 <label className="flex items-center gap-2">Show Example (optional) <Switch checked={data.settings.showExample} onChange={(v) => updateSettings({ showExample: v })} label="Show Example" /></label>
@@ -517,7 +519,7 @@ export const SentenceCompletionEditor: React.FC<Props> = ({ folder, editingExerc
               <button type="button" onClick={() => openModal('smart')} className={smallBtn}>Smart Paste</button>
             </>} open={open[3]} onToggle={() => toggle(3)} />
             {open[3] && (<>
-              <p className="text-[10.5px] text-slate-400">Chỗ trống viết <code className="px-1 rounded bg-slate-100">______</code>.{data.settings.layout === 'brackets' ? ' Gợi ý hiện bên phải: (money/buy).' : data.settings.layout === 'transform' ? ' Gợi ý hiện bên trái, ô câu là phần đầu câu trả lời: It’s ______.' : data.settings.layout === 'error_correction' ? ' Nhập câu có lỗi sai, không cần chỗ trống; bên phải tự có đường kẻ để học sinh viết câu đã sửa.' : ''}</p>
+              <p className="text-[10.5px] text-slate-400">Chỗ trống viết <code className="px-1 rounded bg-slate-100">______</code>.{data.settings.layout === 'brackets' ? ' Gợi ý hiện bên phải: (money/buy).' : data.settings.layout === 'transform' ? ' Gợi ý hiện bên trái, ô câu là phần đầu câu trả lời: It’s ______.' : data.settings.layout === 'error_correction' ? ' Nhập câu có lỗi sai, không cần chỗ trống; bên phải tự có đường kẻ để học sinh viết câu đã sửa.' : data.settings.layout === 'dialogue_gap_fill' ? ' Mỗi dòng bắt đầu bằng tên người nói, ví dụ Vicky: (1) ______ you like ice cream?' : ''}</p>
               {data.sentences.length === 0 && <p className="text-xs text-slate-400 py-2 text-center">Chưa có câu nào. Bấm Add Sentence, Import hoặc Smart Paste.</p>}
               <div className="space-y-2">
                 {data.sentences.map((s, i) => (
@@ -531,8 +533,14 @@ export const SentenceCompletionEditor: React.FC<Props> = ({ folder, editingExerc
                     <span className="min-w-6 h-7 mt-0.5 px-1.5 rounded-md bg-slate-100 text-[11px] font-bold text-slate-600 flex items-center justify-center shrink-0">{i + 1}</span>
                     <div className="flex-1 min-w-0 space-y-1">
                       <input value={s.text} onChange={(e) => patchSentence(s.id, { text: e.target.value })} placeholder="Câu có chỗ trống ______" className={fieldCls} />
-                      {(data.settings.layout === 'brackets' || data.settings.layout === 'transform' || s.hint) && (
-                        <input value={s.hint || ''} onChange={(e) => patchSentence(s.id, { hint: e.target.value })} placeholder={data.settings.layout === 'transform' ? "Gợi ý bên trái: I'm not going out / cold" : 'Gợi ý trong ngoặc: money/buy'} className={`${fieldCls} !py-1.5 italic`} />
+                      {(data.settings.layout === 'brackets' || data.settings.layout === 'transform' || data.settings.layout === 'q_and_a' || s.hint) && (
+                        <input value={s.hint || ''} onChange={(e) => patchSentence(s.id, { hint: e.target.value })} placeholder={data.settings.layout === 'q_and_a' ? 'Gợi ý bên trái: you / get up' : data.settings.layout === 'transform' ? "Gợi ý bên trái: I'm not going out / cold" : 'Gợi ý trong ngoặc: money/buy'} className={`${fieldCls} !py-1.5 italic`} />
+                      )}
+                      {data.settings.layout === 'q_and_a' && (
+                        <input value={s.starter || ''} onChange={(e) => patchSentence(s.id, { starter: e.target.value || undefined })} placeholder="Câu trả lời cho sẵn: Yes, I ______." className={`${fieldCls} !py-1.5`} />
+                      )}
+                      {data.settings.layout === 'pos_neg' && (
+                        <input value={s.starter || ''} onChange={(e) => patchSentence(s.id, { starter: e.target.value || undefined })} placeholder="Câu phủ định có chỗ trống: I ______ tea." className={`${fieldCls} !py-1.5`} />
                       )}
                       {data.settings.layout === 'rewrite' && (
                         <input value={s.starter || ''} onChange={(e) => patchSentence(s.id, { starter: e.target.value || undefined })} placeholder="Phần mở đầu cho sẵn: I prefer (để trống nếu chỉ cần đường kẻ)" className={`${fieldCls} !py-1.5 italic`} />
@@ -582,11 +590,6 @@ export const SentenceCompletionEditor: React.FC<Props> = ({ folder, editingExerc
             </div>
             <div className="flex items-center gap-1.5 text-xs text-slate-700 shrink-0 [&_button]:!w-7 [&_button]:!h-7">
               <div className={`${box} px-0.5`}>
-                <button type="button" className={btn} title="Trang trước"><ChevronLeft size={15} /></button>
-                <span className="px-2 whitespace-nowrap">Page 1 / 1</span>
-                <button type="button" className={btn} title="Trang sau"><ChevronRight size={15} /></button>
-              </div>
-              <div className={`${box} px-0.5`}>
                 <button type="button" onClick={() => setZoom((z) => Math.max(50, z - 10))} className={btn} title="Thu nhỏ"><Minus size={14} /></button>
                 <span className="w-11 text-center">{zoom}%</span>
                 <button type="button" onClick={() => setZoom((z) => Math.min(150, z + 10))} className={btn} title="Phóng to"><Plus size={14} /></button>
@@ -610,9 +613,26 @@ export const SentenceCompletionEditor: React.FC<Props> = ({ folder, editingExerc
               <h3 className="text-sm font-bold text-slate-900">{MODAL_INFO[modal].title}</h3>
               <button type="button" onClick={() => setModal(null)} className="p-1 text-slate-400 hover:text-slate-700"><X size={16} /></button>
             </div>
-            <p className="text-xs text-slate-500">{MODAL_INFO[modal].hint}</p>
-            <textarea rows={10} style={{ flex: '1 1 auto', minHeight: '14rem', resize: 'none' }} value={pasteText} onChange={(e) => { setPasteText(e.target.value); setModalMsg(''); }} placeholder={MODAL_INFO[modal].placeholder} className={`${fieldCls} font-mono`} />
-            <AiRewriteBox kind="Sentence Completion" hint={MODAL_INFO[modal].hint} example={MODAL_INFO[modal].placeholder} text={pasteText} onText={(v) => { setPasteText(v); setModalMsg(''); }} />
+            {modal === 'smart' && (
+              <label className="flex items-center gap-2 text-xs font-semibold text-slate-700">Layout
+                <select value={pasteLayout} onChange={(ev) => { setPasteLayout(ev.target.value as 'auto' | SentenceLayoutId); setModalMsg(''); }} className={`${fieldCls} !w-auto flex-1`}>
+                  <option value="auto">Tự nhận dạng</option>
+                  {SENTENCE_LAYOUTS.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
+                </select>
+              </label>
+            )}
+            <p className="text-xs text-slate-500">{pasteFmt.hint}</p>
+            {modal === 'smart' && (
+              <AiImageReader
+                kind="Sentence Completion – Grammar Practice"
+                layouts={SENTENCE_LAYOUTS.map((l) => ({ id: l.id, label: l.label, desc: l.desc, hint: SENTENCE_PASTE_FORMATS[l.id].hint, example: SENTENCE_PASTE_FORMATS[l.id].example }))}
+                layoutLabel={(id) => SENTENCE_LAYOUTS.find((l) => l.id === id)?.label || id}
+                currentText={pasteText}
+                onResult={(r) => { setPasteLayout(r.layout as SentenceLayoutId); setPasteText(r.text); setModalMsg(''); }}
+              />
+            )}
+            <textarea rows={10} style={{ flex: '1 1 auto', minHeight: '14rem', resize: 'none' }} value={pasteText} onChange={(e) => { setPasteText(e.target.value); setModalMsg(''); }} placeholder={pasteFmt.placeholder} className={`${fieldCls} font-mono`} />
+            <AiRewriteBox kind={modal === 'smart' && pasteLayout !== 'auto' ? `Sentence Completion – ${SENTENCE_LAYOUTS.find((l) => l.id === pasteLayout)?.typeLabel}` : 'Sentence Completion'} hint={pasteFmt.hint} example={pasteFmt.placeholder} text={pasteText} onText={(v) => { setPasteText(v); setModalMsg(''); }} />
             {modalMsg && <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">{modalMsg}</p>}
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setModal(null)} className="h-9 px-3 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg">Hủy</button>

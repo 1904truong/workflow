@@ -17,13 +17,17 @@ export const ExerciseTypePickerModal: React.FC<ExerciseTypePickerModalProps> = (
   const [search, setSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
-  const categories = [
-    { id: 'all', label: 'All (15)' },
-    { id: 'Listening', label: 'Listening (4)', icon: Headphones },
-    { id: 'Reading', label: 'Reading (5)', icon: BookOpen },
-    { id: 'Grammar & Vocab', label: 'Grammar & Vocab (4)', icon: Sparkles },
-    { id: 'Writing', label: 'Writing (2)', icon: PenTool },
-  ];
+  const categories = useMemo(() => {
+    const all = Object.values(EXERCISE_REGISTRY).filter((m) => !m.hidden);
+    const count = (cat: string) => all.filter((m) => m.category === cat).length;
+    return [
+      { id: 'all', label: `All (${all.length})` },
+      { id: 'Listening', label: `Listening (${count('Listening')})`, icon: Headphones },
+      { id: 'Reading', label: `Reading (${count('Reading')})`, icon: BookOpen },
+      { id: 'Grammar & Vocab', label: `Grammar & Vocab (${count('Grammar & Vocab')})`, icon: Sparkles },
+      { id: 'Writing', label: `Writing (${count('Writing')})`, icon: PenTool },
+    ];
+  }, []);
 
   const filteredTypes = useMemo(() => {
     return Object.values(EXERCISE_REGISTRY).filter((meta) => !meta.hidden).filter((meta) => {

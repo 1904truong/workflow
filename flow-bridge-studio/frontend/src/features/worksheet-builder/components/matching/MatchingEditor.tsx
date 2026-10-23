@@ -57,6 +57,28 @@ const Thumb = ({ id }: { id: MatchingLayoutId }) => {
       return <div className="flex gap-1.5 w-full">{col(3)}<span className="w-px bg-slate-300" />{col(5)}</div>;
     case 'connect_lines':
       return <div className="flex gap-3 w-full">{col(3, 'r')}{col(5, 'l')}</div>;
+    case 'facing_tables':
+      return (
+        <div className="flex items-center gap-1.5 w-full px-0.5">
+          <div className="flex flex-col flex-1 border border-amber-600 divide-y divide-amber-600 rounded-[1px]">
+            {[1, 2].map((num) => (
+              <div key={num} className="flex h-2.5 items-center divide-x divide-amber-600">
+                <span className="flex-1 px-0.5"><span className="block h-[2px] bg-slate-300 rounded-full w-full" /></span>
+                <span className="w-2.5 text-[6px] text-center font-bold text-slate-700 leading-none">{num}</span>
+              </div>
+            ))}
+          </div>
+          <span className="w-2 flex items-center justify-center text-[7px] text-amber-600 font-bold select-none">⇄</span>
+          <div className="flex flex-col flex-1 border border-amber-600 divide-y divide-amber-600 rounded-[1px]">
+            {['A', 'B'].map((label) => (
+              <div key={label} className="flex h-2.5 items-center divide-x divide-amber-600">
+                <span className="w-2.5 text-[6px] text-center font-bold text-slate-700 leading-none">{label}</span>
+                <span className="flex-1 px-0.5"><span className="block h-[2px] bg-slate-300 rounded-full w-full" /></span>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
     case 'answer_table':
       return (
         <div className="w-full space-y-1">

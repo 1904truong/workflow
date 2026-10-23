@@ -568,6 +568,11 @@ export function classifyExerciseType(text: string): ExerciseType {
     return 'listening_multiple_choice';
   }
 
+  // Draw Lines and Match
+  if (/draw\s+lines?|kẻ\s+đường/i.test(lower)) {
+    return 'draw_lines_match';
+  }
+
   // Matching Pictures
   if (
     /(?:picture|image|illustration|photo|tranh|hình)s?\s*(?:[A-E]|to [A-E]|đến [A-E]|và nối)/i.test(lower) || 
@@ -584,6 +589,7 @@ export function classifyExerciseType(text: string): ExerciseType {
 
   // Reading classifications
   if (/reading|passage|đoạn văn|read the following|đọc đoạn văn/i.test(lower)) {
+    if (/comic|picture story|truyện tranh/i.test(lower)) return 'reading_comic';
     if (/short answer|answer the questions|trả lời câu hỏi/i.test(lower)) return 'reading_short_answer';
     if (/heading|main idea|tiêu đề/i.test(lower)) return 'matching_headings';
     if (/match.*information|thông tin/i.test(lower)) return 'matching_information';

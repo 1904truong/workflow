@@ -16,6 +16,7 @@ import { createMatchingHeadings, newHeadingId, parseHeadingsText } from './match
 import { createSentenceCompletion, newSentenceId, parseSentenceCompletionText } from './sentence-completion/sentenceCompletionCore.ts';
 import type { SentenceItem } from './sentence-completion/sentenceCompletionCore.ts';
 import { DIALOGUE_PRESET, SENTENCE_LIST_PRESET, parseListeningSmartPaste } from './listening/listeningGapFillCore.ts';
+import { parseMatchingText, matchingFromParsed } from './matching/matchingCore.ts';
 
 /**
  * Nhận dạng theo TIÊU ĐỀ + HƯỚNG DẪN (không nhìn cả bài để khỏi nhầm vì chữ "listen", "read" trong đoạn văn).
@@ -30,6 +31,8 @@ export const classifyByHeading = (heading: string): ExerciseType | null => {
   if (/word formation|form of the (?:word|verb)|in brackets|in parentheses|words? in the box|from the box|phrases? in the box|chia động từ|đổi dạng/.test(h)) return 'gap_filling_word_formation';
   if (/\b(?:find|spot|correct)\b.*\b(?:mistakes?|errors?)\b|tìm lỗi/.test(h)) return 'sentence_completion';
   if (/\benough\b|\btoo\b.*\bto\b|complete the sentences|sentence completion|rewrite the sentences/.test(h)) return 'sentence_completion';
+  if (/\bwrite\b.*\b(?:do|does|don['’]?t|doesn['’]?t)\b/.test(h)) return 'sentence_completion';
+  if (/draw\s+lines?|kẻ\s+đường/.test(h)) return 'draw_lines_match';
   if (/match.*(?:phrasal verb|word|vocabulary|definition|meaning)|nối/.test(h)) return 'matching_vocabulary';
   if (/true.*false.*not given|t\/f\/ng/.test(h)) return 'true_false_not_given';
   // Đọc bài rồi viết T / F (không có Not Given, không phải bài nghe): dùng Reading Short Answer có bài đọc và dòng kẻ ngắn
@@ -123,10 +126,12 @@ export const enrichExercise = (ex: Exercise, chunk: string): Exercise => {
       };
     }
     case 'reading_multiple_choice':
-    case 'reading_short_answer': {
+    case 'reading_short_answer':
+    case 'reading_comic': {
       const r = parseReadingFull(body);
       if (!r.passage && r.questions.length === 0) return base;
-      const sa = ex.type === 'reading_short_answer';
+      const isComic = ex.type === 'reading_comic';
+      const sa = ex.type === 'reading_short_answer' || isComic;
       const qs = toQuestions(r.questions.map((q) => ({ text: q.text, options: sa ? [] : q.options })), sa ? 0 : 3);
       return {
         ...base,
@@ -140,7 +145,11 @@ export const enrichExercise = (ex: Exercise, chunk: string): Exercise => {
           passageAuthor: r.author,
           passage: r.passage,
           questions: qs,
-          settings: (sa ? { showPassageImage: false, questionGapMm: 4.5, ...(/\btrue\b.*\bfalse\b/i.test(title) ? { answerLineWidthMm: 26 } : {}) } : {}) as never,
+          settings: (isComic
+            ? { layout: 'comic_story', themeColor: 'orange', questionGapMm: 6, answerLineCount: 1 }
+            : sa
+            ? { showPassageImage: false, questionGapMm: 4.5, ...(/\btrue\b.*\bfalse\b/i.test(title) ? { answerLineWidthMm: 26 } : {}) }
+            : {}) as never,
         }),
       };
     }
@@ -181,6 +190,18 @@ export const enrichExercise = (ex: Exercise, chunk: string): Exercise => {
           definitions: p.definitions.map((text) => ({ id: newVocabId('d'), text })),
           settings: { layout: 'plain_list' } as never,
         }),
+      };
+    }
+    case 'draw_lines_match':
+    case 'matching_information': {
+      const p = parseMatchingText(body);
+      const m = matchingFromParsed(p);
+      if (ex.type === 'draw_lines_match') m.layout = 'facing_tables';
+      return {
+        ...base,
+        matching: m,
+        questions: m.problems.map((prob, i) => ({ id: prob.id, number: i + 1, text: prob.text, points: 1 })),
+        pointsTotal: m.problems.length,
       };
     }
     case 'true_false_not_given': {

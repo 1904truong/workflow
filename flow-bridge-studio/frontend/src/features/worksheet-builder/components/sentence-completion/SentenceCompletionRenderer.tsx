@@ -4,9 +4,11 @@ import { splitTitleByTarget } from '../../services/sentence-completion/sentenceC
 import { splitPassage } from '../../services/gap-filling/gapFillingCore';
 import { textStyleToCss } from '../../services/matching-pictures/matchingPicturesCore';
 import { getAudioQrCodeUrl } from '../../services/listening/listeningGapFillCore';
+import { RichEditable } from '../shared/rich/RichEditable';
 
 const NAVY = '#16295f';
 const RED = '#c81e1e';
+const ORANGE = '#f97316';
 const HEAD_FONT = '"Roboto Condensed", "Arial Narrow", Arial, sans-serif';
 
 export interface SentenceEditable {
@@ -16,6 +18,7 @@ export interface SentenceEditable {
   onSentence?: (id: string, v: string) => void;
   onHint?: (id: string, v: string) => void;
   onStarter?: (id: string, v: string) => void;
+  onColumnHeader?: (index: 0 | 1, v: string) => void;
   selectedKey?: SentenceStyleKey;
   onSelectKey?: (k: SentenceStyleKey) => void;
 }
@@ -37,31 +40,9 @@ const EditableText: React.FC<{
   onSelect?: () => void;
   inline?: boolean;
   children?: React.ReactNode;
-}> = ({ value, onCommit, css, selected, onSelect, inline, children }) => {
-  if (!onCommit) return <span style={css}>{children ?? value}</span>;
-  return (
-    <span
-      contentEditable
-      suppressContentEditableWarning
-      spellCheck={false}
-      className="rounded-[2px] cursor-text caret-blue-600 hover:bg-blue-50 focus:bg-blue-50/60 focus:outline focus:outline-1 focus:outline-blue-400 focus:outline-offset-2"
-      style={{ ...css, display: inline ? 'inline' : 'inline-block', minWidth: '3ch', outline: selected ? '1px solid #8b5cf6' : undefined, outlineOffset: '2px' }}
-      onFocus={onSelect}
-      onClick={onSelect}
-      onBlur={(e) => {
-        const v = e.currentTarget.innerText.replace(/ /g, ' ').replace(/\s*\n+\s*/g, ' ').trim();
-        if (v !== value) onCommit(v);
-        else e.currentTarget.innerText = value;
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
-        if (e.key === 'Escape') { e.currentTarget.innerText = value; e.currentTarget.blur(); }
-      }}
-    >
-      {value}
-    </span>
-  );
-};
+}> = ({ value, onCommit, css, selected, onSelect, inline, children }) => (
+  <RichEditable value={value} onCommit={onCommit} css={css} selected={selected} onSelect={onSelect} display={inline ? 'inline' : 'inline-block'} fallback={children} />
+);
 
 export const SentenceCompletionRenderer: React.FC<Props> = ({ data, exerciseIndex = 1, hideExerciseHeading = false, editable }) => {
   const { settings, words, sentences, audio } = data;
@@ -72,8 +53,9 @@ export const SentenceCompletionRenderer: React.FC<Props> = ({ data, exerciseInde
     ? `${settings.fontFamily}, "Segoe UI", Arial, sans-serif`
     : 'Arial, sans-serif';
   const layout = settings.layout;
-  const gap = `${settings.rowGapMm}mm`;
-  const blankW = `${settings.blankWidthMm}mm`;
+  const dialogueGapFill = layout === 'dialogue_gap_fill';
+  const gap = `${dialogueGapFill ? Math.min(settings.rowGapMm, 2) : settings.rowGapMm}mm`;
+  const blankW = `${dialogueGapFill ? Math.min(settings.blankWidthMm, 18) : settings.blankWidthMm}mm`;
 
   const qrUrl = audio.shareUrl ? getAudioQrCodeUrl(audio.shareUrl) : '';
   const qr = settings.showQrCode ? (
@@ -93,7 +75,7 @@ export const SentenceCompletionRenderer: React.FC<Props> = ({ data, exerciseInde
   );
 
   /** Câu có chỗ trống ______ -> dòng kẻ; câu ví dụ (Show Example) điền đáp án mẫu chữ đỏ gạch chân */
-  const renderText = (s: SentenceItem) => {
+  const renderText = (s: SentenceItem, showBlankLabels = false) => {
     if (editable?.onSentence) {
       return <EditableText value={s.text} inline onCommit={(v) => editable.onSentence!(s.id, v)} css={css('sentences')} selected={sel('sentences')} onSelect={pick('sentences')} />;
     }
@@ -104,11 +86,16 @@ export const SentenceCompletionRenderer: React.FC<Props> = ({ data, exerciseInde
           if (part.kind === 'text') return <span key={i}>{part.text}</span>;
           const showEx = settings.showExample && !!s.example && blankIdx === 0;
           blankIdx++;
-          return (
-            <span key={i} style={{ display: 'inline-block', minWidth: blankW, borderBottom: `1pt ${showEx ? 'solid' : 'dashed'} ${showEx ? RED : '#1e293b'}`, textAlign: 'center', color: RED, fontWeight: 600, lineHeight: 1.1, verticalAlign: 'baseline', padding: '0 1mm' }}>
+          const blank = (
+            <span style={{ display: 'inline-block', minWidth: blankW, borderBottom: `1pt ${showEx ? 'solid' : 'dashed'} ${showEx ? RED : '#1e293b'}`, textAlign: 'center', color: RED, fontWeight: 600, lineHeight: 1.1, verticalAlign: 'baseline', padding: '0 1mm' }}>
               {showEx ? s.example : ' '}
             </span>
           );
+          return showBlankLabels && part.label ? (
+            <span key={i} style={{ display: 'inline-flex', alignItems: 'baseline', gap: '0.8mm', margin: '0 0.8mm' }}>
+              <strong style={{ color: '#111', fontWeight: 700 }}>({part.label})</strong>{blank}
+            </span>
+          ) : <React.Fragment key={i}>{blank}</React.Fragment>;
         })}
       </span>
     );
@@ -132,6 +119,67 @@ export const SentenceCompletionRenderer: React.FC<Props> = ({ data, exerciseInde
   const num = (i: number) => settings.showNumbering && <strong style={{ minWidth: '7mm', fontWeight: 800 }}>{i + 1}.</strong>;
 
   const renderBody = () => {
+    if (layout === 'dialogue_gap_fill') {
+      return (
+        <div style={{ margin: 0, padding: 0 }}>
+          {sentences.map((s) => {
+            const m = /^([A-Z][A-Za-z]{1,20}):\s*(.*)$/.exec(s.text);
+            const name = m?.[1] || '';
+            const rest = m ? m[2] : s.text;
+            return (
+              <div key={s.id} className="flex items-baseline" style={{ breakInside: 'avoid', marginBottom: gap }}>
+                <strong style={{ flex: '0 0 14mm', color: '#111', fontWeight: 700 }}>{name ? `${name}:` : ''}</strong>
+                <span className="min-w-0 flex-1" style={{ textAlign: 'left', ...css('sentences') }} onClick={pick('sentences')}>
+                  {editable?.onSentence
+                    ? <EditableText value={rest} inline onCommit={(v) => editable.onSentence!(s.id, name ? `${name}: ${v}` : v)} css={css('sentences')} selected={sel('sentences')} onSelect={pick('sentences')} />
+                    : renderText({ ...s, text: rest }, true)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+    if (layout === 'q_and_a') {
+      return (
+        <ol style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+          {sentences.map((s, i) => (
+            <li key={s.id} className="flex items-baseline gap-[2mm]" style={{ breakInside: 'avoid', marginBottom: gap }}>
+              {num(i)}
+              <span style={{ flex: '0 0 27%' }}>
+                <EditableText value={s.hint || ''} onCommit={editable?.onHint ? (v) => editable.onHint!(s.id, v) : undefined} css={css('hints')} selected={sel('hints')} onSelect={pick('hints')} />
+              </span>
+              <span style={{ flex: '0 0 40%' }}>{renderText(s)}</span>
+              <span className="flex-1">{renderText({ ...s, text: s.starter || '' })}</span>
+            </li>
+          ))}
+        </ol>
+      );
+    }
+    if (layout === 'pos_neg') {
+      const heads = data.columnHeaders || ['POSITIVE', 'NEGATIVE'];
+      const hdr = (idx: 0 | 1) => (
+        <div style={{ flex: '0 0 50%', color: '#e8803a', textTransform: 'uppercase', fontWeight: 500, paddingLeft: idx === 0 && settings.showNumbering ? '9mm' : 0, ...css('hints') }}>
+          <EditableText value={heads[idx]} onCommit={editable?.onColumnHeader ? (v) => editable.onColumnHeader!(idx, v) : undefined} css={css('hints')} selected={sel('hints')} onSelect={pick('hints')} />
+        </div>
+      );
+      return (
+        <div>
+          <div className="flex items-baseline gap-[2mm]" style={{ marginBottom: gap }}>{hdr(0)}{hdr(1)}</div>
+          <ol style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {sentences.map((s, i) => (
+              <li key={s.id} className="flex items-baseline gap-[2mm]" style={{ breakInside: 'avoid', marginBottom: gap }}>
+                {num(i)}
+                <span style={{ flex: '0 0 calc(50% - 9mm)' }}>
+                  <EditableText value={s.text} inline onCommit={editable?.onSentence ? (v) => editable.onSentence!(s.id, v) : undefined} css={css('sentences')} selected={sel('sentences')} onSelect={pick('sentences')} />
+                </span>
+                <span className="flex-1">{renderText({ ...s, text: s.starter || '' })}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      );
+    }
     if (layout === 'two_columns') {
       return (
         <ol style={{ listStyle: 'none', margin: 0, padding: 0, columnCount: 2, columnGap: '10mm' }}>
@@ -203,7 +251,7 @@ export const SentenceCompletionRenderer: React.FC<Props> = ({ data, exerciseInde
           {sentences.map((s, i) => (
             <li key={s.id} className="flex items-baseline gap-[2mm]" style={{ breakInside: 'avoid', marginBottom: gap }}>
               {num(i)}
-              <span style={{ flex: '0 0 50%' }}>{s.hint ? <EditableText value={s.hint} onCommit={editable?.onHint ? (v) => editable.onHint!(s.id, v) : undefined} css={css('hints')} selected={sel('hints')} onSelect={pick('hints')}>({s.hint})</EditableText> : null}</span>
+              <span style={{ flex: '0 0 50%' }}>{s.hint ? <span style={css('hints')}>(<EditableText value={s.hint} onCommit={editable?.onHint ? (v) => editable.onHint!(s.id, v) : undefined} css={css('hints')} selected={sel('hints')} onSelect={pick('hints')} />)</span> : null}</span>
               <span className="flex-1">{renderText(s)}</span>
             </li>
           ))}
@@ -228,7 +276,17 @@ export const SentenceCompletionRenderer: React.FC<Props> = ({ data, exerciseInde
 
   return (
     <div style={{ fontFamily: font, fontSize: `${settings.fontSizePt}pt`, lineHeight: settings.lineHeight, color: '#111' }}>
-      {!hideExerciseHeading && settings.showExerciseTitle && (
+      {!hideExerciseHeading && settings.showExerciseTitle && dialogueGapFill && (
+        <div className="flex items-start justify-between gap-[5mm] mb-[2.5mm]">
+          <h2 style={{ margin: 0, color: ORANGE, fontFamily: HEAD_FONT, fontWeight: 800, fontSize: `${settings.headingFontSizePt}pt`, textTransform: 'uppercase', lineHeight: 1.25, ...css('title') }}>
+            {editable?.onTitle
+              ? <EditableText value={data.exerciseTitle} onCommit={editable.onTitle} selected={sel('title')} onSelect={pick('title')} />
+              : <span onClick={pick('title')}><EditableText value={data.exerciseTitle}>{data.exerciseTitle}</EditableText></span>}
+          </h2>
+          {qr}
+        </div>
+      )}
+      {!hideExerciseHeading && settings.showExerciseTitle && !dialogueGapFill && (
         <div className="flex items-start justify-between gap-[5mm] mb-[3.5mm]">
           <div className="flex items-start gap-[3mm] min-w-0 flex-1">
             <span
@@ -240,7 +298,7 @@ export const SentenceCompletionRenderer: React.FC<Props> = ({ data, exerciseInde
               <h2 style={{ margin: 0, color: NAVY, fontFamily: HEAD_FONT, fontWeight: 800, fontSize: `${settings.headingFontSizePt}pt`, textTransform: 'uppercase', lineHeight: 1.3, ...css('title') }}>
                 {editable?.onTitle
                   ? <EditableText value={data.exerciseTitle} onCommit={editable.onTitle} selected={sel('title')} onSelect={pick('title')} />
-                  : <span onClick={pick('title')}>{titleNode}</span>}
+                  : <span onClick={pick('title')}><EditableText value={data.exerciseTitle}>{titleNode}</EditableText></span>}
               </h2>
               {data.instruction && !editable?.onTitle && null}
             </div>
@@ -250,7 +308,7 @@ export const SentenceCompletionRenderer: React.FC<Props> = ({ data, exerciseInde
       )}
       {hideExerciseHeading && qr && <div className="flex justify-end mb-[3mm]">{qr}</div>}
 
-      {showBank && (
+      {showBank && !dialogueGapFill && (
         <div
           style={{ margin: '0 auto 5mm', width: '92%', border: '1pt solid #111', borderRadius: '2.5mm', padding: '2mm 6mm', display: 'flex', flexWrap: 'wrap', justifyContent: 'center', columnGap: '9mm', rowGap: '1mm', fontWeight: 700, ...css('wordBank') }}
         >

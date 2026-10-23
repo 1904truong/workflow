@@ -1,6 +1,7 @@
 import React from 'react';
 import type { TfngData, TfngStyleKey } from '../../services/tfng/tfngCore';
 import { textStyleToCss } from '../../services/matching-pictures/matchingPicturesCore';
+import { RichEditable } from '../shared/rich/RichEditable';
 
 const NAVY = '#16295f';
 const RED = '#c81e1e';
@@ -43,31 +44,9 @@ const EditableText: React.FC<{
   onSelect?: () => void;
   /** Hiển thị có tô màu khi không sửa */
   rich?: boolean;
-}> = ({ value, onCommit, css, selected, onSelect, rich }) => {
-  if (!onCommit) return <span style={css}>{rich ? <RichText text={value} /> : value}</span>;
-  return (
-    <span
-      contentEditable
-      suppressContentEditableWarning
-      spellCheck={false}
-      className="rounded-[2px] cursor-text caret-blue-600 hover:bg-blue-50 focus:bg-blue-50/60 focus:outline focus:outline-1 focus:outline-blue-400 focus:outline-offset-2"
-      style={{ ...css, display: 'inline-block', minWidth: '3ch', outline: selected ? '1px solid #8b5cf6' : undefined, outlineOffset: '2px' }}
-      onFocus={onSelect}
-      onClick={onSelect}
-      onBlur={(e) => {
-        const v = e.currentTarget.innerText.replace(/ /g, ' ').replace(/\s*\n+\s*/g, ' ').trim();
-        if (v !== value) onCommit(v);
-        else e.currentTarget.innerText = value;
-      }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
-        if (e.key === 'Escape') { e.currentTarget.innerText = value; e.currentTarget.blur(); }
-      }}
-    >
-      {value}
-    </span>
-  );
-};
+}> = ({ value, onCommit, css, selected, onSelect, rich }) => (
+  <RichEditable value={value} onCommit={onCommit} css={css} selected={selected} onSelect={onSelect} fallback={rich ? <RichText text={value} /> : undefined} />
+);
 
 type Kind = 'plain' | 'checkbox' | 'circle' | 'underline';
 

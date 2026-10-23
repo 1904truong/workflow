@@ -1,6 +1,6 @@
 import type { Exercise, ImageSlot } from '../../types/index.ts';
 import { PRINT_TOKENS } from '../../tokens/printTokens.ts';
-import type { AiImagePlan, AiImagePlanItem, AiAspectRatio } from './imagePlanSchema.ts';
+import { AI_EXERCISE_TYPES, type AiImagePlan, type AiImagePlanItem, type AiAspectRatio, type AiExerciseType } from './imagePlanSchema.ts';
 
 export interface Disagreement {
   id: string;
@@ -106,7 +106,11 @@ export function planFromParser(exercises: Exercise[]): AiImagePlan {
     exercises: exercises.map((ex, i) => ({
       index: i + 1,
       title: ex.title,
-      detectedType: ex.type === 'grammar_vocab_cloze' ? 'grammar_vocab_multiple_choice' : ex.type,
+      detectedType: (AI_EXERCISE_TYPES as readonly string[]).includes(ex.type)
+        ? (ex.type as AiExerciseType)
+        : ex.type === 'grammar_vocab_cloze' || (ex.type as string) === 'pronunciation_multiple_choice'
+        ? 'grammar_vocab_multiple_choice'
+        : 'other',
       questionCount: ex.questions.length,
       needsImages: ex.imageSlots.length > 0,
       reason: 'Suy ra từ parser (không dùng AI)',

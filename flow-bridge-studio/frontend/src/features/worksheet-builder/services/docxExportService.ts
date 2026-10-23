@@ -1,4 +1,4 @@
-import { passageParagraphs } from './gap-filling/gapFillingCore';
+import { passageLines, passageParagraphs } from './gap-filling/gapFillingCore';
 import type { Worksheet } from '../types';
 import { listeningPassageHtml } from './listening/listeningDocx';
 
@@ -206,11 +206,37 @@ export function exportWorksheetToDocx(worksheet: Worksheet, mode: 'student' | 't
           </div>
         ` : ex.readingMcq ? `
           <div style="margin-top: 8pt; margin-bottom: 8pt;">
-            ${ex.readingMcq.passageTitle ? `<p style="text-align: center; margin: 0 0 2pt 0;"><strong>${escapeXml(ex.readingMcq.passageTitle)}</strong></p>` : ''}
-            ${ex.readingMcq.passageAuthor ? `<p style="text-align: center; margin: 0 0 6pt 0;"><em>${escapeXml(ex.readingMcq.passageAuthor)}</em></p>` : ''}
-            ${ex.readingMcq.passage.split(/\n+/).filter((l) => l.trim()).map((l) => `<p style="margin: 0 0 6pt 0; text-indent: 24pt;">${escapeXml(l.trim())}</p>`).join('')}
-            ${ex.readingMcq.questions.map((q, i) => `<p style="margin: 6pt 0 2pt 0;"><strong>${i + 1}.</strong> ${escapeXml(q.text)}</p>
-              ${q.options.map((o, oi) => `<p style="margin: 0 0 1pt 14pt;"><strong>${String.fromCharCode(65 + oi)}.</strong> ${escapeXml(o.text)}</p>`).join('')}`).join('')}
+            ${(ex.type === 'reading_comic' || ex.readingMcq.settings.layout === 'comic_story') ? `
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="width: 52%; vertical-align: top; padding-right: 10pt;">
+                    ${ex.readingMcq.imageUrl ? `
+                      <img src="${escapeXml(ex.readingMcq.imageUrl)}" style="max-width: 100%; height: auto; border: 0.5pt solid #cbd5e1;" />
+                    ` : `
+                      <div style="border: 1pt dashed #cbd5e1; padding: 24pt 12pt; text-align: center; color: #94a3b8; font-size: 9.5pt;">
+                        [Comic Strip / Picture Story]
+                      </div>
+                    `}
+                    ${ex.readingMcq.passage ? `<div style="margin-top: 6pt; font-size: 9.5pt;">${escapeXml(ex.readingMcq.passage)}</div>` : ''}
+                  </td>
+                  <td style="width: 48%; vertical-align: top; padding-left: 6pt;">
+                    ${ex.readingMcq.questions.map((q, i) => `
+                      <div style="margin-bottom: 12pt;">
+                        <div style="font-size: 10pt;"><strong>${i + 1}.</strong> ${escapeXml(q.text)}</div>
+                        <div style="border-bottom: 1pt dashed #666; height: 16pt; margin-top: 4pt;">&nbsp;</div>
+                        ${(ex.readingMcq!.settings.answerLineCount || 1) > 1 ? '<div style="border-bottom: 1pt dashed #666; height: 16pt; margin-top: 4pt;">&nbsp;</div>' : ''}
+                      </div>
+                    `).join('')}
+                  </td>
+                </tr>
+              </table>
+            ` : `
+              ${ex.readingMcq.passageTitle ? `<p style="text-align: center; margin: 0 0 2pt 0;"><strong>${escapeXml(ex.readingMcq.passageTitle)}</strong></p>` : ''}
+              ${ex.readingMcq.passageAuthor ? `<p style="text-align: center; margin: 0 0 6pt 0;"><em>${escapeXml(ex.readingMcq.passageAuthor)}</em></p>` : ''}
+              ${ex.readingMcq.passage.split(/\n+/).filter((l) => l.trim()).map((l) => `<p style="margin: 0 0 6pt 0; text-indent: 24pt;">${escapeXml(l.trim())}</p>`).join('')}
+              ${ex.readingMcq.questions.map((q, i) => `<p style="margin: 6pt 0 2pt 0;"><strong>${i + 1}.</strong> ${escapeXml(q.text)}</p>
+                ${q.options.map((o, oi) => `<p style="margin: 0 0 1pt 14pt;"><strong>${String.fromCharCode(65 + oi)}.</strong> ${escapeXml(o.text)}</p>`).join('')}`).join('')}
+            `}
           </div>
         ` : ex.listeningMcq ? `
           <div style="margin-top: 8pt; margin-bottom: 8pt;">
@@ -266,6 +292,8 @@ export function exportWorksheetToDocx(worksheet: Worksheet, mode: 'student' | 't
               ${ex.sentenceCompletion.sentences.map((st, i) => `<tr>
                 <td style="width: 6%; padding: 4pt;"><strong>${i + 1}.</strong></td>
                 <td style="width: ${ex.sentenceCompletion!.settings.layout === 'error_correction' ? '54%' : st.hint ? '64%' : '94%'}; padding: 4pt;">${escapeXml(st.text.replace(/_{3,}/g, '____________'))}${ex.sentenceCompletion!.settings.layout === 'rewrite' ? `<br/>${escapeXml(st.starter || '')} ______________________________` : ''}</td>
+                ${ex.sentenceCompletion!.settings.layout === 'q_and_a' ? `<td style="width: 30%; padding: 4pt;">${escapeXml((st.starter || '').replace(/_{3,}/g, '________'))}</td>` : ''}
+                ${ex.sentenceCompletion!.settings.layout === 'pos_neg' ? `<td style="width: 44%; padding: 4pt;">${escapeXml((st.starter || '').replace(/_{3,}/g, '____________'))}</td>` : ''}
                 ${ex.sentenceCompletion!.settings.layout === 'error_correction' ? '<td style="width: 40%; padding: 4pt; border-bottom: 1pt solid #111;">&#160;</td>' : ''}
                 ${st.hint ? `<td style="width: 30%; padding: 4pt;"><em><strong>(${escapeXml(st.hint)})</strong></em></td>` : ''}
               </tr>`).join('')}
@@ -274,7 +302,7 @@ export function exportWorksheetToDocx(worksheet: Worksheet, mode: 'student' | 't
         ` : ex.gapFilling ? `
           <div style="margin-top: 8pt; margin-bottom: 8pt;">
             ${ex.gapFilling.words.length ? `<p style="text-align: center; border: 1pt solid #111; padding: 4pt;"><strong>${ex.gapFilling.words.map((w) => escapeXml(w.text)).join(' &#160;&#160;&#160; ')}</strong></p>` : ''}
-            ${passageParagraphs(ex.gapFilling.passage).map((para) => `<p style="text-align: justify; line-height: 200%;">${escapeXml(para.replace(/_{3,}/g, '____________'))}</p>`).join('')}
+            ${(ex.gapFilling.settings.layout === 'text_image' ? passageLines(ex.gapFilling.passage) : passageParagraphs(ex.gapFilling.passage)).map((para) => `<p style="text-align: justify; line-height: 200%;">${escapeXml(para.replace(/_{3,}/g, '____________'))}</p>`).join('')}
           </div>
         ` : ex.tfng ? `
           <div style="margin-top: 8pt; margin-bottom: 8pt;">
@@ -338,6 +366,36 @@ export function exportWorksheetToDocx(worksheet: Worksheet, mode: 'student' | 't
                 </table>
               </div>
             ` : ''}
+          </div>
+        ` : ex.matching ? `
+          <div style="margin-top: 8pt; margin-bottom: 8pt;">
+            ${ex.matching.layout === 'facing_tables' ? `
+              <table style="width: 100%; border-collapse: collapse;">
+                ${Array.from({ length: Math.max(ex.matching.problems.length, ex.matching.solutions.length) }).map((_, i) => {
+                  const p = ex.matching?.problems[i];
+                  const s = ex.matching?.solutions[i];
+                  return `<tr>
+                    <td style="width: 42%; border: 0.75pt solid #df7a38; padding: 4pt 6pt;">${p ? escapeXml(p.text) : ''}</td>
+                    <td style="width: 6%; border: 0.75pt solid #df7a38; padding: 4pt; text-align: center; font-weight: bold;">${p ? i + 1 : ''}</td>
+                    <td style="width: 4%; padding: 4pt;">&#160;</td>
+                    <td style="width: 6%; border: 0.75pt solid #df7a38; padding: 4pt; text-align: center; font-weight: bold;">${s ? String.fromCharCode(65 + (i % 26)) : ''}</td>
+                    <td style="width: 42%; border: 0.75pt solid #df7a38; padding: 4pt 6pt;">${s ? escapeXml(s.text) : ''}</td>
+                  </tr>`;
+                }).join('')}
+              </table>
+            ` : `
+              <table style="width: 100%; border-collapse: collapse;">
+                ${Array.from({ length: Math.max(ex.matching.problems.length, ex.matching.solutions.length) }).map((_, i) => {
+                  const p = ex.matching?.problems[i];
+                  const s = ex.matching?.solutions[i];
+                  return `<tr>
+                    <td style="width: 46%; padding: 4pt;">${p ? `<strong>${i + 1}.</strong> ${escapeXml(p.text)}` : ''}</td>
+                    <td style="width: 8%; padding: 4pt; text-align: center;">${p ? '[ &#160; ]' : ''}</td>
+                    <td style="width: 46%; padding: 4pt;">${s ? `<strong>${String.fromCharCode(97 + (i % 26))}.</strong> ${escapeXml(s.text)}` : ''}</td>
+                  </tr>`;
+                }).join('')}
+              </table>
+            `}
           </div>
         ` : `
           <div class="questions-list">

@@ -842,7 +842,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           res = await fetch(`${settings.url}/functions/v1/rewrite-worksheet`, {
             method: "POST",
             headers: { apikey: settings.anonKey, Authorization: `Bearer ${sess.access_token}`, "Content-Type": "application/json" },
-            body: JSON.stringify(p.peek ? { peek: true } : { text: p.text, kind: p.kind, hint: p.hint, example: p.example }),
+            body: JSON.stringify(p.peek ? { peek: true } : p.image ? { image: p.image, layouts: p.layouts, text: p.text, kind: p.kind } : { text: p.text, kind: p.kind, hint: p.hint, example: p.example }),
           });
         } catch (e) {
           return { ok: false, code: "NETWORK", message: "Không gọi được Supabase: " + (e && e.message || e) };
@@ -850,7 +850,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const data = await res.json().catch(() => ({}));
         if (res.status === 404) return { ok: false, code: "FUNCTION_NOT_DEPLOYED", message: "Chưa triển khai Edge Function rewrite-worksheet trên Supabase" };
         if (!res.ok) return { ok: false, code: data.code || ("HTTP_" + res.status), message: data.error || data.message || ("HTTP " + res.status), usage: data.usage };
-        return { ok: true, text: data.text, notes: data.notes || [], usage: data.usage, model: data.model };
+        return { ok: true, text: data.text, notes: data.notes || [], usage: data.usage, model: data.model, layout: data.layout, confidence: data.confidence };
       })().then(sendResponse).catch((e) => sendResponse({ ok: false, code: "ERROR", message: e.message || String(e) }));
       return true;
     }

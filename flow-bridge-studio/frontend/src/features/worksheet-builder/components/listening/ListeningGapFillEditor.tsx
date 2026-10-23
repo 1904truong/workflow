@@ -2,9 +2,12 @@ import { TtsAudioButton } from '../shared/TtsAudioButton';
 import { publicAudioUrl, type StoredAudio } from '../../services/tts/audioStorage';
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { AiRewriteBox } from '../shared/AiRewriteBox';
+import { SmartLayoutBar } from '../shared/SmartLayoutBar';
+import { LISTENING_LAYOUTS as SMART_LAYOUTS } from '../../services/listening/listeningGapFillCore';
 import { createPortal, flushSync } from 'react-dom';
 import { PageZoomOverlay } from '../shared/PageZoomOverlay';
-import { ArrowLeft, Check, Plus, Trash2, Copy, ImagePlus, X, ClipboardPaste, Maximize2, Minimize, Minus, ChevronLeft, ChevronRight, ChevronDown, Eye, Play, Pause, Headphones, Upload, FileDown, Printer, MoreHorizontal, Undo2, Redo2, Save, Link2, QrCode, AlertCircle } from 'lucide-react';
+import { SaveStatusBadge, useSaveShortcut, type SaveStatus } from '../shared/SaveStatusBadge';
+import { ArrowLeft, Plus, Trash2, Copy, ImagePlus, X, ClipboardPaste, Maximize2, Minimize, Minus, ChevronDown, Eye, Play, Pause, Headphones, Upload, FileDown, Printer, MoreHorizontal, Undo2, Redo2, Save, Link2, QrCode, AlertCircle } from 'lucide-react';
 import type { LessonFolder, Exercise, Worksheet } from '../../types';
 import type {
   ListeningGapFillData,
@@ -230,7 +233,7 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
   const [showExportMenu, setShowExportMenu] = useState<boolean>(false);
   const [, setSelectedBlankId] = useState<string | null>(null);
   const [pasteText, setPasteText] = useState<string>('');
-  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('saved');
   const [isPlayingAudio, setIsPlayingAudio] = useState<boolean>(false);
   const [activeParagraphIndex, setActiveParagraphIndex] = useState<number>(0);
   activeParaRef.current = activeParagraphIndex;
@@ -295,8 +298,6 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
   // Update helpers
   const update = (patch: Partial<ListeningGapFillData>) => {
     setData((prev) => ({ ...prev, ...patch }));
-    setSaveStatus('saving');
-    setTimeout(() => setSaveStatus('saved'), 600);
   };
 
   const updateSettings = (patch: Partial<ListeningGapFillData['settings']>) => {
@@ -304,8 +305,6 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
       ...prev,
       settings: { ...prev.settings, ...patch },
     }));
-    setSaveStatus('saving');
-    setTimeout(() => setSaveStatus('saved'), 600);
   };
 
   // ── Quản lý thu gọn / mở rộng các khối chức năng ở cột bên trái ──
@@ -1307,6 +1306,9 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
 
   latestRef.current = { build: buildExerciseObject, save: onSaveExercise };
 
+  useSaveShortcut(() => handleSave('stay'));
+
+
   const handleSave = (nextAction: 'return' | 'add_another' | 'stay' = 'return') => {
     const updatedEx = buildExerciseObject();
     onSaveExercise(updatedEx, nextAction);
@@ -1382,10 +1384,7 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5 text-xs text-emerald-700 font-medium bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100">
-            <Check size={13} strokeWidth={2.5} />
-            {saveStatus === 'saving' ? 'Saving...' : 'Saved a few seconds ago'}
-          </div>
+          <SaveStatusBadge status={saveStatus} />
 
           {/* More / Export Dropdown */}
           <div className="relative">
@@ -2110,11 +2109,6 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
             {/* Toolbar: page nav / zoom / fit / fullscreen / print */}
             <div className="flex items-center gap-1.5 text-xs text-slate-700 shrink-0 [&_button]:!w-7 [&_button]:!h-7">
             <div className="inline-flex items-center bg-white border border-slate-200 rounded-lg shadow-xs px-0.5">
-              <button type="button" className="w-8 h-8 flex items-center justify-center text-slate-600 hover:bg-slate-50 rounded-lg" title="Trang trước"><ChevronLeft size={15} /></button>
-              <span className="px-2 whitespace-nowrap">Page 1 / 1</span>
-              <button type="button" className="w-8 h-8 flex items-center justify-center text-slate-600 hover:bg-slate-50 rounded-lg" title="Trang sau"><ChevronRight size={15} /></button>
-            </div>
-            <div className="inline-flex items-center bg-white border border-slate-200 rounded-lg shadow-xs px-0.5">
               <button type="button" onClick={() => setZoom((z) => Math.max(50, z - 10))} className="w-8 h-8 flex items-center justify-center text-slate-600 hover:bg-slate-50 rounded-lg" title="Thu nhỏ"><Minus size={14} /></button>
               <span className="w-11 text-center">{zoom}%</span>
               <button type="button" onClick={() => setZoom((z) => Math.min(150, z + 10))} className="w-8 h-8 flex items-center justify-center text-slate-600 hover:bg-slate-50 rounded-lg" title="Phóng to"><Plus size={14} /></button>
@@ -2265,6 +2259,7 @@ export const ListeningGapFillEditor: React.FC<Props> = ({
               placeholder={`LISTEN AND FILL IN THE GAP\n\nTHINGS TO SEE AND DO IN LONDON\n\n1. Go on a Big Bus tour and see the famous (a) __________ in London...\n\n2. Visit the Tate Modern and see a fantastic (c) __________ of modern art...`}
               className="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
             />
+            <SmartLayoutBar kind="Listening Fill in the Gap" hint="Dán bài đọc có tiêu đề (viết hoa), các đoạn văn đánh số 1., 2., 3... và chỗ trống dạng (a) ________ hoặc (1) ________. Hệ thống tách tiêu đề, đoạn văn và danh sách chỗ trống." example={'LISTEN AND FILL IN THE GAP\n\nTHINGS TO SEE AND DO IN LONDON\n\n1. Go on a Big Bus tour and see the famous (a) __________ in London...\n\n2. Visit the Tate Modern and see a fantastic (c) __________ of modern art...'} text={pasteText} onText={setPasteText} layouts={SMART_LAYOUTS} current={String(data.settings.layout)} onLayout={(id) => updateSettings({ layout: id } as never)} />
             <AiRewriteBox kind="Listening Fill in the Gap" hint="Dán bài đọc có tiêu đề (viết hoa), các đoạn văn đánh số 1., 2., 3... và chỗ trống dạng (a) ________ hoặc (1) ________. Hệ thống tách tiêu đề, đoạn văn và danh sách chỗ trống." example={'LISTEN AND FILL IN THE GAP\n\nTHINGS TO SEE AND DO IN LONDON\n\n1. Go on a Big Bus tour and see the famous (a) __________ in London...\n\n2. Visit the Tate Modern and see a fantastic (c) __________ of modern art...'} text={pasteText} onText={setPasteText} />
 
             <div className="flex items-center justify-between pt-2">

@@ -59,6 +59,8 @@ export interface MatchingHeadingsSettings {
 }
 
 export interface MatchingHeadingsData {
+  /** Định dạng từng từ của các ô chữ sửa trên trang A4 (xem services/richFields.ts) */
+  richMarks?: import('../richFields.ts').RichMarks;
   exerciseTitle: string;
   instruction: string;
   passageTitle: string;

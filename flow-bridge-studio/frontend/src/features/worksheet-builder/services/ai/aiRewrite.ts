@@ -65,3 +65,50 @@ export async function rewriteForExercise(req: RewriteRequest): Promise<RewriteOu
     return { ok: false, notes: [], errorCode: e?.code || 'EXTENSION_UNAVAILABLE', errorMessage: NO_EXTENSION };
   }
 }
+
+// ───────────── Đọc ảnh đề: AI chọn layout + chép đề ─────────────
+
+export interface ImageLayoutChoice {
+  id: string;
+  label: string;
+  desc: string;
+  hint: string;
+  example: string;
+}
+
+export interface ReadImageOutcome {
+  ok: boolean;
+  layout?: string;
+  confidence?: number | null;
+  text?: string;
+  notes: string[];
+  usage?: AiUsage | null;
+  errorCode?: string;
+  errorMessage?: string;
+}
+
+/** Gửi ảnh đề (data URL JPEG/PNG đã thu nhỏ) cho AI: trả về layout khớp nhất trong `layouts` và đề đã chép đúng định dạng của layout đó */
+export async function readWorksheetImage(req: { dataUrl: string; kind: string; layouts: ImageLayoutChoice[]; text?: string }): Promise<ReadImageOutcome> {
+  const m = /^data:(image\/[a-z+]+);base64,(.+)$/i.exec(req.dataUrl);
+  if (!m) return { ok: false, notes: [], errorCode: 'BAD_IMAGE', errorMessage: 'Không đọc được ảnh này.' };
+  try {
+    const res = await askExtension('REWRITE_WORKSHEET', {
+      image: { mime: m[1].toLowerCase(), data: m[2] },
+      layouts: req.layouts,
+      kind: req.kind,
+      text: req.text || '',
+    }, 150000);
+    const usage = asUsage(res.payload?.usage);
+    if (res.error) {
+      const code = res.error.code;
+      return { ok: false, notes: [], usage, errorCode: code, errorMessage: FRIENDLY[code] || res.error.message };
+    }
+    const layout = typeof res.payload?.layout === 'string' ? res.payload.layout : '';
+    const text = typeof res.payload?.text === 'string' ? res.payload.text : '';
+    if (!layout || !text.trim()) return { ok: false, notes: [], usage, errorCode: 'EMPTY', errorMessage: 'AI không đọc được nội dung từ ảnh. Thử ảnh rõ và cắt gọn hơn.' };
+    const conf = Number(res.payload?.confidence);
+    return { ok: true, layout, text, confidence: Number.isFinite(conf) ? conf : null, notes: Array.isArray(res.payload?.notes) ? res.payload.notes : [], usage };
+  } catch (e: any) {
+    return { ok: false, notes: [], errorCode: e?.code || 'EXTENSION_UNAVAILABLE', errorMessage: NO_EXTENSION };
+  }
+}

@@ -49,8 +49,8 @@
 
     if (data.type === "REWRITE_WORKSHEET") {
       const p = data.payload || {};
-      const res = await safeSend({ type: "WEB_REWRITE_WORKSHEET", payload: { text: p.text, kind: p.kind, hint: p.hint, example: p.example, peek: !!p.peek } });
-      if (res.ok) reply(data.id, "REWRITE_WORKSHEET", { text: res.text, notes: res.notes, usage: res.usage });
+      const res = await safeSend({ type: "WEB_REWRITE_WORKSHEET", payload: { text: p.text, kind: p.kind, hint: p.hint, example: p.example, peek: !!p.peek, image: p.image, layouts: p.layouts } });
+      if (res.ok) reply(data.id, "REWRITE_WORKSHEET", { text: res.text, notes: res.notes, usage: res.usage, layout: res.layout, confidence: res.confidence });
       else reply(data.id, "REWRITE_WORKSHEET", { usage: res.usage || null }, { code: res.code || "ERROR", message: res.message || "Viết lại bằng AI thất bại" });
       return;
     }

@@ -8,6 +8,9 @@ export interface TextMarkAttrs {
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
+  strike?: boolean;
+  /** Chỉ số trên / dưới (x², H₂O) */
+  script?: 'super' | 'sub';
   color?: string;
   highlight?: string;
   fontFamily?: string;
@@ -20,7 +23,7 @@ export interface TextMark extends TextMarkAttrs {
 }
 
 export type MarkKey = keyof TextMarkAttrs;
-const KEYS: MarkKey[] = ['bold', 'italic', 'underline', 'color', 'highlight', 'fontFamily', 'fontSizePt'];
+const KEYS: MarkKey[] = ['bold', 'italic', 'underline', 'strike', 'script', 'color', 'highlight', 'fontFamily', 'fontSizePt'];
 
 export const markAttrs = (m: TextMarkAttrs): TextMarkAttrs => attrsOf(m);
 const attrsOf = (m: TextMarkAttrs): TextMarkAttrs => {
@@ -194,10 +197,12 @@ export function attrsToStyle(a: TextMarkAttrs): Record<string, string | number |
   return {
     fontWeight: a.bold ? 700 : undefined,
     fontStyle: a.italic ? 'italic' : undefined,
-    textDecoration: a.underline ? 'underline' : undefined,
+    textDecoration: [a.underline && 'underline', a.strike && 'line-through'].filter(Boolean).join(' ') || undefined,
     color: a.color,
     backgroundColor: a.highlight,
     fontFamily: a.fontFamily,
-    fontSize: a.fontSizePt ? `${a.fontSizePt}pt` : undefined,
+    // Chỉ số trên/dưới: chữ nhỏ lại 0.7 lần (theo cỡ riêng nếu có)
+    fontSize: a.script ? (a.fontSizePt ? `${a.fontSizePt * 0.7}pt` : '0.7em') : a.fontSizePt ? `${a.fontSizePt}pt` : undefined,
+    verticalAlign: a.script === 'super' ? 'super' : a.script === 'sub' ? 'sub' : undefined,
   };
 }
